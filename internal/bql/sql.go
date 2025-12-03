@@ -101,9 +101,11 @@ func (b *SQLBuilder) buildCompare(e *CompareExpr) string {
 	}
 
 	// Handle date comparisons
+	// Wrap column in datetime() to normalize ISO 8601 timestamps with timezone
+	// to UTC format that matches datetime('now', ...) expressions
 	if e.Value.Type == ValueDate {
 		dateSQL := b.dateToSQL(e.Value.String)
-		return fmt.Sprintf("%s %s %s", column, b.opToSQL(e.Op), dateSQL)
+		return fmt.Sprintf("datetime(%s) %s %s", column, b.opToSQL(e.Op), dateSQL)
 	}
 
 	// Handle contains/not contains operators

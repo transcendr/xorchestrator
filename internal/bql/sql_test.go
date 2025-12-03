@@ -276,16 +276,17 @@ func TestSQLBuilder_DateComparisons(t *testing.T) {
 		input     string
 		wantWhere string
 	}{
-		{"created > today", "i.created_at > date('now')"},
-		{"created > yesterday", "i.created_at > date('now', '-1 day')"},
-		{"created > -7d", "i.created_at > date('now', '-7 days')"},
-		{"updated >= -30d", "i.updated_at >= date('now', '-30 days')"},
+		// Column wrapped in datetime() to normalize ISO 8601 with timezone to UTC
+		{"created > today", "datetime(i.created_at) > date('now')"},
+		{"created > yesterday", "datetime(i.created_at) > date('now', '-1 day')"},
+		{"created > -7d", "datetime(i.created_at) > date('now', '-7 days')"},
+		{"updated >= -30d", "datetime(i.updated_at) >= date('now', '-30 days')"},
 		// Hour offsets use datetime() for sub-day precision
-		{"created > -24h", "i.created_at > datetime('now', '-24 hours')"},
-		{"updated >= -1h", "i.updated_at >= datetime('now', '-1 hours')"},
+		{"created > -24h", "datetime(i.created_at) > datetime('now', '-24 hours')"},
+		{"updated >= -1h", "datetime(i.updated_at) >= datetime('now', '-1 hours')"},
 		// Month offsets
-		{"created > -3m", "i.created_at > date('now', '-3 months')"},
-		{"updated >= -1m", "i.updated_at >= date('now', '-1 months')"},
+		{"created > -3m", "datetime(i.created_at) > date('now', '-3 months')"},
+		{"updated >= -1m", "datetime(i.updated_at) >= date('now', '-1 months')"},
 	}
 
 	for _, tt := range tests {
