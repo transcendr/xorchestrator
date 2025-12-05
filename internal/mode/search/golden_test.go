@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 
 	"perles/internal/beads"
+	"perles/internal/ui/shared/formmodal"
 )
 
 // Golden tests for search mode rendering.
@@ -85,6 +86,34 @@ func TestSearch_View_Golden_Narrow(t *testing.T) {
 		{ID: "bd-a1b", TitleText: "Implement webhook system", Priority: 1, Status: beads.StatusOpen, Type: beads.TypeFeature},
 	}
 	m, _ = m.handleSearchResults(searchResultsMsg{issues: issues, err: nil})
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestSearch_View_Golden_NewViewModal(t *testing.T) {
+	m := createTestModelWithViews()
+	m = m.SetSize(100, 30)
+	m.input.SetValue("status = open")
+
+	// Open new view modal
+	m.newViewModal = formmodal.New(makeNewViewFormConfig(m.services.Config.Views)).
+		SetSize(m.width, m.height)
+	m.view = ViewNewView
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestSearch_View_Golden_SaveColumnModal(t *testing.T) {
+	m := createTestModelWithViews()
+	m = m.SetSize(100, 30)
+	m.input.SetValue("priority = 0")
+
+	// Open save column modal
+	m.viewSelector = formmodal.New(makeUpdateViewFormConfig(m.services.Config.Views)).
+		SetSize(m.width, m.height)
+	m.view = ViewSaveColumn
 
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))

@@ -11,9 +11,8 @@ import (
 	"perles/internal/config"
 	"perles/internal/mode"
 	"perles/internal/ui/details"
-	"perles/internal/ui/modals/createview"
 	"perles/internal/ui/modals/saveviewoptions"
-	"perles/internal/ui/modals/updateview"
+	"perles/internal/ui/shared/formmodal"
 )
 
 // createTestModel creates a minimal Model for testing state transitions.
@@ -455,8 +454,8 @@ func TestViewSelector_EscReturnToSearch(t *testing.T) {
 	m := createTestModelWithViews()
 	m.view = ViewSaveColumn
 
-	// Simulate CancelMsg from viewselector
-	m, _ = m.Update(updateview.CancelMsg{})
+	// Simulate CancelMsg from formmodal
+	m, _ = m.Update(formmodal.CancelMsg{})
 
 	assert.Equal(t, ViewSearch, m.view, "expected to return to search view")
 }
@@ -464,15 +463,22 @@ func TestViewSelector_EscReturnToSearch(t *testing.T) {
 func TestViewSelector_SaveBubblesUp(t *testing.T) {
 	m := createTestModelWithViews()
 	m.view = ViewSaveColumn
+	m.input.SetValue("status = open")
 
-	// Simulate SaveMsg from viewselector
-	saveMsg := updateview.SaveMsg{
-		ColumnName:  "Test Column",
-		Color:       "#73F59F",
-		Query:       "status = open",
-		ViewIndices: []int{0, 1},
+	// Simulate SubmitMsg from formmodal (values match updateview form)
+	submitMsg := formmodal.SubmitMsg{
+		Values: map[string]any{
+			"columnName": "Test Column",
+			"color":      "#73F59F",
+			"views":      []string{"0", "1"},
+		},
 	}
-	m, cmd := m.Update(saveMsg)
+	m, cmd := m.Update(submitMsg)
+
+	// First update returns updateViewSaveMsg, which triggers the actual state change
+	assert.NotNil(t, cmd, "expected command from formmodal submit")
+	msg := cmd()
+	m, cmd = m.Update(msg)
 
 	assert.Equal(t, ViewSearch, m.view, "expected to return to search view")
 	assert.NotNil(t, cmd, "expected batch command with ShowToastMsg")
@@ -560,14 +566,22 @@ func TestActionPicker_Cancel(t *testing.T) {
 func TestNewViewModal_Save(t *testing.T) {
 	m := createTestModelWithViews()
 	m.view = ViewNewView
+	m.input.SetValue("status = open")
 
-	saveMsg := createview.SaveMsg{
-		ViewName:   "My Bugs",
-		ColumnName: "Open Bugs",
-		Color:      "#FF8787",
-		Query:      "status = open",
+	// Simulate SubmitMsg from formmodal (values match newview form)
+	submitMsg := formmodal.SubmitMsg{
+		Values: map[string]any{
+			"viewName":   "My Bugs",
+			"columnName": "Open Bugs",
+			"color":      "#FF8787",
+		},
 	}
-	m, cmd := m.Update(saveMsg)
+	m, cmd := m.Update(submitMsg)
+
+	// First update returns newViewSaveMsg, which triggers the actual state change
+	assert.NotNil(t, cmd, "expected command from formmodal submit")
+	msg := cmd()
+	m, cmd = m.Update(msg)
 
 	assert.Equal(t, ViewSearch, m.view, "expected to return to search")
 	assert.NotNil(t, cmd, "expected batch command with ShowToastMsg")
@@ -577,7 +591,7 @@ func TestNewViewModal_Cancel(t *testing.T) {
 	m := createTestModelWithViews()
 	m.view = ViewNewView
 
-	m, _ = m.Update(createview.CancelMsg{})
+	m, _ = m.Update(formmodal.CancelMsg{})
 
 	assert.Equal(t, ViewSearch, m.view, "expected to return to search")
 }

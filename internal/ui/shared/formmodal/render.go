@@ -1,0 +1,192 @@
+package formmodal
+
+import (
+	"perles/internal/ui/shared/overlay"
+	"perles/internal/ui/styles"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+// View renders the modal content (without overlay).
+func (m Model) View() string {
+	width := m.config.MinWidth
+	if width == 0 {
+		width = 50
+	}
+	contentWidth := width - 2 // Account for modal border
+
+	// Title with bottom border
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(styles.OverlayTitleColor)
+	borderStyle := lipgloss.NewStyle().Foreground(styles.BorderDefaultColor)
+	titleBorder := borderStyle.Render(strings.Repeat("─", width))
+
+	// Content style adds horizontal padding
+	contentPadding := lipgloss.NewStyle().PaddingLeft(1)
+
+	// Build content starting with title
+	var content strings.Builder
+	content.WriteString(contentPadding.Render(titleStyle.Render(m.config.Title)))
+	content.WriteString("\n")
+	content.WriteString(titleBorder)
+	content.WriteString("\n\n")
+
+	// Render each field
+	for i := range m.fields {
+		fieldView := m.renderField(i, contentWidth)
+		content.WriteString(contentPadding.Render(fieldView))
+		content.WriteString("\n\n")
+	}
+
+	// Validation error (if any)
+	if m.validationError != "" {
+		errorStyle := lipgloss.NewStyle().Foreground(styles.StatusErrorColor)
+		content.WriteString(contentPadding.Render(" " + errorStyle.Render(m.validationError)))
+		content.WriteString("\n\n")
+	}
+
+	// Buttons
+	buttonsView := m.renderButtons()
+	content.WriteString(contentPadding.Render(" " + buttonsView))
+	content.WriteString("\n")
+
+	// Wrap in bordered box
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.OverlayBorderColor).
+		Width(width)
+
+	return boxStyle.Render(content.String())
+}
+
+// renderField renders a single field based on its type.
+func (m Model) renderField(index int, width int) string {
+	fs := &m.fields[index]
+	cfg := fs.config
+	focused := m.focusedIndex == index
+
+	switch cfg.Type {
+	case FieldTypeText:
+		return styles.RenderFormSection(
+			[]string{fs.textInput.View()},
+			cfg.Label, cfg.Hint, width, focused, styles.BorderHighlightFocusColor,
+		)
+
+	case FieldTypeColor:
+		swatch := lipgloss.NewStyle().
+			Background(lipgloss.Color(fs.selectedColor)).
+			Render("  ")
+		colorRow := swatch + " " + fs.selectedColor
+		return styles.RenderFormSection(
+			[]string{colorRow},
+			cfg.Label, cfg.Hint, width, focused, styles.BorderHighlightFocusColor,
+		)
+
+	case FieldTypeList:
+		var rows []string
+		for i, item := range fs.listItems {
+			prefix := " "
+			if focused && i == fs.listCursor {
+				prefix = styles.SelectionIndicatorStyle.Render(">")
+			}
+			checkbox := "[ ]"
+			if item.selected {
+				checkbox = "[x]"
+			}
+			rows = append(rows, prefix+checkbox+" "+item.label)
+		}
+		if len(rows) == 0 {
+			rows = []string{" (no items)"}
+		}
+		return styles.RenderFormSection(
+			rows,
+			cfg.Label, cfg.Hint, width, focused, styles.BorderHighlightFocusColor,
+		)
+
+	case FieldTypeSelect:
+		var rows []string
+		for i, item := range fs.listItems {
+			prefix := " "
+			if focused && i == fs.listCursor {
+				prefix = styles.SelectionIndicatorStyle.Render(">")
+			}
+			rows = append(rows, prefix+" "+item.label)
+		}
+		if len(rows) == 0 {
+			rows = []string{" (no items)"}
+		}
+		return styles.RenderFormSection(
+			rows,
+			cfg.Label, cfg.Hint, width, focused, styles.BorderHighlightFocusColor,
+		)
+	}
+
+	return ""
+}
+
+// renderButtons renders the submit and cancel buttons.
+func (m Model) renderButtons() string {
+	onButtons := m.focusedIndex == -1
+
+	// Submit button
+	submitLabel := m.config.SubmitLabel
+	if submitLabel == "" {
+		submitLabel = "Save"
+	}
+	var submitStyle lipgloss.Style
+	switch m.config.SubmitVariant {
+	case 1: // ButtonDanger - using literal to avoid import cycle
+		submitStyle = styles.DangerButtonStyle
+		if onButtons && m.focusedButton == 0 {
+			submitStyle = styles.DangerButtonFocusedStyle
+		}
+	default: // ButtonPrimary
+		submitStyle = styles.PrimaryButtonStyle
+		if onButtons && m.focusedButton == 0 {
+			submitStyle = styles.PrimaryButtonFocusedStyle
+		}
+	}
+	submitBtn := submitStyle.Render(submitLabel)
+
+	// Cancel button
+	cancelLabel := m.config.CancelLabel
+	if cancelLabel == "" {
+		cancelLabel = "Cancel"
+	}
+	cancelStyle := styles.SecondaryButtonStyle
+	if onButtons && m.focusedButton == 1 {
+		cancelStyle = styles.SecondaryButtonFocusedStyle
+	}
+	cancelBtn := cancelStyle.Render(cancelLabel)
+
+	return submitBtn + "  " + cancelBtn
+}
+
+// Overlay renders the modal on top of a background view.
+func (m Model) Overlay(bg string) string {
+	fg := m.View()
+
+	var result string
+	if bg == "" {
+		result = lipgloss.Place(
+			m.width, m.height,
+			lipgloss.Center, lipgloss.Center,
+			fg,
+		)
+	} else {
+		result = overlay.Place(overlay.Config{
+			Width:    m.width,
+			Height:   m.height,
+			Position: overlay.Center,
+		}, fg, bg)
+	}
+
+	// If colorpicker is open, layer it on top
+	if m.showColorPicker {
+		result = m.colorPicker.Overlay(result)
+	}
+
+	return result
+}
