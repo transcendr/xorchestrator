@@ -3,9 +3,6 @@ package kanban
 
 import (
 	"fmt"
-	"os/exec"
-	"runtime"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -15,6 +12,7 @@ import (
 	"perles/internal/beads"
 	"perles/internal/config"
 	"perles/internal/mode"
+	"perles/internal/mode/shared"
 	"perles/internal/ui/board"
 	"perles/internal/ui/coleditor"
 	"perles/internal/ui/details"
@@ -206,7 +204,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	// Open picker messages from details view
 	case details.OpenPriorityPickerMsg:
-		m.picker = picker.New("Priority", priorityOptions()).
+		m.picker = picker.New("Priority", shared.PriorityOptions()).
 			SetSize(m.width, m.height).
 			SetSelected(int(msg.Current))
 		m.selectedIssue = m.getIssueByID(msg.IssueID)
@@ -214,9 +212,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case details.OpenStatusPickerMsg:
-		m.picker = picker.New("Status", statusOptions()).
+		m.picker = picker.New("Status", shared.StatusOptions()).
 			SetSize(m.width, m.height).
-			SetSelected(picker.FindIndexByValue(statusOptions(), string(msg.Current)))
+			SetSelected(picker.FindIndexByValue(shared.StatusOptions(), string(msg.Current)))
 		m.selectedIssue = m.getIssueByID(msg.IssueID)
 		m.view = ViewDetailsStatusPicker
 		return m, nil
@@ -226,7 +224,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if issue == nil {
 			return m, nil
 		}
-		m.modal, m.deleteIsCascade = m.createDeleteModal(issue)
+		m.modal, m.deleteIsCascade = shared.CreateDeleteModal(issue, m.services.Client)
 		m.modal.SetSize(m.width, m.height)
 		m.selectedIssue = issue
 		m.view = ViewDeleteConfirm
@@ -510,42 +508,6 @@ func (m Model) getIssueByID(id string) *beads.Issue {
 	return nil
 }
 
-// getIssuesByIds fetches multiple issues in a single query.
-func (m Model) getIssuesByIds(ids []string) map[string]*beads.Issue {
-	result := make(map[string]*beads.Issue)
-	if len(ids) == 0 || m.services.Client == nil {
-		return result
-	}
-	issues, err := m.services.Client.ListIssuesByIds(ids)
-	if err != nil {
-		return result
-	}
-	for i := range issues {
-		result[issues[i].ID] = &issues[i]
-	}
-	return result
-}
-
-// priorityOptions returns picker options for priority levels.
-func priorityOptions() []picker.Option {
-	return []picker.Option{
-		{Label: "P0 - Critical", Value: "P0", Color: styles.PriorityCriticalColor},
-		{Label: "P1 - High", Value: "P1", Color: styles.PriorityHighColor},
-		{Label: "P2 - Medium", Value: "P2", Color: styles.PriorityMediumColor},
-		{Label: "P3 - Low", Value: "P3", Color: styles.PriorityLowColor},
-		{Label: "P4 - Backlog", Value: "P4", Color: styles.PriorityBacklogColor},
-	}
-}
-
-// statusOptions returns picker options for status values.
-func statusOptions() []picker.Option {
-	return []picker.Option{
-		{Label: "Open", Value: string(beads.StatusOpen), Color: styles.StatusOpenColor},
-		{Label: "In Progress", Value: string(beads.StatusInProgress), Color: styles.StatusInProgressColor},
-		{Label: "Closed", Value: string(beads.StatusClosed), Color: styles.StatusClosedColor},
-	}
-}
-
 func (m Model) renderStatusBar() string {
 	// Build left section with view indicator (if multiple views)
 	var content string
@@ -566,55 +528,6 @@ func (m Model) renderErrorBar() string {
 	}
 	msg += ": " + m.err.Error() + "  [Press any key to dismiss]"
 	return styles.ErrorStyle.Width(m.width).Render(msg)
-}
-
-// createDeleteModal creates a confirmation modal for issue deletion.
-func (m Model) createDeleteModal(issue *beads.Issue) (modal.Model, bool) {
-	// Check if this is an epic with child issues
-	hasChildren := issue.Type == beads.TypeEpic && len(issue.Blocks) > 0
-
-	if hasChildren {
-		// Build list of child issues for the modal message
-		childIssues := m.getIssuesByIds(issue.Blocks)
-		var childList strings.Builder
-		issueIdStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
-		for _, childID := range issue.Blocks {
-			if child, ok := childIssues[childID]; ok {
-				typeText := board.GetTypeIndicator(child.Type)
-				typeStyle := board.GetTypeStyle(child.Type)
-				priorityText := fmt.Sprintf("[P%d]", child.Priority)
-				priorityStyle := board.GetPriorityStyle(child.Priority)
-				idText := fmt.Sprintf("[%s]", childID)
-
-				line := fmt.Sprintf("  %s%s%s %s\n",
-					typeStyle.Render(typeText),
-					priorityStyle.Render(priorityText),
-					issueIdStyle.Render(idText),
-					child.TitleText)
-				childList.WriteString(line)
-			} else {
-				childList.WriteString(fmt.Sprintf("  - %s\n", childID))
-			}
-		}
-
-		message := fmt.Sprintf("Delete epic \"%s: %s\"?\n\nThis will also delete %d child issue(s):\n%s\nThis action cannot be undone.",
-			issue.ID, issue.TitleText, len(issue.Blocks), childList.String())
-
-		return modal.New(modal.Config{
-			Title:          "Delete Epic",
-			Message:        message,
-			ConfirmVariant: modal.ButtonDanger,
-			MinWidth:       60,
-		}), true
-	}
-
-	// Regular issue deletion
-	message := fmt.Sprintf("Delete \"%s: %s\"?\n\nThis action cannot be undone.", issue.ID, issue.TitleText)
-	return modal.New(modal.Config{
-		Title:          "Delete Issue",
-		Message:        message,
-		ConfirmVariant: modal.ButtonDanger,
-	}), false
 }
 
 // deleteColumn handles the deletion of a column after modal confirmation.
@@ -731,16 +644,16 @@ func (m Model) handleEditMenuSelect(msg editissue.SelectMsg) (Model, tea.Cmd) {
 		return m, m.labelEditor.Init()
 
 	case editissue.OptionPriority:
-		m.picker = picker.New("Priority", priorityOptions()).
+		m.picker = picker.New("Priority", shared.PriorityOptions()).
 			SetSize(m.width, m.height).
 			SetSelected(int(m.selectedIssue.Priority))
 		m.view = ViewDetailsPriorityPicker
 		return m, nil
 
 	case editissue.OptionStatus:
-		m.picker = picker.New("Status", statusOptions()).
+		m.picker = picker.New("Status", shared.StatusOptions()).
 			SetSize(m.width, m.height).
-			SetSelected(picker.FindIndexByValue(statusOptions(), string(m.selectedIssue.Status)))
+			SetSelected(picker.FindIndexByValue(shared.StatusOptions(), string(m.selectedIssue.Status)))
 		m.view = ViewDetailsStatusPicker
 		return m, nil
 	}
@@ -842,38 +755,6 @@ func (m Model) renameCurrentView(newName string) (Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		return mode.ShowToastMsg{Message: "Renamed view to: " + newName, Style: toaster.StyleSuccess}
 	}
-}
-
-// copyToClipboard copies text to the system clipboard.
-func copyToClipboard(text string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("pbcopy")
-	case "linux":
-		cmd = exec.Command("xclip", "-selection", "clipboard")
-	default:
-		cmd = exec.Command("xclip", "-selection", "clipboard")
-	}
-
-	pipe, err := cmd.StdinPipe()
-	if err != nil {
-		return err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	if _, err := pipe.Write([]byte(text)); err != nil {
-		return err
-	}
-
-	if err := pipe.Close(); err != nil {
-		return err
-	}
-
-	return cmd.Wait()
 }
 
 // Message types

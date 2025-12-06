@@ -8,6 +8,7 @@ import (
 	"perles/internal/beads"
 	"perles/internal/config"
 	"perles/internal/mode"
+	"perles/internal/mode/shared"
 	"perles/internal/ui/details"
 	"perles/internal/ui/shared/modal"
 )
@@ -107,7 +108,7 @@ func TestCreateDeleteModal_RegularIssue(t *testing.T) {
 		Type:      beads.TypeTask,
 	}
 
-	modal, isCascade := m.createDeleteModal(issue)
+	modal, isCascade := shared.CreateDeleteModal(issue, m.services.Client)
 
 	assert.NotNil(t, modal)
 	assert.False(t, isCascade, "expected non-cascade for regular task")
@@ -123,7 +124,7 @@ func TestCreateDeleteModal_EpicWithoutChildren(t *testing.T) {
 		Blocks:    []string{}, // No children
 	}
 
-	modal, isCascade := m.createDeleteModal(issue)
+	modal, isCascade := shared.CreateDeleteModal(issue, m.services.Client)
 
 	assert.NotNil(t, modal)
 	assert.False(t, isCascade, "expected non-cascade for epic without children")
@@ -139,7 +140,7 @@ func TestCreateDeleteModal_EpicWithChildren(t *testing.T) {
 		Blocks:    []string{"task-1", "task-2", "task-3"},
 	}
 
-	modal, isCascade := m.createDeleteModal(issue)
+	modal, isCascade := shared.CreateDeleteModal(issue, m.services.Client)
 
 	assert.NotNil(t, modal)
 	assert.True(t, isCascade, "expected cascade for epic with children")

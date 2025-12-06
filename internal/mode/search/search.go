@@ -4,8 +4,6 @@ package search
 import (
 	"fmt"
 	"io"
-	"os/exec"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +15,7 @@ import (
 	"perles/internal/beads"
 	"perles/internal/config"
 	"perles/internal/mode"
+	"perles/internal/mode/shared"
 	"perles/internal/ui/board"
 	"perles/internal/ui/details"
 	"perles/internal/ui/forms/bqlinput"
@@ -796,7 +795,7 @@ func (m Model) handlePickerKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 // openPriorityPicker opens the priority picker overlay.
 func (m Model) openPriorityPicker(msg details.OpenPriorityPickerMsg) (Model, tea.Cmd) {
-	m.picker = picker.New("Priority", priorityOptions()).
+	m.picker = picker.New("Priority", shared.PriorityOptions()).
 		SetSize(m.width, m.height).
 		SetSelected(int(msg.Current))
 	// Store the issue being edited
@@ -810,9 +809,9 @@ func (m Model) openPriorityPicker(msg details.OpenPriorityPickerMsg) (Model, tea
 
 // openStatusPicker opens the status picker overlay.
 func (m Model) openStatusPicker(msg details.OpenStatusPickerMsg) (Model, tea.Cmd) {
-	m.picker = picker.New("Status", statusOptions()).
+	m.picker = picker.New("Status", shared.StatusOptions()).
 		SetSize(m.width, m.height).
-		SetSelected(picker.FindIndexByValue(statusOptions(), string(msg.Current)))
+		SetSelected(picker.FindIndexByValue(shared.StatusOptions(), string(msg.Current)))
 	// Store the issue being edited
 	if m.selectedIdx >= 0 && m.selectedIdx < len(m.results) {
 		issue := m.results[m.selectedIdx]
@@ -820,26 +819,6 @@ func (m Model) openStatusPicker(msg details.OpenStatusPickerMsg) (Model, tea.Cmd
 	}
 	m.view = ViewStatusPicker
 	return m, nil
-}
-
-// priorityOptions returns picker options for priority levels.
-func priorityOptions() []picker.Option {
-	return []picker.Option{
-		{Label: "P0 - Critical", Value: "P0", Color: styles.PriorityCriticalColor},
-		{Label: "P1 - High", Value: "P1", Color: styles.PriorityHighColor},
-		{Label: "P2 - Medium", Value: "P2", Color: styles.PriorityMediumColor},
-		{Label: "P3 - Low", Value: "P3", Color: styles.PriorityLowColor},
-		{Label: "P4 - Backlog", Value: "P4", Color: styles.PriorityBacklogColor},
-	}
-}
-
-// statusOptions returns picker options for status values.
-func statusOptions() []picker.Option {
-	return []picker.Option{
-		{Label: "Open", Value: string(beads.StatusOpen), Color: styles.StatusOpenColor},
-		{Label: "In Progress", Value: string(beads.StatusInProgress), Color: styles.StatusInProgressColor},
-		{Label: "Closed", Value: string(beads.StatusClosed), Color: styles.StatusClosedColor},
-	}
 }
 
 // updateDetailPanel updates the detail panel with the currently selected issue.
@@ -884,16 +863,16 @@ func (m Model) handleEditMenuSelect(msg editissue.SelectMsg) (Model, tea.Cmd) {
 		return m, m.labelEditor.Init()
 
 	case editissue.OptionPriority:
-		m.picker = picker.New("Priority", priorityOptions()).
+		m.picker = picker.New("Priority", shared.PriorityOptions()).
 			SetSize(m.width, m.height).
 			SetSelected(int(m.selectedIssue.Priority))
 		m.view = ViewPriorityPicker
 		return m, nil
 
 	case editissue.OptionStatus:
-		m.picker = picker.New("Status", statusOptions()).
+		m.picker = picker.New("Status", shared.StatusOptions()).
 			SetSize(m.width, m.height).
-			SetSelected(picker.FindIndexByValue(statusOptions(), string(m.selectedIssue.Status)))
+			SetSelected(picker.FindIndexByValue(shared.StatusOptions(), string(m.selectedIssue.Status)))
 		m.view = ViewStatusPicker
 		return m, nil
 	}
@@ -1256,45 +1235,13 @@ func (m Model) yankIssueID() (Model, tea.Cmd) {
 	}
 
 	issue := m.results[m.selectedIdx]
-	if err := copyToClipboard(issue.ID); err != nil {
+	if err := shared.CopyToClipboard(issue.ID); err != nil {
 		return m, func() tea.Msg {
 			return mode.ShowToastMsg{Message: "Clipboard error: " + err.Error(), Style: toaster.StyleError}
 		}
 	}
 
 	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Copied: " + issue.ID, Style: toaster.StyleSuccess} }
-}
-
-// copyToClipboard copies text to the system clipboard.
-func copyToClipboard(text string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("pbcopy")
-	case "linux":
-		cmd = exec.Command("xclip", "-selection", "clipboard")
-	default:
-		cmd = exec.Command("xclip", "-selection", "clipboard")
-	}
-
-	pipe, err := cmd.StdinPipe()
-	if err != nil {
-		return err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	if _, err := pipe.Write([]byte(text)); err != nil {
-		return err
-	}
-
-	if err := pipe.Close(); err != nil {
-		return err
-	}
-
-	return cmd.Wait()
 }
 
 // issueItem wraps beads.Issue for the list component.
@@ -1376,78 +1323,11 @@ func (m Model) openDeleteConfirm(msg details.DeleteIssueMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.modal, m.deleteIsCascade = m.createDeleteModal(issue)
+	m.modal, m.deleteIsCascade = shared.CreateDeleteModal(issue, m.services.Client)
 	m.modal.SetSize(m.width, m.height)
 	m.selectedIssue = issue
 	m.view = ViewDeleteConfirm
 	return m, m.modal.Init()
-}
-
-// createDeleteModal creates a delete confirmation modal for the given issue.
-func (m Model) createDeleteModal(issue *beads.Issue) (modal.Model, bool) {
-	// Check if this is an epic with child issues
-	hasChildren := issue.Type == beads.TypeEpic && len(issue.Blocks) > 0
-
-	if hasChildren {
-		// Build list of child issues for the modal message
-		childIssues := m.getIssuesByIds(issue.Blocks)
-		var childList strings.Builder
-		issueIdStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
-		for _, childID := range issue.Blocks {
-			if child, ok := childIssues[childID]; ok {
-				typeText := board.GetTypeIndicator(child.Type)
-				typeStyle := board.GetTypeStyle(child.Type)
-				priorityText := fmt.Sprintf("[P%d]", child.Priority)
-				priorityStyle := board.GetPriorityStyle(child.Priority)
-				idText := fmt.Sprintf("[%s]", childID)
-
-				line := fmt.Sprintf("  %s%s%s %s\n",
-					typeStyle.Render(typeText),
-					priorityStyle.Render(priorityText),
-					issueIdStyle.Render(idText),
-					child.TitleText)
-				childList.WriteString(line)
-			} else {
-				childList.WriteString(fmt.Sprintf("  - %s\n", childID))
-			}
-		}
-
-		message := fmt.Sprintf("Delete epic \"%s: %s\"?\n\nThis will also delete %d child issue(s):\n%s\nThis action cannot be undone.",
-			issue.ID, issue.TitleText, len(issue.Blocks), childList.String())
-
-		return modal.New(modal.Config{
-			Title:          "Delete Epic",
-			Message:        message,
-			ConfirmVariant: modal.ButtonDanger,
-			MinWidth:       60,
-		}), true
-	}
-
-	// Regular issue deletion
-	message := fmt.Sprintf("Delete \"%s: %s\"?\n\nThis action cannot be undone.", issue.ID, issue.TitleText)
-	return modal.New(modal.Config{
-		Title:          "Delete Issue",
-		Message:        message,
-		ConfirmVariant: modal.ButtonDanger,
-	}), false
-}
-
-// getIssuesByIds fetches issues by their IDs using the client.
-func (m Model) getIssuesByIds(ids []string) map[string]*beads.Issue {
-	result := make(map[string]*beads.Issue)
-	if len(ids) == 0 || m.services.Client == nil {
-		return result
-	}
-
-	issues, err := m.services.Client.ListIssuesByIds(ids)
-	if err != nil {
-		return result
-	}
-
-	for i := range issues {
-		result[issues[i].ID] = &issues[i]
-	}
-	return result
 }
 
 // handleFormModalSubmit processes formmodal submissions for view modals.
