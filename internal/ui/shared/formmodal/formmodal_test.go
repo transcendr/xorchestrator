@@ -876,3 +876,711 @@ func compareGolden(t *testing.T, name, got string) {
 		t.Errorf("output does not match golden file %s\n\nWant:\n%s\n\nGot:\n%s", goldenPath, string(want), got)
 	}
 }
+
+// --- Editable List Field Tests ---
+
+func TestEditableListField_InitialState(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "one", Value: "1", Selected: true},
+					{Label: "two", Value: "2", Selected: false},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Initial focus should be on list
+	if m.fields[0].subFocus != SubFocusList {
+		t.Errorf("expected subFocus SubFocusList (0), got %d", m.fields[0].subFocus)
+	}
+
+	// Cursor should be at 0
+	if m.fields[0].listCursor != 0 {
+		t.Errorf("expected listCursor 0, got %d", m.fields[0].listCursor)
+	}
+
+	// Should have 2 list items
+	if len(m.fields[0].listItems) != 2 {
+		t.Errorf("expected 2 list items, got %d", len(m.fields[0].listItems))
+	}
+}
+
+func TestEditableListField_Navigation_Tab(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "one", Value: "1", Selected: true},
+					{Label: "two", Value: "2", Selected: false},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Initial focus should be on list
+	if m.fields[0].subFocus != SubFocusList {
+		t.Errorf("expected SubFocusList, got %d", m.fields[0].subFocus)
+	}
+
+	// Tab moves to input within same field
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if m.fields[0].subFocus != SubFocusInput {
+		t.Errorf("expected SubFocusInput after Tab, got %d", m.fields[0].subFocus)
+	}
+	if m.focusedIndex != 0 {
+		t.Errorf("expected focusedIndex 0 (same field), got %d", m.focusedIndex)
+	}
+
+	// Tab again moves to buttons
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if m.focusedIndex != -1 {
+		t.Errorf("expected focusedIndex -1 (buttons), got %d", m.focusedIndex)
+	}
+}
+
+func TestEditableListField_Navigation_ShiftTab(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "one", Value: "1", Selected: true},
+					{Label: "two", Value: "2", Selected: false},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Move to input first
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if m.fields[0].subFocus != SubFocusInput {
+		t.Errorf("expected SubFocusInput, got %d", m.fields[0].subFocus)
+	}
+
+	// Shift+Tab moves back to list
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	if m.fields[0].subFocus != SubFocusList {
+		t.Errorf("expected SubFocusList after Shift+Tab, got %d", m.fields[0].subFocus)
+	}
+	// Cursor should be at bottom of list
+	if m.fields[0].listCursor != 1 {
+		t.Errorf("expected listCursor at bottom (1), got %d", m.fields[0].listCursor)
+	}
+
+	// Shift+Tab from list moves to cancel button (wraps)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	if m.focusedIndex != -1 {
+		t.Errorf("expected focusedIndex -1 (buttons), got %d", m.focusedIndex)
+	}
+	if m.focusedButton != 1 {
+		t.Errorf("expected focusedButton 1 (cancel), got %d", m.focusedButton)
+	}
+}
+
+func TestEditableListField_Navigation_JK(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "one", Value: "1"},
+					{Label: "two", Value: "2"},
+					{Label: "three", Value: "3"},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Cursor starts at 0
+	if m.fields[0].listCursor != 0 {
+		t.Errorf("expected cursor at 0, got %d", m.fields[0].listCursor)
+	}
+
+	// j moves cursor down
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if m.fields[0].listCursor != 1 {
+		t.Errorf("expected cursor at 1 after 'j', got %d", m.fields[0].listCursor)
+	}
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.fields[0].listCursor != 2 {
+		t.Errorf("expected cursor at 2 after down, got %d", m.fields[0].listCursor)
+	}
+
+	// At boundary, doesn't go past
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.fields[0].listCursor != 2 {
+		t.Errorf("expected cursor at 2 (boundary), got %d", m.fields[0].listCursor)
+	}
+
+	// k moves cursor up
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if m.fields[0].listCursor != 1 {
+		t.Errorf("expected cursor at 1 after 'k', got %d", m.fields[0].listCursor)
+	}
+}
+
+func TestEditableListField_Navigation_UpFromTop(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "one", Value: "1"},
+					{Label: "two", Value: "2"},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Cursor at 0, k/up should move to input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if m.fields[0].subFocus != SubFocusInput {
+		t.Errorf("expected SubFocusInput after k at top, got %d", m.fields[0].subFocus)
+	}
+}
+
+func TestEditableListField_Navigation_DownFromInput(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "one", Value: "1"},
+				},
+			},
+			{Key: "name", Type: FieldTypeText, Label: "Name"},
+		},
+	}
+	m := New(cfg)
+
+	// Move to input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if m.fields[0].subFocus != SubFocusInput {
+		t.Errorf("expected SubFocusInput, got %d", m.fields[0].subFocus)
+	}
+
+	// Down from input moves to next field
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.focusedIndex != 1 {
+		t.Errorf("expected focusedIndex 1 after down from input, got %d", m.focusedIndex)
+	}
+}
+
+func TestEditableListField_Navigation_UpFromInput(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "one", Value: "1"},
+					{Label: "two", Value: "2"},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Move to input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Up from input moves to list at bottom
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.fields[0].subFocus != SubFocusList {
+		t.Errorf("expected SubFocusList after up from input, got %d", m.fields[0].subFocus)
+	}
+	if m.fields[0].listCursor != 1 {
+		t.Errorf("expected listCursor at bottom (1), got %d", m.fields[0].listCursor)
+	}
+}
+
+func TestEditableListField_Toggle_Space(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "one", Value: "1", Selected: false},
+					{Label: "two", Value: "2", Selected: true},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Initial: item 0 not selected, item 1 selected
+	if m.fields[0].listItems[0].selected {
+		t.Error("expected item 0 to be unselected initially")
+	}
+	if !m.fields[0].listItems[1].selected {
+		t.Error("expected item 1 to be selected initially")
+	}
+
+	// Space toggles selection of item at cursor
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if !m.fields[0].listItems[0].selected {
+		t.Error("expected item 0 to be selected after space")
+	}
+
+	// Toggle again
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if m.fields[0].listItems[0].selected {
+		t.Error("expected item 0 to be unselected after second space")
+	}
+}
+
+func TestEditableListField_Toggle_EnterInList(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "one", Value: "1", Selected: false},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Enter in list toggles selection
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.fields[0].listItems[0].selected {
+		t.Error("expected item 0 to be selected after enter")
+	}
+}
+
+func TestEditableListField_AddItem(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Should start with empty list
+	if len(m.fields[0].listItems) != 0 {
+		t.Errorf("expected 0 items, got %d", len(m.fields[0].listItems))
+	}
+
+	// Move to input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Type "newitem"
+	for _, r := range "newitem" {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Press Enter to add
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Verify item was added
+	if len(m.fields[0].listItems) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(m.fields[0].listItems))
+	}
+	if m.fields[0].listItems[0].value != "newitem" {
+		t.Errorf("expected value 'newitem', got '%s'", m.fields[0].listItems[0].value)
+	}
+	if m.fields[0].listItems[0].label != "newitem" {
+		t.Errorf("expected label 'newitem', got '%s'", m.fields[0].listItems[0].label)
+	}
+	if !m.fields[0].listItems[0].selected {
+		t.Error("expected new item to be selected")
+	}
+
+	// Input should be cleared
+	if m.fields[0].addInput.Value() != "" {
+		t.Errorf("expected input to be cleared, got '%s'", m.fields[0].addInput.Value())
+	}
+}
+
+func TestEditableListField_AddItem_TrimWhitespace(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Move to input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Type " test " with leading/trailing spaces
+	for _, r := range "  test  " {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Press Enter to add
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Verify item was added with trimmed value
+	if len(m.fields[0].listItems) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(m.fields[0].listItems))
+	}
+	if m.fields[0].listItems[0].value != "test" {
+		t.Errorf("expected trimmed value 'test', got '%s'", m.fields[0].listItems[0].value)
+	}
+}
+
+func TestEditableListField_AddItem_EmptyIgnored(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Move to input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Press Enter with empty input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// No item should be added
+	if len(m.fields[0].listItems) != 0 {
+		t.Errorf("expected 0 items, got %d", len(m.fields[0].listItems))
+	}
+
+	// Try with only whitespace
+	for _, r := range "   " {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if len(m.fields[0].listItems) != 0 {
+		t.Errorf("expected 0 items for whitespace-only input, got %d", len(m.fields[0].listItems))
+	}
+}
+
+func TestEditableListField_NoDuplicates(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "existing", Value: "existing", Selected: true},
+				},
+				AllowDuplicates: false, // Default
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Move to input and try to add "existing"
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	for _, r := range "existing" {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Should still have only 1 item
+	if len(m.fields[0].listItems) != 1 {
+		t.Errorf("expected 1 item (duplicate rejected), got %d", len(m.fields[0].listItems))
+	}
+}
+
+func TestEditableListField_AllowDuplicates(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "existing", Value: "existing", Selected: true},
+				},
+				AllowDuplicates: true,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Move to input and add "existing"
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	for _, r := range "existing" {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Should have 2 items (duplicates allowed)
+	if len(m.fields[0].listItems) != 2 {
+		t.Errorf("expected 2 items (duplicates allowed), got %d", len(m.fields[0].listItems))
+	}
+}
+
+func TestEditableListField_ValueExtraction(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "one", Value: "val1", Selected: true},
+					{Label: "two", Value: "val2", Selected: false},
+					{Label: "three", Value: "val3", Selected: true},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	values := getValues(m)
+	selected, ok := values["tags"].([]string)
+	if !ok {
+		t.Fatalf("expected []string, got %T", values["tags"])
+	}
+
+	// Should contain val1 and val3 (the selected items)
+	if len(selected) != 2 {
+		t.Errorf("expected 2 selected items, got %d", len(selected))
+	}
+
+	hasVal1, hasVal3 := false, false
+	for _, v := range selected {
+		if v == "val1" {
+			hasVal1 = true
+		}
+		if v == "val3" {
+			hasVal3 = true
+		}
+	}
+	if !hasVal1 || !hasVal3 {
+		t.Errorf("expected val1 and val3 in selected, got %v", selected)
+	}
+}
+
+func TestEditableListField_SubmitIncludesValues(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				Options: []ListOption{
+					{Label: "bug", Value: "bug", Selected: true},
+					{Label: "feature", Value: "feature", Selected: false},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Toggle feature (make it selected)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}) // Move to feature
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})                     // Select it
+
+	// Navigate to submit button
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // submit
+
+	// Submit
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected submit command, got nil")
+	}
+	msg := cmd()
+	submitMsg, ok := msg.(SubmitMsg)
+	if !ok {
+		t.Fatalf("expected SubmitMsg, got %T", msg)
+	}
+
+	selected, ok := submitMsg.Values["tags"].([]string)
+	if !ok {
+		t.Fatalf("expected []string, got %T", submitMsg.Values["tags"])
+	}
+
+	if len(selected) != 2 {
+		t.Errorf("expected 2 selected items, got %d", len(selected))
+	}
+}
+
+func TestEditableListField_EmptyList_Navigation(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+				// No initial options
+			},
+		},
+	}
+	m := New(cfg)
+
+	// j on empty list should not crash (doesn't move - no items)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if m.fields[0].subFocus != SubFocusList {
+		t.Errorf("after j: expected SubFocusList, got %d", m.fields[0].subFocus)
+	}
+
+	// k on empty list at cursor 0 wraps to input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if m.fields[0].subFocus != SubFocusInput {
+		t.Errorf("after k: expected SubFocusInput (wrap from top), got %d", m.fields[0].subFocus)
+	}
+
+	// Go back to list
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.fields[0].subFocus != SubFocusList {
+		t.Errorf("after up: expected SubFocusList, got %d", m.fields[0].subFocus)
+	}
+
+	// Space on empty list should not crash (does nothing)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+
+	// Enter on empty list should not crash (does nothing in list mode)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Tab should navigate to input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if m.fields[0].subFocus != SubFocusInput {
+		t.Errorf("after Tab: expected SubFocusInput, got %d", m.fields[0].subFocus)
+	}
+}
+
+func TestEditableListField_SpaceInInput(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:  "tags",
+				Type: FieldTypeEditableList,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Move to input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Type "hello world" (with space)
+	for _, r := range "hello world" {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Verify space was typed into input
+	if m.fields[0].addInput.Value() != "hello world" {
+		t.Errorf("expected 'hello world', got '%s'", m.fields[0].addInput.Value())
+	}
+}
+
+// --- Editable List Golden Tests ---
+
+func TestGolden_EditableListFocusedOnList(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Edit Tags",
+		Fields: []FieldConfig{
+			{
+				Key:              "tags",
+				Type:             FieldTypeEditableList,
+				Label:            "Tags",
+				Hint:             "Space to toggle",
+				InputLabel:       "Add Tag",
+				InputHint:        "Enter to add",
+				InputPlaceholder: "Enter tag...",
+				Options: []ListOption{
+					{Label: "bug", Value: "bug", Selected: true},
+					{Label: "feature", Value: "feature", Selected: false},
+				},
+			},
+		},
+		SubmitLabel: "Save",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	compareGolden(t, "editable_list_focused_on_list", m.View())
+}
+
+func TestGolden_EditableListFocusedOnInput(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Edit Tags",
+		Fields: []FieldConfig{
+			{
+				Key:              "tags",
+				Type:             FieldTypeEditableList,
+				Label:            "Tags",
+				Hint:             "Space to toggle",
+				InputLabel:       "Add Tag",
+				InputHint:        "Enter to add",
+				InputPlaceholder: "Enter tag...",
+				Options: []ListOption{
+					{Label: "bug", Value: "bug", Selected: true},
+					{Label: "feature", Value: "feature", Selected: false},
+				},
+			},
+		},
+		SubmitLabel: "Save",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Move to input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	compareGolden(t, "editable_list_focused_on_input", m.View())
+}
+
+func TestGolden_EditableListEmpty(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Edit Tags",
+		Fields: []FieldConfig{
+			{
+				Key:              "tags",
+				Type:             FieldTypeEditableList,
+				Label:            "Tags",
+				Hint:             "Space to toggle",
+				InputLabel:       "Add Tag",
+				InputHint:        "Enter to add",
+				InputPlaceholder: "Enter tag...",
+				// No initial options
+			},
+		},
+		SubmitLabel: "Save",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	compareGolden(t, "editable_list_empty", m.View())
+}

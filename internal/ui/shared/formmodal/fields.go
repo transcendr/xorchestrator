@@ -2,6 +2,17 @@ package formmodal
 
 import "github.com/charmbracelet/bubbles/textinput"
 
+// subFocus tracks which part of a composite field has focus.
+// Used by FieldTypeEditableList to track focus between list and input sections.
+type subFocus int
+
+const (
+	// SubFocusList indicates focus is on the list portion of a composite field.
+	SubFocusList subFocus = iota
+	// SubFocusInput indicates focus is on the input portion of a composite field.
+	SubFocusInput
+)
+
 // fieldState holds runtime state for a field.
 type fieldState struct {
 	config FieldConfig // Original configuration
@@ -15,6 +26,10 @@ type fieldState struct {
 	// List field state (Phase 4)
 	listCursor int        // Cursor position within list
 	listItems  []listItem // Items with selection state
+
+	// EditableList field state
+	addInput textinput.Model // Input for adding new items
+	subFocus subFocus        // Which part of composite field has focus
 }
 
 // listItem tracks selection state for list items.
@@ -59,6 +74,26 @@ func newFieldState(cfg FieldConfig) fieldState {
 				selected: opt.Selected,
 			}
 		}
+
+	case FieldTypeEditableList:
+		// Initialize list items from options (same as FieldTypeList)
+		fs.listItems = make([]listItem, len(cfg.Options))
+		for i, opt := range cfg.Options {
+			fs.listItems[i] = listItem{
+				label:    opt.Label,
+				value:    opt.Value,
+				selected: opt.Selected,
+			}
+		}
+		// Initialize the add-item input
+		ti := textinput.New()
+		ti.Placeholder = cfg.InputPlaceholder
+		ti.Prompt = ""
+		ti.CharLimit = 100 // Reasonable default for labels/tags
+		ti.Width = 36      // Match text field width
+		fs.addInput = ti
+		// Start with focus on the list
+		fs.subFocus = SubFocusList
 	}
 
 	return fs
@@ -89,6 +124,16 @@ func (fs *fieldState) value() any {
 			return fs.listItems[fs.listCursor].value
 		}
 		return ""
+
+	case FieldTypeEditableList:
+		// Return slice of selected values (same as FieldTypeList)
+		var selected []string
+		for _, item := range fs.listItems {
+			if item.selected {
+				selected = append(selected, item.value)
+			}
+		}
+		return selected
 	}
 	return nil
 }

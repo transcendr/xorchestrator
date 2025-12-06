@@ -93,13 +93,18 @@ const (
 	// Navigate with j/k, selecting automatically deselects others.
 	// Supports Options option (MultiSelect is ignored).
 	FieldTypeSelect
+
+	// FieldTypeEditableList is a list with an embedded input for adding items.
+	// Navigate with j/k within the list, Tab between list and input.
+	// Supports Options, MultiSelect, InputPlaceholder, InputHint, InputLabel, AllowDuplicates.
+	FieldTypeEditableList
 )
 
 // FieldConfig defines a single form field.
 //
 // Common fields for all types:
 //   - Key: Unique identifier used as the map key in SubmitMsg.Values
-//   - Type: One of FieldTypeText, FieldTypeColor, FieldTypeList, FieldTypeSelect
+//   - Type: One of FieldTypeText, FieldTypeColor, FieldTypeList, FieldTypeSelect, FieldTypeEditableList
 //   - Label: Section header displayed above the field
 //   - Hint: Displayed next to label (e.g., "required", "optional")
 //
@@ -114,6 +119,14 @@ const (
 // List field options (FieldTypeList, FieldTypeSelect):
 //   - Options: Slice of ListOption defining available choices
 //   - MultiSelect: If true, allows multiple selections (FieldTypeList only)
+//
+// EditableList field options (FieldTypeEditableList):
+//   - Options: Slice of ListOption defining initial list items
+//   - MultiSelect: If true, allows multiple selections
+//   - InputPlaceholder: Placeholder for the add-item input
+//   - InputHint: Hint shown for the input section (e.g., "Enter to add")
+//   - InputLabel: Label for the input section (e.g., "Add Label")
+//   - AllowDuplicates: Whether duplicate values are allowed (default: false)
 type FieldConfig struct {
 	Key   string    // Unique identifier for this field (used in SubmitMsg.Values)
 	Type  FieldType // Type of field
@@ -131,6 +144,12 @@ type FieldConfig struct {
 	// List/Select field options
 	Options     []ListOption // Available options for list/select fields
 	MultiSelect bool         // For FieldTypeList: allow multiple selections
+
+	// EditableList field options (FieldTypeEditableList)
+	InputPlaceholder string // Placeholder for the add-item input
+	InputHint        string // Hint shown below input (e.g., "Enter to add")
+	InputLabel       string // Label for input section (e.g., "Add Label")
+	AllowDuplicates  bool   // Whether duplicate values are allowed (default: false)
 }
 
 // ListOption represents an item in a list or select field.

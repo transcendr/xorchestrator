@@ -1,6 +1,8 @@
 package formmodal
 
 import (
+	"strings"
+
 	"perles/internal/ui/shared/colorpicker"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -157,10 +159,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // handleKeyMsg processes keyboard input.
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+	// Handle Esc globally
+	if msg.String() == "esc" {
 		return m, func() tea.Msg { return CancelMsg{} }
+	}
 
+	// Dispatch to editable list handler if that field type is focused
+	if m.focusedIndex >= 0 && m.focusedIndex < len(m.fields) {
+		fs := &m.fields[m.focusedIndex]
+		if fs.config.Type == FieldTypeEditableList {
+			return m.handleKeyForEditableList(msg, fs)
+		}
+	}
+
+	switch msg.String() {
 	case "tab", "ctrl+n":
 		m = m.nextField()
 		return m, m.blinkCmd()
@@ -297,17 +309,20 @@ func (m Model) submit() (Model, tea.Cmd) {
 // nextField moves focus to the next field or button.
 func (m Model) nextField() Model {
 	if m.focusedIndex >= 0 {
-		// Blur current text input if applicable
-		if m.fields[m.focusedIndex].config.Type == FieldTypeText {
-			m.fields[m.focusedIndex].textInput.Blur()
+		// Blur current field
+		fs := &m.fields[m.focusedIndex]
+		switch fs.config.Type {
+		case FieldTypeText:
+			fs.textInput.Blur()
+		case FieldTypeEditableList:
+			fs.addInput.Blur()
+			fs.subFocus = SubFocusList // Reset for next time
 		}
 
 		if m.focusedIndex < len(m.fields)-1 {
 			// Move to next field
 			m.focusedIndex++
-			if m.fields[m.focusedIndex].config.Type == FieldTypeText {
-				m.fields[m.focusedIndex].textInput.Focus()
-			}
+			m.focusNextFieldByType()
 		} else {
 			// Move to submit button
 			m.focusedIndex = -1
@@ -321,9 +336,7 @@ func (m Model) nextField() Model {
 			// Wrap to first field (or stay on buttons if no fields)
 			if len(m.fields) > 0 {
 				m.focusedIndex = 0
-				if m.fields[0].config.Type == FieldTypeText {
-					m.fields[0].textInput.Focus()
-				}
+				m.focusNextFieldByType()
 			} else {
 				m.focusedButton = 0
 			}
@@ -332,20 +345,35 @@ func (m Model) nextField() Model {
 	return m
 }
 
+// focusNextFieldByType sets focus on the current field based on its type.
+// Called when navigating forward into a field.
+func (m *Model) focusNextFieldByType() {
+	fs := &m.fields[m.focusedIndex]
+	switch fs.config.Type {
+	case FieldTypeText:
+		fs.textInput.Focus()
+	case FieldTypeEditableList:
+		fs.subFocus = SubFocusList // Start on list when navigating forward
+	}
+}
+
 // prevField moves focus to the previous field or button.
 func (m Model) prevField() Model {
 	if m.focusedIndex >= 0 {
-		// Blur current text input if applicable
-		if m.fields[m.focusedIndex].config.Type == FieldTypeText {
-			m.fields[m.focusedIndex].textInput.Blur()
+		// Blur current field
+		fs := &m.fields[m.focusedIndex]
+		switch fs.config.Type {
+		case FieldTypeText:
+			fs.textInput.Blur()
+		case FieldTypeEditableList:
+			fs.addInput.Blur()
+			fs.subFocus = SubFocusList // Reset for next time
 		}
 
 		if m.focusedIndex > 0 {
 			// Move to previous field
 			m.focusedIndex--
-			if m.fields[m.focusedIndex].config.Type == FieldTypeText {
-				m.fields[m.focusedIndex].textInput.Focus()
-			}
+			m.focusPrevFieldByType()
 		} else {
 			// Wrap to cancel button
 			m.focusedIndex = -1
@@ -359,9 +387,7 @@ func (m Model) prevField() Model {
 			// Move to last field (or stay on buttons if no fields)
 			if len(m.fields) > 0 {
 				m.focusedIndex = len(m.fields) - 1
-				if m.fields[m.focusedIndex].config.Type == FieldTypeText {
-					m.fields[m.focusedIndex].textInput.Focus()
-				}
+				m.focusPrevFieldByType()
 			} else {
 				m.focusedButton = 1
 			}
@@ -370,11 +396,31 @@ func (m Model) prevField() Model {
 	return m
 }
 
+// focusPrevFieldByType sets focus on the current field based on its type.
+// Called when navigating backward into a field.
+func (m *Model) focusPrevFieldByType() {
+	fs := &m.fields[m.focusedIndex]
+	switch fs.config.Type {
+	case FieldTypeText:
+		fs.textInput.Focus()
+	case FieldTypeEditableList:
+		// When navigating backward, land on the input section first
+		fs.subFocus = SubFocusInput
+		fs.addInput.Focus()
+	}
+}
+
 // blinkCmd returns the blink command if the currently focused field is a text input.
 func (m Model) blinkCmd() tea.Cmd {
 	if m.focusedIndex >= 0 && m.focusedIndex < len(m.fields) {
-		if m.fields[m.focusedIndex].config.Type == FieldTypeText {
+		fs := &m.fields[m.focusedIndex]
+		switch fs.config.Type {
+		case FieldTypeText:
 			return textinput.Blink
+		case FieldTypeEditableList:
+			if fs.subFocus == SubFocusInput {
+				return textinput.Blink
+			}
 		}
 	}
 	return nil
@@ -386,4 +432,119 @@ func (m Model) SetSize(w, h int) Model {
 	m.width = w
 	m.height = h
 	return m
+}
+
+// listContains checks if the editable list already contains a value.
+// Used for duplicate detection when AllowDuplicates is false.
+func (m Model) listContains(fs *fieldState, value string) bool {
+	for _, item := range fs.listItems {
+		if item.value == value {
+			return true
+		}
+	}
+	return false
+}
+
+// handleKeyForEditableList processes keyboard input for editable list fields.
+// The editable list has two sub-sections: list and input.
+// Navigation rules:
+//   - Tab: list->input, input->next field
+//   - Shift+Tab: input->list, list->prev field
+//   - j/Down: navigate down in list, or next field from input
+//   - k/Up: navigate up in list (at top->input), or list (at bottom) from input
+//   - Space: toggle in list, insert in input
+//   - Enter: toggle in list, add item from input
+func (m Model) handleKeyForEditableList(msg tea.KeyMsg, fs *fieldState) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab":
+		if fs.subFocus == SubFocusList {
+			// Move to input within same field
+			fs.subFocus = SubFocusInput
+			fs.addInput.Focus()
+			return m, textinput.Blink
+		}
+		// Move to next field
+		return m.nextField(), m.blinkCmd()
+
+	case "shift+tab":
+		if fs.subFocus == SubFocusInput {
+			// Move back to list within same field
+			fs.subFocus = SubFocusList
+			fs.addInput.Blur()
+			// Position cursor at bottom of list
+			if len(fs.listItems) > 0 {
+				fs.listCursor = len(fs.listItems) - 1
+			}
+			return m, nil
+		}
+		// Move to previous field
+		return m.prevField(), m.blinkCmd()
+
+	case "j", "down":
+		if fs.subFocus == SubFocusList {
+			if len(fs.listItems) > 0 && fs.listCursor < len(fs.listItems)-1 {
+				fs.listCursor++
+			}
+			return m, nil
+		}
+		// In input, down moves to next field
+		fs.addInput.Blur()
+		return m.nextField(), m.blinkCmd()
+
+	case "k", "up":
+		if fs.subFocus == SubFocusList {
+			if fs.listCursor > 0 {
+				fs.listCursor--
+			} else {
+				// At top of list, wrap to input
+				fs.subFocus = SubFocusInput
+				fs.addInput.Focus()
+				return m, textinput.Blink
+			}
+			return m, nil
+		}
+		// In input, up moves to list (at bottom)
+		fs.subFocus = SubFocusList
+		fs.addInput.Blur()
+		if len(fs.listItems) > 0 {
+			fs.listCursor = len(fs.listItems) - 1
+		}
+		return m, nil
+
+	case " ":
+		if fs.subFocus == SubFocusList && len(fs.listItems) > 0 {
+			fs.listItems[fs.listCursor].selected = !fs.listItems[fs.listCursor].selected
+			return m, nil
+		}
+		// Fall through to let input handle space
+
+	case "enter":
+		if fs.subFocus == SubFocusList && len(fs.listItems) > 0 {
+			// Toggle in list
+			fs.listItems[fs.listCursor].selected = !fs.listItems[fs.listCursor].selected
+			return m, nil
+		}
+		if fs.subFocus == SubFocusInput {
+			// Add item to list
+			value := strings.TrimSpace(fs.addInput.Value())
+			if value != "" && (fs.config.AllowDuplicates || !m.listContains(fs, value)) {
+				fs.listItems = append(fs.listItems, listItem{
+					label:    value,
+					value:    value,
+					selected: true, // New items start selected
+				})
+				fs.addInput.SetValue("")
+			}
+			return m, nil
+		}
+	}
+
+	// Forward other keys to input when focused
+	if fs.subFocus == SubFocusInput {
+		var cmd tea.Cmd
+		fs.addInput, cmd = fs.addInput.Update(msg)
+		return m, cmd
+	}
+
+	return m, nil
 }

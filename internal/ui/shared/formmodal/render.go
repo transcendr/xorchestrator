@@ -121,9 +121,57 @@ func (m Model) renderField(index int, width int) string {
 			rows,
 			cfg.Label, cfg.Hint, width, focused, styles.BorderHighlightFocusColor,
 		)
+
+	case FieldTypeEditableList:
+		return m.renderEditableListField(fs, width, focused)
 	}
 
 	return ""
+}
+
+// renderEditableListField renders the editable list as two adjacent sections.
+// The list section shows items with checkboxes, the input section shows the add-item input.
+func (m Model) renderEditableListField(fs *fieldState, width int, focused bool) string {
+	cfg := fs.config
+
+	// Determine which sub-section is focused
+	listFocused := focused && fs.subFocus == SubFocusList
+	inputFocused := focused && fs.subFocus == SubFocusInput
+
+	// Render list section
+	var listRows []string
+	for i, item := range fs.listItems {
+		prefix := " "
+		if listFocused && i == fs.listCursor {
+			prefix = styles.SelectionIndicatorStyle.Render(">")
+		}
+		checkbox := "[ ]"
+		if item.selected {
+			checkbox = "[x]"
+		}
+		listRows = append(listRows, prefix+checkbox+" "+item.label)
+	}
+	if len(listRows) == 0 {
+		listRows = []string{" (no items)"}
+	}
+	listSection := styles.RenderFormSection(
+		listRows,
+		cfg.Label, cfg.Hint, width, listFocused, styles.BorderHighlightFocusColor,
+	)
+
+	// Render input section
+	inputPrefix := " "
+	if inputFocused {
+		inputPrefix = styles.SelectionIndicatorStyle.Render(">")
+	}
+	inputView := inputPrefix + fs.addInput.View()
+	inputSection := styles.RenderFormSection(
+		[]string{inputView},
+		cfg.InputLabel, cfg.InputHint, width, inputFocused, styles.BorderHighlightFocusColor,
+	)
+
+	// Join with a small gap
+	return lipgloss.JoinVertical(lipgloss.Left, listSection, "", inputSection)
 }
 
 // renderButtons renders the submit and cancel buttons.
