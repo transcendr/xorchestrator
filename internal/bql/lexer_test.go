@@ -345,7 +345,7 @@ func TestLexer_AllKeywords(t *testing.T) {
 }
 
 func TestLexer_ExpandKeyword(t *testing.T) {
-	l := NewLexer("expand children depth 2")
+	l := NewLexer("expand down depth 2")
 
 	tok := l.NextToken()
 	require.Equal(t, TokenExpand, tok.Type)
@@ -353,7 +353,7 @@ func TestLexer_ExpandKeyword(t *testing.T) {
 
 	tok = l.NextToken()
 	require.Equal(t, TokenIdent, tok.Type)
-	require.Equal(t, "children", tok.Literal)
+	require.Equal(t, "down", tok.Literal)
 
 	tok = l.NextToken()
 	require.Equal(t, TokenDepth, tok.Type)
@@ -443,7 +443,7 @@ func TestLexer_IdentifierStopsAtOperator(t *testing.T) {
 }
 
 func TestLexer_ExpandWithFilter(t *testing.T) {
-	l := NewLexer("type = epic expand children")
+	l := NewLexer("type = epic expand down")
 
 	tok := l.NextToken()
 	require.Equal(t, TokenIdent, tok.Type)
@@ -462,7 +462,7 @@ func TestLexer_ExpandWithFilter(t *testing.T) {
 
 	tok = l.NextToken()
 	require.Equal(t, TokenIdent, tok.Type)
-	require.Equal(t, "children", tok.Literal)
+	require.Equal(t, "down", tok.Literal)
 
 	tok = l.NextToken()
 	require.Equal(t, TokenEOF, tok.Type)

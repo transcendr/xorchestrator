@@ -39,9 +39,9 @@ type in (bug, task) and status != closed                                   │
 title ~ "auth" or label ~ "security"                                       │                                                       
 created >= -7d order by priority                                           │                                                       
 not blocked and priority = p0                                              │                                                       
-type = epic expand children                                                │                                                       
-type = epic expand children depth *                                        │                                                       
-id = x expand blockers                                                     │                                                       
+type = epic expand down                                                    │                                                       
+type = epic expand down depth *                                            │                                                       
+id = x expand up                                                           │                                                       
                                                                            │                                                       
                                                                            │                                                       
                                                                            │                                                       

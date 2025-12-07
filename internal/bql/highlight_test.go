@@ -389,11 +389,11 @@ func TestHighlight_ExpandKeywords(t *testing.T) {
 		name  string
 		query string
 	}{
-		{"expand keyword", "id = x expand children"},
+		{"expand keyword", "id = x expand down"},
 		{"expand with depth", "id = x expand all depth 2"},
-		{"expand with star", "id = x expand children depth *"},
-		{"expand only", "expand blockers"},
-		{"expand with order by", "expand deps order by priority"},
+		{"expand with star", "id = x expand down depth *"},
+		{"expand only", "expand up"},
+		{"expand with order by", "expand down order by priority"},
 	}
 
 	for _, tt := range tests {
@@ -417,8 +417,8 @@ func TestHighlight_ExpandTokenStyles(t *testing.T) {
 		query string
 		token string // the token we expect to be styled
 	}{
-		{"keyword expand", "expand children", "expand"},
-		{"keyword depth", "expand children depth 2", "depth"},
+		{"keyword expand", "expand down", "expand"},
+		{"keyword depth", "expand down depth 2", "depth"},
 		{"operator star", "expand all depth *", "*"},
 	}
 

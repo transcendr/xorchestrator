@@ -433,12 +433,12 @@ func TestIsBQLQuery(t *testing.T) {
 		{"fix login", false},
 		{"search term", false},
 		// Expand keyword tests
-		{"id = x expand children", true},
+		{"id = x expand down", true},
 		{"type = epic expand all depth *", true},
-		{"expand children order by priority", true},
-		{"expand blockers", true},
-		{"EXPAND CHILDREN", true},
-		{"id = x EXPAND children DEPTH 2", true},
+		{"expand down order by priority", true},
+		{"expand up", true},
+		{"EXPAND DOWN", true},
+		{"id = x EXPAND down DEPTH 2", true},
 	}
 
 	for _, tt := range tests {
@@ -616,17 +616,17 @@ func setupExpandTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func TestExecutor_ExpandChildren(t *testing.T) {
+func TestExecutor_ExpandDown(t *testing.T) {
 	db := setupExpandTestDB(t)
 	defer func() { _ = db.Close() }()
 
 	executor := NewExecutor(db)
 
-	// Get epic with direct children
-	issues, err := executor.Execute("id = epic-1 expand children")
+	// Get epic with direct children and blocked issues (expand down = children + blocks)
+	issues, err := executor.Execute("id = epic-1 expand down")
 	require.NoError(t, err)
 
-	// Should return epic-1, task-1, task-2 (3 issues)
+	// Should return epic-1, task-1, task-2 (3 issues - children only since epic-1 doesn't block anything)
 	require.Len(t, issues, 3)
 
 	ids := make(map[string]bool)
@@ -640,14 +640,14 @@ func TestExecutor_ExpandChildren(t *testing.T) {
 	require.False(t, ids["subtask-1"], "should NOT include grandchild at depth 1")
 }
 
-func TestExecutor_ExpandChildrenDepth2(t *testing.T) {
+func TestExecutor_ExpandDownDepth2(t *testing.T) {
 	db := setupExpandTestDB(t)
 	defer func() { _ = db.Close() }()
 
 	executor := NewExecutor(db)
 
 	// Get epic with children and grandchildren (depth 2)
-	issues, err := executor.Execute("id = epic-1 expand children depth 2")
+	issues, err := executor.Execute("id = epic-1 expand down depth 2")
 	require.NoError(t, err)
 
 	// Should return epic-1, task-1, task-2, subtask-1 (4 issues)
@@ -664,14 +664,14 @@ func TestExecutor_ExpandChildrenDepth2(t *testing.T) {
 	require.True(t, ids["subtask-1"], "should include grandchild at depth 2")
 }
 
-func TestExecutor_ExpandChildrenUnlimited(t *testing.T) {
+func TestExecutor_ExpandDownUnlimited(t *testing.T) {
 	db := setupExpandTestDB(t)
 	defer func() { _ = db.Close() }()
 
 	executor := NewExecutor(db)
 
 	// Get epic with all descendants
-	issues, err := executor.Execute("id = epic-1 expand children depth *")
+	issues, err := executor.Execute("id = epic-1 expand down depth *")
 	require.NoError(t, err)
 
 	// Should return all 4 issues in hierarchy
@@ -688,17 +688,17 @@ func TestExecutor_ExpandChildrenUnlimited(t *testing.T) {
 	require.True(t, ids["subtask-1"])
 }
 
-func TestExecutor_ExpandBlockers(t *testing.T) {
+func TestExecutor_ExpandUp(t *testing.T) {
 	db := setupExpandTestDB(t)
 	defer func() { _ = db.Close() }()
 
 	executor := NewExecutor(db)
 
-	// Get blocked-1 with its blockers
-	issues, err := executor.Execute("id = blocked-1 expand blockers")
+	// Get blocked-1 with its blockers (expand up = parent + blockers)
+	issues, err := executor.Execute("id = blocked-1 expand up")
 	require.NoError(t, err)
 
-	// Should return blocked-1 and blocker-1
+	// Should return blocked-1 and blocker-1 (blockers)
 	require.Len(t, issues, 2)
 
 	ids := make(map[string]bool)
@@ -710,17 +710,17 @@ func TestExecutor_ExpandBlockers(t *testing.T) {
 	require.True(t, ids["blocker-1"], "should include blocker")
 }
 
-func TestExecutor_ExpandBlocks(t *testing.T) {
+func TestExecutor_ExpandDownWithBlocks(t *testing.T) {
 	db := setupExpandTestDB(t)
 	defer func() { _ = db.Close() }()
 
 	executor := NewExecutor(db)
 
-	// Get blocker-1 with issues it blocks
-	issues, err := executor.Execute("id = blocker-1 expand blocks")
+	// Get blocker-1 with issues it blocks (expand down includes blocks)
+	issues, err := executor.Execute("id = blocker-1 expand down")
 	require.NoError(t, err)
 
-	// Should return blocker-1 and blocked-1
+	// Should return blocker-1 and blocked-1 (blocked-1 is blocked by blocker-1)
 	require.Len(t, issues, 2)
 
 	ids := make(map[string]bool)
@@ -732,27 +732,26 @@ func TestExecutor_ExpandBlocks(t *testing.T) {
 	require.True(t, ids["blocked-1"], "should include blocked issue")
 }
 
-func TestExecutor_ExpandDeps(t *testing.T) {
+func TestExecutor_ExpandUpWithParent(t *testing.T) {
 	db := setupExpandTestDB(t)
 	defer func() { _ = db.Close() }()
 
 	executor := NewExecutor(db)
 
-	// Get blocked-1 with bidirectional blocking deps
-	issues, err := executor.Execute("id = blocked-1 expand deps")
+	// Get task-1 with its parent (expand up = parent + blockers)
+	issues, err := executor.Execute("id = task-1 expand up")
 	require.NoError(t, err)
 
-	// Should return blocked-1, blocker-1 (blocks it), blocked-2 (it blocks)
-	require.Len(t, issues, 3)
+	// Should return task-1 and epic-1 (parent)
+	require.Len(t, issues, 2)
 
 	ids := make(map[string]bool)
 	for _, issue := range issues {
 		ids[issue.ID] = true
 	}
 
-	require.True(t, ids["blocked-1"], "should include base issue")
-	require.True(t, ids["blocker-1"], "should include issue that blocks it")
-	require.True(t, ids["blocked-2"], "should include issue it blocks")
+	require.True(t, ids["task-1"], "should include base issue")
+	require.True(t, ids["epic-1"], "should include parent")
 }
 
 func TestExecutor_ExpandAll(t *testing.T) {
@@ -785,7 +784,7 @@ func TestExecutor_ExpandNoDuplicates(t *testing.T) {
 	executor := NewExecutor(db)
 
 	// Multiple iterations should not produce duplicates
-	issues, err := executor.Execute("id = epic-1 expand children depth *")
+	issues, err := executor.Execute("id = epic-1 expand down depth *")
 	require.NoError(t, err)
 
 	// Check for duplicates
@@ -812,8 +811,8 @@ func TestExecutor_ExpandCircularDeps(t *testing.T) {
 
 	executor := NewExecutor(db)
 
-	// Unlimited depth with circular deps should terminate
-	issues, err := executor.Execute("id = circular-a expand deps depth *")
+	// Unlimited depth with circular deps should terminate (expand all tests bidirectional)
+	issues, err := executor.Execute("id = circular-a expand all depth *")
 	require.NoError(t, err)
 
 	// Should return both issues without infinite loop
@@ -835,7 +834,7 @@ func TestExecutor_ExpandEmptyBaseResult(t *testing.T) {
 	executor := NewExecutor(db)
 
 	// Query with no results + expand should return empty
-	issues, err := executor.Execute("id = nonexistent expand children")
+	issues, err := executor.Execute("id = nonexistent expand down")
 	require.NoError(t, err)
 	require.Empty(t, issues)
 }
@@ -847,7 +846,7 @@ func TestExecutor_ExpandWithOrderBy(t *testing.T) {
 	executor := NewExecutor(db)
 
 	// Expand should work with order by (order applies to base query)
-	issues, err := executor.Execute("id = epic-1 expand children order by id asc")
+	issues, err := executor.Execute("id = epic-1 expand down order by id asc")
 	require.NoError(t, err)
 
 	require.Len(t, issues, 3)
@@ -1071,7 +1070,7 @@ func TestExecutor_ExpandNoRelationships(t *testing.T) {
 	executor := NewExecutor(db)
 
 	// standalone has no relationships - expand should return only the matched issue
-	issues, err := executor.Execute("id = standalone expand children")
+	issues, err := executor.Execute("id = standalone expand down")
 	require.NoError(t, err)
 
 	require.Len(t, issues, 1)
@@ -1105,7 +1104,7 @@ func TestExecutor_ExpandSelfReferentialNoDuplicates(t *testing.T) {
 	executor := NewExecutor(db)
 
 	// Expand should not duplicate the self-referential issue
-	issues, err := executor.Execute("id = self-ref expand deps depth *")
+	issues, err := executor.Execute("id = self-ref expand all depth *")
 	require.NoError(t, err)
 
 	require.Len(t, issues, 1, "self-referential issue should appear exactly once")
@@ -1184,8 +1183,8 @@ func TestExecutor_ExpandMultipleMatchesOverlappingDeps(t *testing.T) {
 
 	executor := NewExecutor(db)
 
-	// Query both epics with expand children - shared-child should appear only once
-	issues2, err := executor.Execute("type = epic expand children")
+	// Query both epics with expand down - shared-child should appear only once
+	issues2, err := executor.Execute("type = epic expand down")
 	require.NoError(t, err)
 
 	ids := collectIDs(issues2)
@@ -1206,7 +1205,7 @@ func TestExecutor_ExpandWithoutFilter(t *testing.T) {
 	executor := NewExecutor(db)
 
 	// Expand without filter - should expand all issues
-	issues, err := executor.Execute("expand children")
+	issues, err := executor.Execute("expand down")
 	require.NoError(t, err)
 
 	// All 4 issues should be returned: epic-1, task-1, task-2, subtask-1
@@ -1221,7 +1220,7 @@ func TestExecutor_ExpandWithoutFilterOrderBy(t *testing.T) {
 	executor := NewExecutor(db)
 
 	// Expand without filter + order by
-	issues, err := executor.Execute("expand children order by id asc")
+	issues, err := executor.Execute("expand down order by id asc")
 	require.NoError(t, err)
 
 	// All 4 issues
@@ -1294,7 +1293,7 @@ func TestExecutor_ExpandDepth10Boundary(t *testing.T) {
 	executor := NewExecutor(db)
 
 	// Depth 10 should return exactly 11 issues (root + 10 levels)
-	issues, err := executor.Execute("id = da expand children depth 10")
+	issues, err := executor.Execute("id = da expand down depth 10")
 	require.NoError(t, err)
 
 	ids := collectIDs(issues)
@@ -1314,7 +1313,7 @@ func TestExecutor_ExpandMixedTermination(t *testing.T) {
 	executor := NewExecutor(db)
 
 	// depth * on a 5-level hierarchy should return all 5, not 100
-	issues, err := executor.Execute("id = level-0 expand children depth *")
+	issues, err := executor.Execute("id = level-0 expand down depth *")
 	require.NoError(t, err)
 
 	ids := collectIDs(issues)
@@ -1333,7 +1332,7 @@ func TestExecutor_ExpandCircularDepsStandalone(t *testing.T) {
 	executor := NewExecutor(db)
 
 	// Unlimited depth with circular deps should terminate
-	issues, err := executor.Execute("id = circular-a expand deps depth *")
+	issues, err := executor.Execute("id = circular-a expand all depth *")
 	require.NoError(t, err)
 
 	ids := collectIDs(issues)
@@ -1399,7 +1398,7 @@ func TestExecutor_ExpandLargeFanout(t *testing.T) {
 
 	// Measure performance - should complete in <1 second
 	start := time.Now()
-	issues, err := executor.Execute("id = big-epic expand children")
+	issues, err := executor.Execute("id = big-epic expand down")
 	elapsed := time.Since(start)
 
 	require.NoError(t, err)

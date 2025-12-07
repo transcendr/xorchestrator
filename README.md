@@ -302,18 +302,16 @@ The `expand` keyword includes related issues in your search results, allowing yo
 
 ```bql
 # Basic syntax
-<filter> expand <type> [depth <n>]
+<filter> expand <direction> [depth <n>]
 ```
 
-#### Expansion Types
+#### Expansion Directions
 
-| Type | Description |
-|------|-------------|
-| `children` | Issues that are children of matched issues (parent-child relationship) |
-| `blockers` | Issues that block matched issues |
-| `blocks` | Issues that are blocked by matched issues |
-| `deps` | All blocking relationships (both directions) |
-| `all` | All relationship types combined |
+| Direction | Description |
+|-----------|-------------|
+| `up` | Issues you depend on (parents + blockers) |
+| `down` | Issues that depend on you (children + blocked issues) |
+| `all` | Both directions combined |
 
 #### Depth Control
 
@@ -327,16 +325,16 @@ The `expand` keyword includes related issues in your search results, allowing yo
 
 ```bql
 # Get an epic and all its children
-type = epic expand children
+type = epic expand down
 
 # Get an epic and all descendants (unlimited depth)
-type = epic expand children depth *
+type = epic expand down depth *
 
 # Get an issue and everything blocking it
-id = bd-123 expand blockers
+id = bd-123 expand up
 
 # Get an issue and all related issues (both directions)
-id = bd-123 expand deps depth *
+id = bd-123 expand all depth *
 
 # Get all epics with their full hierarchies
 type = epic expand all depth *
@@ -358,7 +356,7 @@ priority <= P1 and updated >= -24h order by updated desc
 title ~ authentication or title ~ login
 
 # Epic with all its children
-type = epic expand children depth *
+type = epic expand down depth *
 ```
 
 ## Configuration

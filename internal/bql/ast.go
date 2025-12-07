@@ -89,17 +89,29 @@ type OrderTerm struct {
 	Desc  bool // true for DESC, false for ASC (default)
 }
 
-// ExpandType specifies which relationships to include.
+// ExpandType specifies which direction to expand relationships.
 type ExpandType int
 
 const (
-	ExpandNone     ExpandType = iota
-	ExpandChildren            // Include child issues (parent-child deps)
-	ExpandBlockers            // Include issues that block matched issues
-	ExpandBlocks              // Include issues blocked by matched issues
-	ExpandDeps                // Include both blocking relationships
-	ExpandAll                 // Include all relationship types
+	ExpandNone ExpandType = iota
+	ExpandUp              // Traverse toward dependencies (parent + blockers)
+	ExpandDown            // Traverse toward dependents (children + blocks)
+	ExpandAll             // Traverse both directions
 )
+
+// String returns the string representation of the ExpandType.
+func (e ExpandType) String() string {
+	switch e {
+	case ExpandUp:
+		return "up"
+	case ExpandDown:
+		return "down"
+	case ExpandAll:
+		return "all"
+	default:
+		return "none"
+	}
+}
 
 // ExpandDepth represents how deep to expand relationships.
 type ExpandDepth int

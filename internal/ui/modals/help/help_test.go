@@ -279,7 +279,7 @@ func TestHelp_SearchView_ContainsExamples(t *testing.T) {
 	require.Contains(t, view, "status = open", "expected view to contain status example")
 	require.Contains(t, view, "type in (bug, task)", "expected view to contain type example")
 	require.Contains(t, view, "created >", "expected view to contain created example")
-	require.Contains(t, view, "expand children", "expected view to contain expand example")
+	require.Contains(t, view, "expand down", "expected view to contain expand example")
 }
 
 func TestHelp_SearchView_ContainsTitle(t *testing.T) {

@@ -47,7 +47,7 @@ func BQLOperators() []BQLOperator {
 		{Symbol: "~  !~", Desc: "contains / not contains (strings)"},
 		{Symbol: "in (a, b, c)", Desc: "match any value"},
 		{Symbol: "and  or  not", Desc: "logical"},
-		{Symbol: "expand", Desc: "include related: children, blockers, blocks, deps, all"},
+		{Symbol: "expand", Desc: "include related: up, down, all"},
 		{Symbol: "depth", Desc: "expansion levels: 1-10, or * (unlimited)"},
 	}
 }
@@ -62,9 +62,9 @@ func BQLExamples() []string {
 		`title ~ "auth" or label ~ "security"`,
 		"created >= -7d order by priority",
 		"not blocked and priority = p0",
-		"type = epic expand children",
-		"type = epic expand children depth *",
-		"id = x expand blockers",
+		"type = epic expand down",
+		"type = epic expand down depth *",
+		"id = x expand up",
 	}
 }
 
@@ -342,7 +342,7 @@ func (m Model) renderSearchContent() string {
 			symbol = "and or"
 			desc = "logical"
 		case "expand":
-			desc = "children, blockers, deps, all"
+			desc = "up, down, all"
 		case "depth":
 			desc = "1-10 or * (unlimited)"
 		}
@@ -368,7 +368,7 @@ func (m Model) renderSearchContent() string {
 		examples[1], // "status = open and ready = true"
 		examples[3], // "type in (bug, task) and status != closed"
 		examples[5], // "created >= -7d order by priority"
-		examples[7], // "type = epic expand children"
+		examples[7], // "type = epic expand down"
 	}
 	for _, ex := range compactExamples {
 		examplesCol.WriteString(bqlStyle.Render(ex) + "\n")

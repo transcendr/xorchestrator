@@ -357,18 +357,16 @@ func TestParser_ExpandClause(t *testing.T) {
 		wantDepth ExpandDepth
 		hasFilter bool
 	}{
-		{"type = epic expand children", ExpandChildren, DepthDefault, true},
-		{"id = x expand blockers", ExpandBlockers, DepthDefault, true},
-		{"priority = P0 expand blocks", ExpandBlocks, DepthDefault, true},
-		{"status = open expand deps", ExpandDeps, DepthDefault, true},
+		{"type = epic expand up", ExpandUp, DepthDefault, true},
+		{"id = x expand down", ExpandDown, DepthDefault, true},
 		{"type = epic expand all", ExpandAll, DepthDefault, true},
-		{"expand children order by priority", ExpandChildren, DepthDefault, false},
-		{"expand deps", ExpandDeps, DepthDefault, false},
-		{"type = epic expand children depth 1", ExpandChildren, 1, true},
-		{"type = epic expand children depth 2", ExpandChildren, 2, true},
-		{"type = epic expand children depth 10", ExpandChildren, 10, true},
+		{"expand up order by priority", ExpandUp, DepthDefault, false},
+		{"expand down", ExpandDown, DepthDefault, false},
+		{"type = epic expand up depth 1", ExpandUp, 1, true},
+		{"type = epic expand down depth 2", ExpandDown, 2, true},
+		{"type = epic expand up depth 10", ExpandUp, 10, true},
 		{"type = epic expand all depth *", ExpandAll, DepthUnlimited, true},
-		{"expand blockers depth *", ExpandBlockers, DepthUnlimited, false},
+		{"expand down depth *", ExpandDown, DepthUnlimited, false},
 	}
 
 	for _, tt := range tests {
@@ -389,12 +387,12 @@ func TestParser_ExpandClause(t *testing.T) {
 }
 
 func TestParser_ExpandWithOrderBy(t *testing.T) {
-	p := NewParser("type = epic expand children depth 2 order by priority asc")
+	p := NewParser("type = epic expand down depth 2 order by priority asc")
 	query, err := p.Parse()
 	require.NoError(t, err)
 	require.NotNil(t, query.Filter)
 	require.NotNil(t, query.Expand)
-	require.Equal(t, ExpandChildren, query.Expand.Type)
+	require.Equal(t, ExpandDown, query.Expand.Type)
 	require.Equal(t, ExpandDepth(2), query.Expand.Depth)
 	require.Len(t, query.OrderBy, 1)
 	require.Equal(t, "priority", query.OrderBy[0].Field)
@@ -409,7 +407,7 @@ func TestParser_HasExpand(t *testing.T) {
 	})
 
 	t.Run("query with expand", func(t *testing.T) {
-		p := NewParser("type = epic expand children")
+		p := NewParser("type = epic expand down")
 		query, err := p.Parse()
 		require.NoError(t, err)
 		require.True(t, query.HasExpand())
@@ -428,9 +426,9 @@ func TestParser_InvalidDepthValue(t *testing.T) {
 		input   string
 		wantErr string
 	}{
-		{"expand children depth 0", "depth must be at least 1"},
-		{"expand children depth 11", "depth cannot exceed 10"},
-		{"expand children depth foo", "expected depth value"},
+		{"expand up depth 0", "depth must be at least 1"},
+		{"expand down depth 11", "depth cannot exceed 10"},
+		{"expand up depth foo", "expected depth value"},
 	}
 
 	for _, tt := range tests {
@@ -448,15 +446,14 @@ func TestParser_ExpandTypeCaseInsensitive(t *testing.T) {
 		input    string
 		wantType ExpandType
 	}{
-		{"expand children", ExpandChildren},
-		{"expand Children", ExpandChildren},
-		{"expand CHILDREN", ExpandChildren},
-		{"expand blockers", ExpandBlockers},
-		{"expand Blockers", ExpandBlockers},
-		{"expand BLOCKERS", ExpandBlockers},
-		{"expand blocks", ExpandBlocks},
-		{"expand deps", ExpandDeps},
+		{"expand up", ExpandUp},
+		{"expand Up", ExpandUp},
+		{"expand UP", ExpandUp},
+		{"expand down", ExpandDown},
+		{"expand Down", ExpandDown},
+		{"expand DOWN", ExpandDown},
 		{"expand all", ExpandAll},
+		{"expand All", ExpandAll},
 		{"expand ALL", ExpandAll},
 	}
 
@@ -467,6 +464,43 @@ func TestParser_ExpandTypeCaseInsensitive(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, query.Expand)
 			require.Equal(t, tt.wantType, query.Expand.Type)
+		})
+	}
+}
+
+func TestParser_OldExpandTypesRejected(t *testing.T) {
+	oldTypes := []string{
+		"children",
+		"blockers",
+		"blocks",
+		"deps",
+	}
+
+	for _, oldType := range oldTypes {
+		t.Run(oldType, func(t *testing.T) {
+			p := NewParser("expand " + oldType)
+			_, err := p.Parse()
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "unknown expansion type")
+			require.Contains(t, err.Error(), "valid: up, down, all")
+		})
+	}
+}
+
+func TestExpandType_String(t *testing.T) {
+	tests := []struct {
+		expandType ExpandType
+		want       string
+	}{
+		{ExpandNone, "none"},
+		{ExpandUp, "up"},
+		{ExpandDown, "down"},
+		{ExpandAll, "all"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.expandType.String())
 		})
 	}
 }

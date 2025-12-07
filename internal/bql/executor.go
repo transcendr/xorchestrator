@@ -294,8 +294,28 @@ func (e *Executor) queryRelatedIDs(issueIDs []string, expandType ExpandType) ([]
 	var queries []string
 
 	switch expandType {
-	case ExpandChildren:
-		// Children: issues where depends_on_id is in our set (parent-child type)
+	case ExpandUp:
+		// Up: traverse toward dependencies (parent + blockers)
+		// Parent: issues where this issue depends on them (parent-child)
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.depends_on_id FROM dependencies d
+			JOIN issues i ON d.depends_on_id = i.id
+			WHERE d.issue_id IN (%s)
+				AND d.type = 'parent-child'
+				AND i.status != 'deleted'
+		`, inClause))
+		// Blockers: issues that block the current set
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.depends_on_id FROM dependencies d
+			JOIN issues i ON d.depends_on_id = i.id
+			WHERE d.issue_id IN (%s)
+				AND d.type = 'blocks'
+				AND i.status != 'deleted'
+		`, inClause))
+
+	case ExpandDown:
+		// Down: traverse toward dependents (children + blocks)
+		// Children: issues where depends_on_id is in our set (parent-child)
 		queries = append(queries, fmt.Sprintf(`
 			SELECT d.issue_id FROM dependencies d
 			JOIN issues i ON d.issue_id = i.id
@@ -303,36 +323,7 @@ func (e *Executor) queryRelatedIDs(issueIDs []string, expandType ExpandType) ([]
 				AND d.type = 'parent-child'
 				AND i.status != 'deleted'
 		`, inClause))
-
-	case ExpandBlockers:
-		// Blockers: issues that block the current set (depends_on_id in blocks type)
-		queries = append(queries, fmt.Sprintf(`
-			SELECT d.depends_on_id FROM dependencies d
-			JOIN issues i ON d.depends_on_id = i.id
-			WHERE d.issue_id IN (%s)
-				AND d.type = 'blocks'
-				AND i.status != 'deleted'
-		`, inClause))
-
-	case ExpandBlocks:
-		// Blocks: issues blocked by the current set (issue_id in blocks type)
-		queries = append(queries, fmt.Sprintf(`
-			SELECT d.issue_id FROM dependencies d
-			JOIN issues i ON d.issue_id = i.id
-			WHERE d.depends_on_id IN (%s)
-				AND d.type = 'blocks'
-				AND i.status != 'deleted'
-		`, inClause))
-
-	case ExpandDeps:
-		// Both directions for blocks type
-		queries = append(queries, fmt.Sprintf(`
-			SELECT d.depends_on_id FROM dependencies d
-			JOIN issues i ON d.depends_on_id = i.id
-			WHERE d.issue_id IN (%s)
-				AND d.type = 'blocks'
-				AND i.status != 'deleted'
-		`, inClause))
+		// Blocks: issues blocked by the current set
 		queries = append(queries, fmt.Sprintf(`
 			SELECT d.issue_id FROM dependencies d
 			JOIN issues i ON d.issue_id = i.id

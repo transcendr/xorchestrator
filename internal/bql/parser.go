@@ -321,7 +321,7 @@ func (p *Parser) parseExpand() (*ExpandClause, error) {
 
 	if p.current.Type != TokenIdent {
 		return nil, fmt.Errorf(
-			"expected expansion type at position %d, got %q (valid: children, blockers, blocks, deps, all)",
+			"expected expansion type at position %d, got %q (valid: up, down, all)",
 			p.current.Pos, p.current.Literal)
 	}
 
@@ -386,18 +386,14 @@ func (p *Parser) parseDepthValue() (ExpandDepth, error) {
 // parseExpandType converts a string to an ExpandType.
 func parseExpandType(s string) (ExpandType, error) {
 	switch s {
-	case "children", "Children", "CHILDREN":
-		return ExpandChildren, nil
-	case "blockers", "Blockers", "BLOCKERS":
-		return ExpandBlockers, nil
-	case "blocks", "Blocks", "BLOCKS":
-		return ExpandBlocks, nil
-	case "deps", "Deps", "DEPS":
-		return ExpandDeps, nil
+	case "up", "Up", "UP":
+		return ExpandUp, nil
+	case "down", "Down", "DOWN":
+		return ExpandDown, nil
 	case "all", "All", "ALL":
 		return ExpandAll, nil
 	default:
 		return ExpandNone, fmt.Errorf(
-			"unknown expansion type %q (valid: children, blockers, blocks, deps, all)", s)
+			"unknown expansion type %q (valid: up, down, all)", s)
 	}
 }
