@@ -104,6 +104,14 @@ func buildNode(
 		}
 	}
 
+	// Sort relatedIDs so blockers come before blocked issues.
+	// This ensures the tree structure properly represents dependency order:
+	// if A blocks B and both are in relatedIDs, A should be processed first
+	// so B appears as a descendant of A (via A's Blocks), not as a sibling.
+	if mode == ModeDeps && len(relatedIDs) > 1 {
+		relatedIDs = sortByBlockOrder(relatedIDs, issueMap, dir)
+	}
+
 	// Build child nodes (only for issues that exist in the map)
 	for _, relatedID := range relatedIDs {
 		if relatedIssue, ok := issueMap[relatedID]; ok {
@@ -114,6 +122,100 @@ func buildNode(
 	}
 
 	return node
+}
+
+// sortByBlockOrder performs a topological sort on IDs so blockers come before blocked issues.
+// For down direction: issues that block others come first.
+// For up direction: issues that are blocked by others come first.
+// This ensures proper tree structure where blocked issues appear as descendants of their blockers.
+func sortByBlockOrder(ids []string, issueMap map[string]*beads.Issue, dir Direction) []string {
+	if len(ids) <= 1 {
+		return ids
+	}
+
+	// Build a set of IDs we're sorting
+	idSet := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		idSet[id] = true
+	}
+
+	// Build dependency graph: edges[a] = [b, c] means a must come before b and c
+	// For down: if A blocks B, A must come before B
+	// For up: if A is blocked by B, A must come before B (we want blocked issues first)
+	edges := make(map[string][]string)
+	inDegree := make(map[string]int)
+
+	// Initialize in-degree for all IDs
+	for _, id := range ids {
+		inDegree[id] = 0
+	}
+
+	for _, id := range ids {
+		issue, ok := issueMap[id]
+		if !ok {
+			continue
+		}
+
+		if dir == DirectionDown {
+			// A blocks B means A should come before B
+			for _, blockedID := range issue.Blocks {
+				if idSet[blockedID] {
+					edges[id] = append(edges[id], blockedID)
+					inDegree[blockedID]++
+				}
+			}
+		} else {
+			// A is blocked by B means B should come before A
+			// So we add edge from B to A
+			for _, blockerID := range issue.BlockedBy {
+				if idSet[blockerID] {
+					edges[blockerID] = append(edges[blockerID], id)
+					inDegree[id]++
+				}
+			}
+		}
+	}
+
+	// Kahn's algorithm for topological sort
+	var result []string
+	var queue []string
+
+	// Start with nodes that have no incoming edges (no blockers)
+	for _, id := range ids {
+		if inDegree[id] == 0 {
+			queue = append(queue, id)
+		}
+	}
+
+	for len(queue) > 0 {
+		// Pop from queue
+		node := queue[0]
+		queue = queue[1:]
+		result = append(result, node)
+
+		// Remove edges from this node
+		for _, neighbor := range edges[node] {
+			inDegree[neighbor]--
+			if inDegree[neighbor] == 0 {
+				queue = append(queue, neighbor)
+			}
+		}
+	}
+
+	// If there's a cycle, some nodes won't be in result - add them at the end
+	if len(result) < len(ids) {
+		resultSet := make(map[string]bool)
+		for _, id := range result {
+			resultSet[id] = true
+		}
+		for _, id := range ids {
+			if !resultSet[id] {
+				result = append(result, id)
+			}
+		}
+	}
+
+	return result
 }
 
 // Flatten returns a slice of all nodes in tree order.

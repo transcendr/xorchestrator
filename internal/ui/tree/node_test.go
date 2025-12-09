@@ -263,3 +263,59 @@ func TestDirection_String(t *testing.T) {
 	require.Equal(t, "down", DirectionDown.String())
 	require.Equal(t, "up", DirectionUp.String())
 }
+
+func TestBuildTree_Down_SiblingBlocking(t *testing.T) {
+	// Epic with two task children where one blocks the other.
+	// task-impl blocks task-tests (tests must wait for impl).
+	// In the tree, task-impl should appear first and task-tests
+	// should be nested under it (not a sibling).
+	issueMap := map[string]*beads.Issue{
+		"epic-1":     makeIssue("epic-1", beads.StatusOpen, []string{"task-tests", "task-impl"}, nil, nil, ""),
+		"task-impl":  makeIssue("task-impl", beads.StatusOpen, nil, []string{"task-tests"}, nil, "epic-1"),
+		"task-tests": makeIssue("task-tests", beads.StatusOpen, nil, nil, []string{"task-impl"}, "epic-1"),
+	}
+
+	root, err := BuildTree(issueMap, "epic-1", DirectionDown, ModeDeps)
+	require.NoError(t, err)
+	require.Equal(t, "epic-1", root.Issue.ID)
+
+	// The epic should have only ONE direct child: task-impl (the blocker)
+	// task-tests should be a child of task-impl, not a direct child of epic
+	require.Len(t, root.Children, 1, "epic should have 1 direct child (the blocker)")
+	require.Equal(t, "task-impl", root.Children[0].Issue.ID)
+
+	// task-impl should have task-tests as its child (via blocking relationship)
+	require.Len(t, root.Children[0].Children, 1, "blocker should have blocked issue as child")
+	require.Equal(t, "task-tests", root.Children[0].Children[0].Issue.ID)
+
+	// Verify depths
+	require.Equal(t, 0, root.Depth)
+	require.Equal(t, 1, root.Children[0].Depth)
+	require.Equal(t, 2, root.Children[0].Children[0].Depth)
+}
+
+func TestBuildTree_Down_ChainedBlocking(t *testing.T) {
+	// Epic with three tasks in a blocking chain: A -> B -> C
+	// All are children of epic, but the tree should show the chain.
+	issueMap := map[string]*beads.Issue{
+		"epic":   makeIssue("epic", beads.StatusOpen, []string{"task-c", "task-b", "task-a"}, nil, nil, ""),
+		"task-a": makeIssue("task-a", beads.StatusOpen, nil, []string{"task-b"}, nil, "epic"),
+		"task-b": makeIssue("task-b", beads.StatusOpen, nil, []string{"task-c"}, []string{"task-a"}, "epic"),
+		"task-c": makeIssue("task-c", beads.StatusOpen, nil, nil, []string{"task-b"}, "epic"),
+	}
+
+	root, err := BuildTree(issueMap, "epic", DirectionDown, ModeDeps)
+	require.NoError(t, err)
+
+	// Epic should have only task-a as direct child (first in chain)
+	require.Len(t, root.Children, 1, "epic should have 1 direct child")
+	require.Equal(t, "task-a", root.Children[0].Issue.ID)
+
+	// task-a -> task-b
+	require.Len(t, root.Children[0].Children, 1)
+	require.Equal(t, "task-b", root.Children[0].Children[0].Issue.ID)
+
+	// task-b -> task-c
+	require.Len(t, root.Children[0].Children[0].Children, 1)
+	require.Equal(t, "task-c", root.Children[0].Children[0].Children[0].Issue.ID)
+}
