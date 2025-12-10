@@ -649,6 +649,95 @@ func TestBoard_TreeColumn_Mode(t *testing.T) {
 
 // TestBoard_View_WithTreeColumn_Golden tests board rendering with mixed BQL and tree columns.
 // Run with -update flag to update golden files: go test -update ./internal/ui/board/...
+// SwapColumns tests
+
+func TestSwapColumns_Basic(t *testing.T) {
+	configs := []config.ColumnConfig{
+		{Name: "Col0", Query: "q0"},
+		{Name: "Col1", Query: "q1"},
+		{Name: "Col2", Query: "q2"},
+	}
+
+	m := NewFromConfig(configs)
+	require.Equal(t, "Col0", m.configs[0].Name)
+	require.Equal(t, "Col1", m.configs[1].Name)
+	require.Equal(t, "Col2", m.configs[2].Name)
+
+	// Swap columns 0 and 2
+	m = m.SwapColumns(0, 2)
+
+	// Verify configs were swapped
+	require.Equal(t, "Col2", m.configs[0].Name, "configs[0] should be Col2 after swap")
+	require.Equal(t, "Col1", m.configs[1].Name, "configs[1] should be unchanged")
+	require.Equal(t, "Col0", m.configs[2].Name, "configs[2] should be Col0 after swap")
+
+	// Verify columns were swapped (via title)
+	col0 := m.Column(0)
+	col2 := m.Column(2)
+	require.Contains(t, col0.Title(), "Col2", "column 0 title should be Col2")
+	require.Contains(t, col2.Title(), "Col0", "column 2 title should be Col0")
+}
+
+func TestSwapColumns_SyncsToView(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "View0",
+			Columns: []config.ColumnConfig{
+				{Name: "A", Query: "qa"},
+				{Name: "B", Query: "qb"},
+				{Name: "C", Query: "qc"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil)
+	require.Equal(t, "A", m.configs[0].Name)
+	require.Equal(t, "B", m.configs[1].Name)
+	require.Equal(t, "C", m.configs[2].Name)
+
+	// Swap columns 0 and 1
+	m = m.SwapColumns(0, 1)
+
+	// Verify model.configs updated
+	require.Equal(t, "B", m.configs[0].Name, "model.configs[0] should be B")
+	require.Equal(t, "A", m.configs[1].Name, "model.configs[1] should be A")
+
+	// Verify view.configs synced
+	require.Equal(t, "B", m.views[0].configs[0].Name, "view.configs[0] should be B")
+	require.Equal(t, "A", m.views[0].configs[1].Name, "view.configs[1] should be A")
+}
+
+func TestSwapColumns_InvalidIndices(t *testing.T) {
+	configs := []config.ColumnConfig{
+		{Name: "Col0", Query: "q0"},
+		{Name: "Col1", Query: "q1"},
+	}
+
+	m := NewFromConfig(configs)
+	original0 := m.configs[0].Name
+	original1 := m.configs[1].Name
+
+	// Test negative index
+	m = m.SwapColumns(-1, 0)
+	require.Equal(t, original0, m.configs[0].Name, "should be unchanged for negative i")
+	require.Equal(t, original1, m.configs[1].Name, "should be unchanged for negative i")
+
+	// Test out of bounds index
+	m = m.SwapColumns(0, 5)
+	require.Equal(t, original0, m.configs[0].Name, "should be unchanged for out of bounds j")
+	require.Equal(t, original1, m.configs[1].Name, "should be unchanged for out of bounds j")
+
+	// Test both negative
+	m = m.SwapColumns(-1, -2)
+	require.Equal(t, original0, m.configs[0].Name, "should be unchanged for both negative")
+	require.Equal(t, original1, m.configs[1].Name, "should be unchanged for both negative")
+
+	// Test both out of bounds
+	m = m.SwapColumns(10, 20)
+	require.Equal(t, original0, m.configs[0].Name, "should be unchanged for both out of bounds")
+	require.Equal(t, original1, m.configs[1].Name, "should be unchanged for both out of bounds")
+}
+
 func TestBoard_View_WithTreeColumn_Golden(t *testing.T) {
 	// Create board with mixed column types: BQL columns + tree column
 	views := []config.ViewConfig{

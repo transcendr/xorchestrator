@@ -450,7 +450,7 @@ func TestAddColumn_EmptyColumnArray(t *testing.T) {
 	require.Equal(t, "First", loaded[0].Columns[0].Name)
 }
 
-func TestSwapColumns(t *testing.T) {
+func TestSwapColumnsInView(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, ".perles.yaml")
 
@@ -465,7 +465,7 @@ func TestSwapColumns(t *testing.T) {
 	require.NoError(t, err)
 
 	// Swap first and second columns
-	err = SwapColumns(configPath, 0, 1, columns)
+	err = SwapColumnsInView(configPath, 0, 0, 1, columns, nil)
 	require.NoError(t, err)
 
 	// Load and verify (now stored under views[0].columns)
@@ -485,7 +485,7 @@ func TestSwapColumns(t *testing.T) {
 	require.Equal(t, "Done", loaded[0].Columns[2].Name)
 }
 
-func TestSwapColumns_SameIndex(t *testing.T) {
+func TestSwapColumnsInView_SameIndex(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, ".perles.yaml")
 
@@ -499,7 +499,7 @@ func TestSwapColumns_SameIndex(t *testing.T) {
 	require.NoError(t, err)
 
 	// Swap same index should be a no-op
-	err = SwapColumns(configPath, 1, 1, columns)
+	err = SwapColumnsInView(configPath, 0, 1, 1, columns, nil)
 	require.NoError(t, err)
 
 	// Load and verify nothing changed (now stored under views[0].columns)
@@ -518,7 +518,7 @@ func TestSwapColumns_SameIndex(t *testing.T) {
 	require.Equal(t, "Two", loaded[0].Columns[1].Name)
 }
 
-func TestSwapColumns_OutOfRange(t *testing.T) {
+func TestSwapColumnsInView_OutOfRange(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, ".perles.yaml")
 
@@ -528,12 +528,12 @@ func TestSwapColumns_OutOfRange(t *testing.T) {
 	}
 
 	// Index too high
-	err := SwapColumns(configPath, 0, 5, columns)
+	err := SwapColumnsInView(configPath, 0, 0, 5, columns, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "out of range")
 
 	// Index negative
-	err = SwapColumns(configPath, -1, 1, columns)
+	err = SwapColumnsInView(configPath, 0, -1, 1, columns, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "out of range")
 }

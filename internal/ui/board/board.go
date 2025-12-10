@@ -198,6 +198,21 @@ func (m Model) SetFocus(col int) Model {
 	return m
 }
 
+// SwapColumns swaps the columns at indices i and j in place.
+// Returns unchanged model if either index is out of bounds.
+func (m Model) SwapColumns(i, j int) Model {
+	if i < 0 || j < 0 || i >= len(m.columns) || j >= len(m.columns) {
+		return m
+	}
+	m.columns[i], m.columns[j] = m.columns[j], m.columns[i]
+	m.configs[i], m.configs[j] = m.configs[j], m.configs[i]
+	if len(m.views) > 0 && m.currentView < len(m.views) {
+		m.views[m.currentView].columns = m.columns
+		m.views[m.currentView].configs = m.configs
+	}
+	return m
+}
+
 // SelectByID finds an issue by ID across all columns and selects it.
 // Returns the model and true if found, false otherwise.
 func (m Model) SelectByID(id string) (Model, bool) {

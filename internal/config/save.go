@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
 	"perles/internal/log"
 
 	"gopkg.in/yaml.v3"
@@ -288,12 +289,6 @@ func DeleteColumnInView(configPath string, viewIndex, colIndex int, allCols []Co
 	}
 
 	return SaveColumnsForView(configPath, viewIndex, updated, allViews)
-}
-
-// SwapColumns swaps two columns by index and saves the config.
-// Deprecated: Use SwapColumnsInView for multi-view support.
-func SwapColumns(configPath string, idxA, idxB int, allCols []ColumnConfig) error {
-	return SwapColumnsInView(configPath, 0, idxA, idxB, allCols, nil)
 }
 
 // SwapColumnsInView swaps two columns within a specific view.

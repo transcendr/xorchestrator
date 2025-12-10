@@ -145,19 +145,9 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, scheduleErrorClear()
 		}
 
-		// Update in-memory config
-		columns[focusedCol], columns[focusedCol-1] = columns[focusedCol-1], columns[focusedCol]
-		m.services.Config.SetColumnsForView(viewIndex, columns)
-
-		// Rebuild board and set focus to new position
-		m.rebuildBoardWithFocus(focusedCol - 1)
-
-		m.loading = true
-		cmds := []tea.Cmd{m.spinner.Tick}
-		if loadCmd := m.loadBoardCmd(); loadCmd != nil {
-			cmds = append(cmds, loadCmd)
-		}
-		return m, tea.Batch(cmds...)
+		// Swap columns in place and move focus
+		m.board = m.board.SwapColumns(focusedCol, focusedCol-1).SetFocus(focusedCol - 1)
+		return m, nil
 
 	case "ctrl+l": // Move column right
 		focusedCol := m.board.FocusedColumn()
@@ -173,19 +163,9 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, scheduleErrorClear()
 		}
 
-		// Update in-memory config
-		columns[focusedCol], columns[focusedCol+1] = columns[focusedCol+1], columns[focusedCol]
-		m.services.Config.SetColumnsForView(viewIndex, columns)
-
-		// Rebuild board and set focus to new position
-		m.rebuildBoardWithFocus(focusedCol + 1)
-
-		m.loading = true
-		cmds := []tea.Cmd{m.spinner.Tick}
-		if loadCmd := m.loadBoardCmd(); loadCmd != nil {
-			cmds = append(cmds, loadCmd)
-		}
-		return m, tea.Batch(cmds...)
+		// Swap columns in place and move focus
+		m.board = m.board.SwapColumns(focusedCol, focusedCol+1).SetFocus(focusedCol + 1)
+		return m, nil
 
 	case "ctrl+j", "ctrl+n": // Next view
 		if m.board.ViewCount() > 1 {
