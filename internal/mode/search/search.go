@@ -945,7 +945,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	case "y":
 		// Yank (copy) issue ID to clipboard
-		if m.focus == FocusResults || m.focus == FocusDetails {
+		if m.focus == FocusDetails {
+			// Use issue ID from details view (may be a navigated dependency)
+			return m.yankDetailsIssueID()
+		}
+		if m.focus == FocusResults {
 			return m.yankIssueID()
 		}
 		return m, nil
@@ -1851,6 +1855,23 @@ func (m Model) yankIssueID() (Model, tea.Cmd) {
 	}
 
 	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Copied: " + issue.ID, Style: toaster.StyleSuccess} }
+}
+
+// yankDetailsIssueID copies the issue ID from the details view to clipboard.
+// This handles the case where the user has navigated into a dependency.
+func (m Model) yankDetailsIssueID() (Model, tea.Cmd) {
+	issueID := m.details.IssueID()
+	if issueID == "" {
+		return m, func() tea.Msg { return mode.ShowToastMsg{Message: "No issue selected", Style: toaster.StyleError} }
+	}
+
+	if err := shared.CopyToClipboard(issueID); err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Clipboard error: " + err.Error(), Style: toaster.StyleError}
+		}
+	}
+
+	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Copied: " + issueID, Style: toaster.StyleSuccess} }
 }
 
 // issueItem wraps beads.Issue for the list component.

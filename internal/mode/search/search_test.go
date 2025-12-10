@@ -593,3 +593,62 @@ func TestNewViewModal_Cancel(t *testing.T) {
 
 	require.Equal(t, ViewSearch, m.view, "expected to return to search")
 }
+
+func TestSearch_YankKey_FocusDetails_UsesDetailsIssueID(t *testing.T) {
+	m := createTestModelWithResults()
+
+	// Set up: results have test-1 selected, but details shows a different issue
+	m.selectedIdx = 0
+	require.Equal(t, "test-1", m.results[m.selectedIdx].ID, "precondition: results selection is test-1")
+
+	// Create details view showing a DIFFERENT issue (test-999)
+	differentIssue := beads.Issue{ID: "test-999", TitleText: "Different Issue"}
+	m.details = details.New(differentIssue, nil, nil).SetSize(50, 30)
+	m.hasDetail = true
+	m.focus = FocusDetails
+
+	// Press 'y' while focused on details
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+
+	// The command should be a function that returns a ShowToastMsg
+	// We can't easily inspect the clipboard, but we can verify the command exists
+	// and the toast message contains the details issue ID, not the results issue ID
+	require.NotNil(t, cmd, "expected a command to be returned")
+
+	// Execute the command to get the message
+	msg := cmd()
+	toastMsg, ok := msg.(mode.ShowToastMsg)
+	require.True(t, ok, "expected ShowToastMsg, got %T", msg)
+
+	// The toast should mention the details issue ID (test-999), not the results issue ID (test-1)
+	require.Contains(t, toastMsg.Message, "test-999", "toast should contain details issue ID")
+	require.NotContains(t, toastMsg.Message, "test-1", "toast should NOT contain results issue ID")
+}
+
+func TestSearch_YankKey_FocusResults_UsesResultsIssueID(t *testing.T) {
+	m := createTestModelWithResults()
+
+	// Set up: results have test-1 selected
+	m.selectedIdx = 0
+	require.Equal(t, "test-1", m.results[m.selectedIdx].ID, "precondition: results selection is test-1")
+
+	// Create details view showing a DIFFERENT issue
+	differentIssue := beads.Issue{ID: "test-999", TitleText: "Different Issue"}
+	m.details = details.New(differentIssue, nil, nil).SetSize(50, 30)
+	m.hasDetail = true
+	m.focus = FocusResults // Focus on results, not details
+
+	// Press 'y' while focused on results
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+
+	require.NotNil(t, cmd, "expected a command to be returned")
+
+	// Execute the command to get the message
+	msg := cmd()
+	toastMsg, ok := msg.(mode.ShowToastMsg)
+	require.True(t, ok, "expected ShowToastMsg, got %T", msg)
+
+	// The toast should mention the results issue ID (test-1), not the details issue ID (test-999)
+	require.Contains(t, toastMsg.Message, "test-1", "toast should contain results issue ID")
+	require.NotContains(t, toastMsg.Message, "test-999", "toast should NOT contain details issue ID")
+}

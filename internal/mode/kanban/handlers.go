@@ -338,6 +338,18 @@ func (m Model) handleDetailsKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		// Invalidate views and reload to show any changes made in details view
 		m.board = m.board.InvalidateViews()
 		return m, m.board.LoadAllColumns()
+	case "y":
+		// Yank (copy) the issue ID shown in the details view
+		issueID := m.details.IssueID()
+		if issueID == "" {
+			return m, nil
+		}
+		if err := shared.CopyToClipboard(issueID); err != nil {
+			m.err = err
+			m.errContext = "copying to clipboard"
+			return m, scheduleErrorClear()
+		}
+		return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Copied: " + issueID, Style: toaster.StyleSuccess} }
 	}
 
 	// Delegate to details view
