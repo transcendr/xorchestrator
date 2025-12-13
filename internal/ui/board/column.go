@@ -40,7 +40,8 @@ type BoardColumn interface {
 	Width() int
 
 	// LoadCmd returns a tea.Cmd that loads data asynchronously.
-	LoadCmd(viewIndex int) tea.Cmd
+	// viewIndex identifies which view, columnIndex identifies which column within that view.
+	LoadCmd(viewIndex, columnIndex int) tea.Cmd
 
 	// HandleLoaded processes a load message and returns the updated column.
 	HandleLoaded(msg tea.Msg) BoardColumn
@@ -139,15 +140,16 @@ func (d issueDelegate) Render(w io.Writer, m list.Model, index int, item list.It
 
 // Column represents a single kanban column.
 type Column struct {
-	title      string
-	status     beads.Status
-	color      lipgloss.TerminalColor // custom color for column border/title
-	list       list.Model
-	items      []beads.Issue
-	width      int
-	height     int
-	focused    *bool // pointer so it survives value copies
-	showCounts *bool // pointer so it survives value copies (nil = default true)
+	title       string
+	columnIndex int // position within the view for message routing
+	status      beads.Status
+	color       lipgloss.TerminalColor // custom color for column border/title
+	list        list.Model
+	items       []beads.Issue
+	width       int
+	height      int
+	focused     *bool // pointer so it survives value copies
+	showCounts  *bool // pointer so it survives value copies (nil = default true)
 
 	// BQL self-loading fields
 	executor  *bql.Executor // BQL executor for loading issues
@@ -189,7 +191,8 @@ func NewColumnWithExecutor(title string, query string, executor *bql.Executor) C
 // ColumnLoadedMsg is sent when a column finishes loading its issues.
 type ColumnLoadedMsg struct {
 	ViewIndex   int           // which view this column belongs to
-	ColumnTitle string        // identifies which column loaded
+	ColumnIndex int           // which column within the view
+	ColumnTitle string        // kept for debugging/logging
 	Issues      []beads.Issue // loaded issues (nil if error)
 	Err         error         // error if load failed
 }
@@ -212,19 +215,15 @@ func (c Column) LoadIssues() Column {
 }
 
 // LoadIssuesCmd returns a tea.Cmd that loads issues asynchronously.
-// The command sends a ColumnLoadedMsg when complete (with ViewIndex = 0).
+// The command sends a ColumnLoadedMsg when complete (with ViewIndex = 0, ColumnIndex = 0).
 func (c Column) LoadIssuesCmd() tea.Cmd {
-	return c.LoadIssuesCmdForView(0)
-}
-
-// LoadIssuesCmdForView loads issues and includes view index in the message.
-func (c Column) LoadIssuesCmdForView(viewIndex int) tea.Cmd {
-	return c.LoadCmd(viewIndex)
+	return c.LoadCmd(0, 0)
 }
 
 // LoadCmd returns a tea.Cmd that loads data asynchronously.
 // Implements BoardColumn interface.
-func (c Column) LoadCmd(viewIndex int) tea.Cmd {
+// viewIndex identifies which view, columnIndex identifies which column within that view.
+func (c Column) LoadCmd(viewIndex, columnIndex int) tea.Cmd {
 	if c.executor == nil || c.query == "" {
 		return nil
 	}
@@ -238,6 +237,7 @@ func (c Column) LoadCmd(viewIndex int) tea.Cmd {
 		issues, err := executor.Execute(query)
 		return ColumnLoadedMsg{
 			ViewIndex:   viewIndex,
+			ColumnIndex: columnIndex,
 			ColumnTitle: title,
 			Issues:      issues,
 			Err:         err,
@@ -253,8 +253,8 @@ func (c Column) HandleLoaded(msg tea.Msg) BoardColumn {
 		return c
 	}
 
-	// Only handle messages for this column
-	if loadedMsg.ColumnTitle != c.title {
+	// Match by column index instead of title to support duplicate column names
+	if loadedMsg.ColumnIndex != c.columnIndex {
 		return c
 	}
 
@@ -265,6 +265,17 @@ func (c Column) HandleLoaded(msg tea.Msg) BoardColumn {
 
 	c.loadError = nil
 	return c.SetItems(loadedMsg.Issues)
+}
+
+// SetColumnIndex sets the column's index for message routing.
+func (c Column) SetColumnIndex(index int) Column {
+	c.columnIndex = index
+	return c
+}
+
+// ColumnIndex returns the column's index.
+func (c Column) ColumnIndex() int {
+	return c.columnIndex
 }
 
 // LoadError returns the error from the last load attempt, if any.

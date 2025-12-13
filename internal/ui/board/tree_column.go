@@ -16,22 +16,24 @@ import (
 // TreeColumn wraps a tree.Model and implements BoardColumn interface.
 // It displays an issue dependency tree in a column format.
 type TreeColumn struct {
-	title     string
-	rootID    string        // Root issue ID for the tree
-	mode      tree.TreeMode // ModeDeps or ModeChildren
-	color     lipgloss.TerminalColor
-	executor  *bql.Executor
-	width     int
-	height    int
-	focused   *bool // pointer so it survives value copies
-	loadError error
-	tree      *tree.Model
+	title       string
+	columnIndex int           // position within the view for message routing
+	rootID      string        // Root issue ID for the tree
+	mode        tree.TreeMode // ModeDeps or ModeChildren
+	color       lipgloss.TerminalColor
+	executor    *bql.Executor
+	width       int
+	height      int
+	focused     *bool // pointer so it survives value copies
+	loadError   error
+	tree        *tree.Model
 }
 
 // TreeColumnLoadedMsg is sent when a tree column finishes loading its data.
 type TreeColumnLoadedMsg struct {
 	ViewIndex   int                     // which view this column belongs to
-	ColumnTitle string                  // identifies which column loaded
+	ColumnIndex int                     // which column within the view
+	ColumnTitle string                  // kept for debugging/logging
 	RootID      string                  // the root issue ID
 	Issues      []beads.Issue           // loaded issues (nil if error)
 	IssueMap    map[string]*beads.Issue // indexed issues for tree building
@@ -163,7 +165,8 @@ func (c TreeColumn) Width() int {
 }
 
 // LoadCmd returns a tea.Cmd that loads tree data asynchronously.
-func (c TreeColumn) LoadCmd(viewIndex int) tea.Cmd {
+// viewIndex identifies which view, columnIndex identifies which column within that view.
+func (c TreeColumn) LoadCmd(viewIndex, columnIndex int) tea.Cmd {
 	if c.executor == nil || c.rootID == "" {
 		return nil
 	}
@@ -182,6 +185,7 @@ func (c TreeColumn) LoadCmd(viewIndex int) tea.Cmd {
 		if err != nil {
 			return TreeColumnLoadedMsg{
 				ViewIndex:   viewIndex,
+				ColumnIndex: columnIndex,
 				ColumnTitle: title,
 				RootID:      rootID,
 				Err:         err,
@@ -196,6 +200,7 @@ func (c TreeColumn) LoadCmd(viewIndex int) tea.Cmd {
 
 		return TreeColumnLoadedMsg{
 			ViewIndex:   viewIndex,
+			ColumnIndex: columnIndex,
 			ColumnTitle: title,
 			RootID:      rootID,
 			Issues:      issues,
@@ -212,8 +217,8 @@ func (c TreeColumn) HandleLoaded(msg tea.Msg) BoardColumn {
 		return c
 	}
 
-	// Only handle messages for this column
-	if loadedMsg.ColumnTitle != c.title {
+	// Match by column index instead of title to support duplicate column names
+	if loadedMsg.ColumnIndex != c.columnIndex {
 		return c
 	}
 
@@ -296,6 +301,17 @@ func (c TreeColumn) IsEmpty() bool {
 	}
 	root := c.tree.Root()
 	return root == nil
+}
+
+// SetColumnIndex sets the column's index for message routing.
+func (c TreeColumn) SetColumnIndex(index int) TreeColumn {
+	c.columnIndex = index
+	return c
+}
+
+// ColumnIndex returns the column's index.
+func (c TreeColumn) ColumnIndex() int {
+	return c.columnIndex
 }
 
 // LoadError returns the error from the last load attempt, if any.

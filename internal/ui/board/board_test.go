@@ -343,6 +343,7 @@ func TestBoard_ColumnLoadedMsg_UpdatesCorrectView(t *testing.T) {
 	// Message for current view (0) should be processed
 	msg := ColumnLoadedMsg{
 		ViewIndex:   0,
+		ColumnIndex: 0,
 		ColumnTitle: "Col0",
 		Issues:      nil,
 		Err:         nil,
@@ -353,6 +354,7 @@ func TestBoard_ColumnLoadedMsg_UpdatesCorrectView(t *testing.T) {
 	// Message for other view (1) should be ignored
 	msg2 := ColumnLoadedMsg{
 		ViewIndex:   1,
+		ColumnIndex: 0,
 		ColumnTitle: "Col1",
 		Issues:      nil,
 		Err:         nil,
@@ -595,6 +597,7 @@ func TestBoard_TreeColumnLoadedMsg_UpdatesCorrectColumn(t *testing.T) {
 	// Simulate TreeColumnLoadedMsg for current view
 	msg := TreeColumnLoadedMsg{
 		ViewIndex:   0,
+		ColumnIndex: 1, // Tree is at index 1
 		ColumnTitle: "Tree",
 		RootID:      "perles-123",
 		Issues:      nil,
@@ -606,6 +609,7 @@ func TestBoard_TreeColumnLoadedMsg_UpdatesCorrectColumn(t *testing.T) {
 	// Message for wrong view should be ignored
 	msg2 := TreeColumnLoadedMsg{
 		ViewIndex:   1,
+		ColumnIndex: 1,
 		ColumnTitle: "Tree",
 		RootID:      "perles-123",
 		Issues:      nil,
@@ -738,6 +742,62 @@ func TestSwapColumns_InvalidIndices(t *testing.T) {
 	require.Equal(t, original1, m.configs[1].Name, "should be unchanged for both out of bounds")
 }
 
+func TestSwapColumns_UpdatesColumnIndices(t *testing.T) {
+	// This test verifies that column indices are updated after swapping
+	// so that message routing continues to work correctly
+	views := []config.ViewConfig{
+		{
+			Name: "View",
+			Columns: []config.ColumnConfig{
+				{Name: "Col0", Query: "q0"},
+				{Name: "Col1", Query: "q1"},
+				{Name: "Col2", Query: "q2"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil)
+
+	// Verify initial column indices
+	col0 := m.columns[0].(Column)
+	col1 := m.columns[1].(Column)
+	col2 := m.columns[2].(Column)
+	require.Equal(t, 0, col0.ColumnIndex(), "col0 should have index 0")
+	require.Equal(t, 1, col1.ColumnIndex(), "col1 should have index 1")
+	require.Equal(t, 2, col2.ColumnIndex(), "col2 should have index 2")
+
+	// Swap columns 0 and 2
+	m = m.SwapColumns(0, 2)
+
+	// After swap, the columns at positions 0 and 2 should have their indices updated
+	// Column at position 0 (was at 2) should now have index 0
+	// Column at position 2 (was at 0) should now have index 2
+	swappedCol0 := m.columns[0].(Column)
+	swappedCol2 := m.columns[2].(Column)
+	require.Equal(t, 0, swappedCol0.ColumnIndex(), "column at position 0 should have index 0 after swap")
+	require.Equal(t, 2, swappedCol2.ColumnIndex(), "column at position 2 should have index 2 after swap")
+
+	// Verify message routing works after swap
+	// Send a message for column at index 0 - should update column at position 0
+	msg := ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 0,
+		ColumnTitle: "Col2", // Title is "Col2" because it moved from position 2
+		Issues: []beads.Issue{
+			{ID: "bd-1", TitleText: "Test Issue"},
+		},
+	}
+	m, _ = m.Update(msg)
+
+	// The column at position 0 should have received the issues
+	updatedCol0 := m.columns[0].(Column)
+	require.Len(t, updatedCol0.Items(), 1, "column at position 0 should have received the message")
+
+	// The column at position 2 should still be empty (wasn't targeted)
+	updatedCol2 := m.columns[2].(Column)
+	require.Empty(t, updatedCol2.Items(), "column at position 2 should not have received the message")
+}
+
 func TestBoard_View_WithTreeColumn_Golden(t *testing.T) {
 	// Create board with mixed column types: BQL columns + tree column
 	views := []config.ViewConfig{
@@ -757,6 +817,7 @@ func TestBoard_View_WithTreeColumn_Golden(t *testing.T) {
 	// Populate BQL columns with test issues
 	backlogMsg := ColumnLoadedMsg{
 		ViewIndex:   0,
+		ColumnIndex: 0, // Backlog is at index 0
 		ColumnTitle: "Backlog",
 		Issues: []beads.Issue{
 			{ID: "bd-1", TitleText: "Open Task", Priority: beads.PriorityMedium, Type: beads.TypeTask, Status: beads.StatusOpen},
@@ -767,6 +828,7 @@ func TestBoard_View_WithTreeColumn_Golden(t *testing.T) {
 
 	doneMsg := ColumnLoadedMsg{
 		ViewIndex:   0,
+		ColumnIndex: 2, // Done is at index 2
 		ColumnTitle: "Done",
 		Issues: []beads.Issue{
 			{ID: "bd-3", TitleText: "Completed Feature", Priority: beads.PriorityLow, Type: beads.TypeFeature, Status: beads.StatusClosed},
@@ -777,6 +839,7 @@ func TestBoard_View_WithTreeColumn_Golden(t *testing.T) {
 	// Populate tree column with dependency tree data
 	treeMsg := TreeColumnLoadedMsg{
 		ViewIndex:   0,
+		ColumnIndex: 1, // Dependencies is at index 1
 		ColumnTitle: "Dependencies",
 		RootID:      "root-1",
 		IssueMap: map[string]*beads.Issue{

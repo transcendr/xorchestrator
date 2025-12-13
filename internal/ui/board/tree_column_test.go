@@ -38,13 +38,13 @@ func TestTreeColumn_Title_WithMode(t *testing.T) {
 
 func TestTreeColumn_LoadCmd_NoExecutor(t *testing.T) {
 	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
-	cmd := tc.LoadCmd(0)
+	cmd := tc.LoadCmd(0, 0)
 	require.Nil(t, cmd, "LoadCmd should return nil without executor")
 }
 
 func TestTreeColumn_LoadCmd_NoRootID(t *testing.T) {
 	tc := NewTreeColumn("Deps", "", "deps", nil)
-	cmd := tc.LoadCmd(0)
+	cmd := tc.LoadCmd(0, 0)
 	require.Nil(t, cmd, "LoadCmd should return nil without rootID")
 }
 
@@ -70,24 +70,27 @@ func TestTreeColumn_HandleLoaded_WrongMessageType(t *testing.T) {
 	require.Nil(t, resultTC.tree)
 }
 
-func TestTreeColumn_HandleLoaded_WrongColumnTitle(t *testing.T) {
+func TestTreeColumn_HandleLoaded_WrongColumnIndex(t *testing.T) {
 	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc = tc.SetColumnIndex(0)
 	issueMap := map[string]*beads.Issue{
 		"bd-123": {ID: "bd-123", TitleText: "Root"},
 	}
 	msg := TreeColumnLoadedMsg{
-		ColumnTitle: "OtherColumn",
+		ColumnIndex: 1, // Different from tc.columnIndex (0)
+		ColumnTitle: "Deps",
 		RootID:      "bd-123",
 		IssueMap:    issueMap,
 	}
 	result := tc.HandleLoaded(msg)
-	// Should return unchanged
+	// Should return unchanged because column index doesn't match
 	resultTC := result.(TreeColumn)
 	require.Nil(t, resultTC.tree)
 }
 
 func TestTreeColumn_HandleLoaded_Success(t *testing.T) {
 	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc = tc.SetColumnIndex(0)
 
 	issueMap := map[string]*beads.Issue{
 		"bd-123": {ID: "bd-123", TitleText: "Root Issue", Children: []string{"bd-124"}},
@@ -95,6 +98,7 @@ func TestTreeColumn_HandleLoaded_Success(t *testing.T) {
 	}
 
 	msg := TreeColumnLoadedMsg{
+		ColumnIndex: 0, // Match tc.columnIndex
 		ColumnTitle: "Deps",
 		RootID:      "bd-123",
 		IssueMap:    issueMap,
@@ -109,9 +113,11 @@ func TestTreeColumn_HandleLoaded_Success(t *testing.T) {
 
 func TestTreeColumn_HandleLoaded_RootNotFound(t *testing.T) {
 	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc = tc.SetColumnIndex(0)
 
 	// Empty issue map - root not found
 	msg := TreeColumnLoadedMsg{
+		ColumnIndex: 0,
 		ColumnTitle: "Deps",
 		RootID:      "bd-123",
 		IssueMap:    map[string]*beads.Issue{},
@@ -127,8 +133,10 @@ func TestTreeColumn_HandleLoaded_RootNotFound(t *testing.T) {
 
 func TestTreeColumn_HandleLoaded_Error(t *testing.T) {
 	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc = tc.SetColumnIndex(0)
 
 	msg := TreeColumnLoadedMsg{
+		ColumnIndex: 0,
 		ColumnTitle: "Deps",
 		RootID:      "bd-123",
 		Err:         errTest,
@@ -210,6 +218,7 @@ func TestTreeColumn_SetShowCounts(t *testing.T) {
 
 func TestTreeColumn_IsEmpty(t *testing.T) {
 	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc = tc.SetColumnIndex(0)
 	require.True(t, tc.IsEmpty(), "should be empty without tree")
 
 	// Initialize with tree data
@@ -217,6 +226,7 @@ func TestTreeColumn_IsEmpty(t *testing.T) {
 		"bd-123": {ID: "bd-123", TitleText: "Root"},
 	}
 	msg := TreeColumnLoadedMsg{
+		ColumnIndex: 0,
 		ColumnTitle: "Deps",
 		RootID:      "bd-123",
 		IssueMap:    issueMap,
@@ -234,11 +244,13 @@ func TestTreeColumn_SelectedIssue_NoTree(t *testing.T) {
 
 func TestTreeColumn_SelectedIssue_WithTree(t *testing.T) {
 	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc = tc.SetColumnIndex(0)
 
 	issueMap := map[string]*beads.Issue{
 		"bd-123": {ID: "bd-123", TitleText: "Root Issue"},
 	}
 	msg := TreeColumnLoadedMsg{
+		ColumnIndex: 0,
 		ColumnTitle: "Deps",
 		RootID:      "bd-123",
 		IssueMap:    issueMap,
@@ -260,6 +272,7 @@ func TestTreeColumn_Update_NoTree(t *testing.T) {
 
 func TestTreeColumn_Update_Navigation(t *testing.T) {
 	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc = tc.SetColumnIndex(0)
 
 	// Initialize with tree data with multiple nodes
 	issueMap := map[string]*beads.Issue{
@@ -267,6 +280,7 @@ func TestTreeColumn_Update_Navigation(t *testing.T) {
 		"bd-124": {ID: "bd-124", TitleText: "Child", ParentID: "bd-123"},
 	}
 	msg := TreeColumnLoadedMsg{
+		ColumnIndex: 0,
 		ColumnTitle: "Deps",
 		RootID:      "bd-123",
 		IssueMap:    issueMap,
@@ -316,6 +330,7 @@ func TestTreeColumnLoadedMsg_Structure(t *testing.T) {
 
 func TestTreeColumn_Update_ToggleMode(t *testing.T) {
 	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc = tc.SetColumnIndex(0)
 	require.Equal(t, tree.ModeDeps, tc.mode)
 
 	// Load tree data first so toggle has something to rebuild
@@ -323,6 +338,7 @@ func TestTreeColumn_Update_ToggleMode(t *testing.T) {
 		"bd-123": {ID: "bd-123", TitleText: "Root Issue"},
 	}
 	msg := TreeColumnLoadedMsg{
+		ColumnIndex: 0,
 		ColumnTitle: "Deps",
 		RootID:      "bd-123",
 		IssueMap:    issueMap,

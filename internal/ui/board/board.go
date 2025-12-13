@@ -70,6 +70,7 @@ func NewFromConfigWithExecutor(configs []config.ColumnConfig, executor *bql.Exec
 		// Create column with executor for self-loading
 		col := NewColumnWithExecutor(cfg.Name, cfg.Query, executor)
 		col.status = primaryStatus
+		col = col.SetColumnIndex(i) // Set column index for message routing
 		if cfg.Color != "" {
 			col = col.SetColor(lipgloss.Color(cfg.Color))
 		}
@@ -100,6 +101,7 @@ func NewFromViews(viewConfigs []config.ViewConfig, executor *bql.Executor) Model
 			if cc.Type == "tree" {
 				// Create TreeColumn for tree type
 				treeCol := NewTreeColumn(cc.Name, cc.IssueID, cc.TreeMode, executor)
+				treeCol = treeCol.SetColumnIndex(j) // Set column index for message routing
 				if cc.Color != "" {
 					treeCol = treeCol.SetColor(lipgloss.Color(cc.Color))
 				}
@@ -109,6 +111,7 @@ func NewFromViews(viewConfigs []config.ViewConfig, executor *bql.Executor) Model
 				primaryStatus := extractPrimaryStatus(cc.Query)
 				col := NewColumnWithExecutor(cc.Name, cc.Query, executor)
 				col.status = primaryStatus
+				col = col.SetColumnIndex(j) // Set column index for message routing
 				if cc.Color != "" {
 					col = col.SetColor(lipgloss.Color(cc.Color))
 				}
@@ -206,11 +209,28 @@ func (m Model) SwapColumns(i, j int) Model {
 	}
 	m.columns[i], m.columns[j] = m.columns[j], m.columns[i]
 	m.configs[i], m.configs[j] = m.configs[j], m.configs[i]
+
+	// Update column indices to match new positions for correct message routing
+	m.columns[i] = updateColumnIndex(m.columns[i], i)
+	m.columns[j] = updateColumnIndex(m.columns[j], j)
+
 	if len(m.views) > 0 && m.currentView < len(m.views) {
 		m.views[m.currentView].columns = m.columns
 		m.views[m.currentView].configs = m.configs
 	}
 	return m
+}
+
+// updateColumnIndex updates a column's internal index for message routing.
+func updateColumnIndex(col BoardColumn, index int) BoardColumn {
+	switch c := col.(type) {
+	case Column:
+		return c.SetColumnIndex(index)
+	case TreeColumn:
+		return c.SetColumnIndex(index)
+	default:
+		return col
+	}
 }
 
 // SelectByID finds an issue by ID across all columns and selects it.
@@ -350,7 +370,7 @@ func (m Model) LoadCurrentViewCmd() tea.Cmd {
 	cmds := make([]tea.Cmd, 0, len(view.columns))
 
 	for i := range m.columns {
-		if cmd := m.columns[i].LoadCmd(m.currentView); cmd != nil {
+		if cmd := m.columns[i].LoadCmd(m.currentView, i); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -375,8 +395,8 @@ func (m Model) InvalidateViews() Model {
 func (m Model) LoadAllColumns() tea.Cmd {
 	var cmds []tea.Cmd
 	for i := range m.columns {
-		// Use current view index so messages aren't filtered out
-		if cmd := m.columns[i].LoadCmd(m.currentView); cmd != nil {
+		// Use current view index and column index so messages are routed correctly
+		if cmd := m.columns[i].LoadCmd(m.currentView, i); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
