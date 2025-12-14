@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewTreeColumn(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 
 	require.Equal(t, "Deps", tc.title)
 	require.Equal(t, "bd-123", tc.rootID)
@@ -22,47 +22,47 @@ func TestNewTreeColumn(t *testing.T) {
 
 func TestTreeColumn_ModeDefault(t *testing.T) {
 	// When mode is empty, should default to "deps"
-	tc := NewTreeColumn("Deps", "bd-123", "", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "", nil, nil)
 	require.Equal(t, tree.ModeDeps, tc.mode)
 }
 
 func TestTreeColumn_Title_WithMode(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	// Title now includes mode indicator
 	require.Equal(t, "Deps (deps)", tc.Title())
 
 	// Test with child mode
-	tc = NewTreeColumn("Deps", "bd-123", "child", nil)
+	tc = NewTreeColumn("Deps", "bd-123", "child", nil, nil)
 	require.Equal(t, "Deps (child)", tc.Title())
 }
 
 func TestTreeColumn_LoadCmd_NoExecutor(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	cmd := tc.LoadCmd(0, 0)
 	require.Nil(t, cmd, "LoadCmd should return nil without executor")
 }
 
 func TestTreeColumn_LoadCmd_NoRootID(t *testing.T) {
-	tc := NewTreeColumn("Deps", "", "deps", nil)
+	tc := NewTreeColumn("Deps", "", "deps", nil, nil)
 	cmd := tc.LoadCmd(0, 0)
 	require.Nil(t, cmd, "LoadCmd should return nil without rootID")
 }
 
 func TestTreeColumn_RootID_Method(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	require.Equal(t, "bd-123", tc.RootID())
 }
 
 func TestTreeColumn_Mode_Method(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	require.Equal(t, "deps", tc.Mode())
 
-	tc = NewTreeColumn("Children", "bd-456", "child", nil)
+	tc = NewTreeColumn("Children", "bd-456", "child", nil, nil)
 	require.Equal(t, "child", tc.Mode())
 }
 
 func TestTreeColumn_HandleLoaded_WrongMessageType(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	// Send a ColumnLoadedMsg instead of TreeColumnLoadedMsg
 	result := tc.HandleLoaded(ColumnLoadedMsg{ColumnTitle: "Deps"})
 	// Should return unchanged
@@ -71,7 +71,7 @@ func TestTreeColumn_HandleLoaded_WrongMessageType(t *testing.T) {
 }
 
 func TestTreeColumn_HandleLoaded_WrongColumnIndex(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	tc = tc.SetColumnIndex(0)
 	issueMap := map[string]*beads.Issue{
 		"bd-123": {ID: "bd-123", TitleText: "Root"},
@@ -89,7 +89,7 @@ func TestTreeColumn_HandleLoaded_WrongColumnIndex(t *testing.T) {
 }
 
 func TestTreeColumn_HandleLoaded_Success(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	tc = tc.SetColumnIndex(0)
 
 	issueMap := map[string]*beads.Issue{
@@ -112,7 +112,7 @@ func TestTreeColumn_HandleLoaded_Success(t *testing.T) {
 }
 
 func TestTreeColumn_HandleLoaded_RootNotFound(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	tc = tc.SetColumnIndex(0)
 
 	// Empty issue map - root not found
@@ -132,7 +132,7 @@ func TestTreeColumn_HandleLoaded_RootNotFound(t *testing.T) {
 }
 
 func TestTreeColumn_HandleLoaded_Error(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	tc = tc.SetColumnIndex(0)
 
 	msg := TreeColumnLoadedMsg{
@@ -157,7 +157,7 @@ type testError struct{}
 func (e *testError) Error() string { return "test error" }
 
 func TestTreeColumn_View_Error(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	tc.loadError = errTest
 
 	view := tc.View()
@@ -165,14 +165,14 @@ func TestTreeColumn_View_Error(t *testing.T) {
 }
 
 func TestTreeColumn_View_NoData(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 
 	view := tc.View()
 	require.Contains(t, view, "No tree data")
 }
 
 func TestTreeColumn_SetSize(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	result := tc.SetSize(100, 50)
 	resultTC := result.(TreeColumn)
 
@@ -181,7 +181,7 @@ func TestTreeColumn_SetSize(t *testing.T) {
 }
 
 func TestTreeColumn_SetFocused(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	result := tc.SetFocused(true)
 	resultTC := result.(TreeColumn)
 
@@ -193,7 +193,7 @@ func TestTreeColumn_SetFocused(t *testing.T) {
 }
 
 func TestTreeColumn_Color(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 
 	// Default color
 	require.NotNil(t, tc.Color())
@@ -204,20 +204,20 @@ func TestTreeColumn_Color(t *testing.T) {
 }
 
 func TestTreeColumn_Width(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	tc = tc.SetSize(100, 50).(TreeColumn)
 	require.Equal(t, 100, tc.Width())
 }
 
 func TestTreeColumn_SetShowCounts(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	// SetShowCounts is a no-op for TreeColumn (counts always shown)
 	result := tc.SetShowCounts(false)
 	require.NotNil(t, result)
 }
 
 func TestTreeColumn_IsEmpty(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	tc = tc.SetColumnIndex(0)
 	require.True(t, tc.IsEmpty(), "should be empty without tree")
 
@@ -238,12 +238,12 @@ func TestTreeColumn_IsEmpty(t *testing.T) {
 }
 
 func TestTreeColumn_SelectedIssue_NoTree(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	require.Nil(t, tc.SelectedIssue())
 }
 
 func TestTreeColumn_SelectedIssue_WithTree(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	tc = tc.SetColumnIndex(0)
 
 	issueMap := map[string]*beads.Issue{
@@ -264,14 +264,14 @@ func TestTreeColumn_SelectedIssue_WithTree(t *testing.T) {
 }
 
 func TestTreeColumn_Update_NoTree(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	result, cmd := tc.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	require.Nil(t, cmd)
 	require.NotNil(t, result)
 }
 
 func TestTreeColumn_Update_Navigation(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	tc = tc.SetColumnIndex(0)
 
 	// Initialize with tree data with multiple nodes
@@ -329,7 +329,7 @@ func TestTreeColumnLoadedMsg_Structure(t *testing.T) {
 }
 
 func TestTreeColumn_Update_ToggleMode(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	tc = tc.SetColumnIndex(0)
 	require.Equal(t, tree.ModeDeps, tc.mode)
 
@@ -362,7 +362,7 @@ func TestTreeColumn_Update_ToggleMode(t *testing.T) {
 
 func TestTreeColumn_Update_ToggleMode_NoTree(t *testing.T) {
 	// Toggle should be no-op without tree data
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	result, cmd := tc.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	resultTC := result.(TreeColumn)
 
@@ -372,7 +372,7 @@ func TestTreeColumn_Update_ToggleMode_NoTree(t *testing.T) {
 }
 
 func TestTreeColumn_RightTitle_Empty(t *testing.T) {
-	tc := NewTreeColumn("Deps", "bd-123", "deps", nil)
+	tc := NewTreeColumn("Deps", "bd-123", "deps", nil, nil)
 	// Without tree data, RightTitle returns empty
 	require.Equal(t, "", tc.RightTitle())
 }

@@ -3,6 +3,7 @@ package search
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
@@ -10,8 +11,15 @@ import (
 
 	"perles/internal/beads"
 	"perles/internal/mode"
+	"perles/internal/mode/shared"
 	"perles/internal/ui/tree"
 )
+
+// testClock for deterministic timestamps in tests.
+var testClock = shared.FakeClock{FixedTime: time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)}
+
+// testCreatedAt is 2 days before testClock for "2d ago" display
+var testCreatedAt = time.Date(2025, 1, 13, 12, 0, 0, 0, time.UTC)
 
 // Golden tests for tree sub-mode rendering.
 // Run with -update flag to update golden files: go test -update ./internal/mode/search/...
@@ -40,7 +48,7 @@ func createTestModelWithTree(rootIssue beads.Issue, issues []beads.Issue) Model 
 
 	// Build tree
 	issueMap := buildIssueMap(issues)
-	m.tree = tree.New(rootIssue.ID, issueMap, tree.DirectionDown, tree.ModeDeps)
+	m.tree = tree.New(rootIssue.ID, issueMap, tree.DirectionDown, tree.ModeDeps, testClock)
 	return m
 }
 
@@ -93,7 +101,7 @@ func TestSearch_TreeView_Golden_DownDirection(t *testing.T) {
 
 	m := createTestModelWithTree(rootIssue, issues)
 	issueMap := buildIssueMap(issues)
-	m.tree = tree.New(rootIssue.ID, issueMap, tree.DirectionDown, tree.ModeDeps)
+	m.tree = tree.New(rootIssue.ID, issueMap, tree.DirectionDown, tree.ModeDeps, testClock)
 	m = m.SetSize(160, 30)
 
 	view := m.View()
@@ -119,7 +127,7 @@ func TestSearch_TreeView_Golden_UpDirection(t *testing.T) {
 
 	m := createTestModelWithTree(rootIssue, issues)
 	issueMap := buildIssueMap(issues)
-	m.tree = tree.New(rootIssue.ID, issueMap, tree.DirectionUp, tree.ModeDeps)
+	m.tree = tree.New(rootIssue.ID, issueMap, tree.DirectionUp, tree.ModeDeps, testClock)
 	m = m.SetSize(160, 30)
 
 	view := m.View()
@@ -147,7 +155,7 @@ func TestSearch_TreeView_Golden_ChildrenMode(t *testing.T) {
 	m := createTestModelWithTree(rootIssue, issues)
 	issueMap := buildIssueMap(issues)
 	// Use children mode - should only show task-1 and task-2, NOT task-3
-	m.tree = tree.New(rootIssue.ID, issueMap, tree.DirectionDown, tree.ModeChildren)
+	m.tree = tree.New(rootIssue.ID, issueMap, tree.DirectionDown, tree.ModeChildren, testClock)
 	m = m.SetSize(160, 30)
 
 	view := m.View()

@@ -7,6 +7,7 @@ import (
 
 	"perles/internal/beads"
 	"perles/internal/bql"
+	"perles/internal/mode/shared"
 	"perles/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -57,6 +58,8 @@ type BoardColumn interface {
 
 	// IsEmpty returns true if the column has no items.
 	IsEmpty() bool
+
+	SetClock(clock shared.Clock) BoardColumn
 }
 
 // issueDelegate is a custom delegate for rendering issues with priority colors and type indicators.
@@ -468,4 +471,10 @@ func (c Column) Color() lipgloss.TerminalColor {
 // Implements BoardColumn interface.
 func (c Column) Width() int {
 	return c.width
+}
+
+// SetClock sets the clock for timestamp formatting. The board column does not
+// show timestamps, so this is a no-op for now.
+func (c Column) SetClock(_ shared.Clock) BoardColumn {
+	return c
 }

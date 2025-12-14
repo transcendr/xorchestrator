@@ -6,6 +6,7 @@ import (
 
 	"perles/internal/beads"
 	"perles/internal/bql"
+	"perles/internal/mode/shared"
 	"perles/internal/ui/styles"
 	"perles/internal/ui/tree"
 
@@ -22,6 +23,7 @@ type TreeColumn struct {
 	mode        tree.TreeMode // ModeDeps or ModeChildren
 	color       lipgloss.TerminalColor
 	executor    *bql.Executor
+	clock       shared.Clock // Clock for timestamp formatting
 	width       int
 	height      int
 	focused     *bool // pointer so it survives value copies
@@ -42,7 +44,7 @@ type TreeColumnLoadedMsg struct {
 
 // NewTreeColumn creates a new tree column.
 // treeMode can be "deps" (default) or "child".
-func NewTreeColumn(title, rootID, treeMode string, executor *bql.Executor) TreeColumn {
+func NewTreeColumn(title, rootID, treeMode string, executor *bql.Executor, clock shared.Clock) TreeColumn {
 	focused := new(bool)
 
 	// Convert string mode to tree.TreeMode
@@ -56,6 +58,7 @@ func NewTreeColumn(title, rootID, treeMode string, executor *bql.Executor) TreeC
 		rootID:   rootID,
 		mode:     mode,
 		executor: executor,
+		clock:    clock,
 		focused:  focused,
 	}
 }
@@ -234,7 +237,7 @@ func (c TreeColumn) HandleLoaded(msg tea.Msg) BoardColumn {
 	}
 
 	// Initialize tree model with down direction and current mode
-	c.tree = tree.New(loadedMsg.RootID, loadedMsg.IssueMap, tree.DirectionDown, c.mode)
+	c.tree = tree.New(loadedMsg.RootID, loadedMsg.IssueMap, tree.DirectionDown, c.mode, c.clock)
 
 	// Apply current size to tree
 	if c.width > 0 && c.height > 0 {
@@ -291,6 +294,12 @@ func (c TreeColumn) Update(msg tea.Msg) (BoardColumn, tea.Cmd) {
 func (c TreeColumn) SetShowCounts(show bool) BoardColumn {
 	// TreeColumn always shows counts in Title() based on tree size
 	// This method exists for BoardColumn interface compliance
+	return c
+}
+
+// SetClock sets the clock for timestamp formatting.
+func (c TreeColumn) SetClock(clock shared.Clock) BoardColumn {
+	c.clock = clock
 	return c
 }
 

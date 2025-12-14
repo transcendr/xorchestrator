@@ -2,54 +2,71 @@ package tree
 
 import (
 	"testing"
+	"time"
 
 	"perles/internal/beads"
+	"perles/internal/mode/shared"
 
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 )
 
+// testClock is a fixed clock for deterministic test output.
+// All test issues are created 2 days before this time.
+var testClock = shared.FakeClock{FixedTime: time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)}
+
+// testCreatedAt is 2 days before testClock.FixedTime
+var testCreatedAt = time.Date(2025, 1, 13, 12, 0, 0, 0, time.UTC)
+
 func makeTestIssueMap() map[string]*beads.Issue {
 	return map[string]*beads.Issue{
 		"epic-1": {
-			ID:        "epic-1",
-			TitleText: "Epic One",
-			Status:    beads.StatusOpen,
-			Type:      beads.TypeEpic,
-			Priority:  beads.PriorityHigh,
-			Children:  []string{"task-1", "task-2"},
+			ID:           "epic-1",
+			TitleText:    "Epic One",
+			Status:       beads.StatusOpen,
+			Type:         beads.TypeEpic,
+			Priority:     beads.PriorityHigh,
+			Children:     []string{"task-1", "task-2"},
+			CreatedAt:    testCreatedAt,
+			CommentCount: 3,
 		},
 		"task-1": {
-			ID:        "task-1",
-			TitleText: "Task One",
-			Status:    beads.StatusClosed,
-			Type:      beads.TypeTask,
-			Priority:  beads.PriorityCritical,
-			ParentID:  "epic-1",
+			ID:           "task-1",
+			TitleText:    "Task One",
+			Status:       beads.StatusClosed,
+			Type:         beads.TypeTask,
+			Priority:     beads.PriorityCritical,
+			ParentID:     "epic-1",
+			CreatedAt:    testCreatedAt,
+			CommentCount: 0,
 		},
 		"task-2": {
-			ID:        "task-2",
-			TitleText: "Task Two",
-			Status:    beads.StatusOpen,
-			Type:      beads.TypeTask,
-			Priority:  beads.PriorityMedium,
-			ParentID:  "epic-1",
-			Children:  []string{"subtask-1"},
+			ID:           "task-2",
+			TitleText:    "Task Two",
+			Status:       beads.StatusOpen,
+			Type:         beads.TypeTask,
+			Priority:     beads.PriorityMedium,
+			ParentID:     "epic-1",
+			Children:     []string{"subtask-1"},
+			CreatedAt:    testCreatedAt,
+			CommentCount: 1,
 		},
 		"subtask-1": {
-			ID:        "subtask-1",
-			TitleText: "Subtask One",
-			Status:    beads.StatusInProgress,
-			Type:      beads.TypeTask,
-			Priority:  beads.PriorityMedium,
-			ParentID:  "task-2",
+			ID:           "subtask-1",
+			TitleText:    "Subtask One",
+			Status:       beads.StatusInProgress,
+			Type:         beads.TypeTask,
+			Priority:     beads.PriorityMedium,
+			ParentID:     "task-2",
+			CreatedAt:    testCreatedAt,
+			CommentCount: 5,
 		},
 	}
 }
 
 func TestNew_Basic(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	require.NotNil(t, m)
 	require.NotNil(t, m.root)
@@ -62,7 +79,7 @@ func TestNew_Basic(t *testing.T) {
 
 func TestNew_InvalidRoot(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("nonexistent", issueMap, DirectionDown, ModeDeps)
+	m := New("nonexistent", issueMap, DirectionDown, ModeDeps, testClock)
 
 	require.NotNil(t, m)
 	require.Nil(t, m.root)
@@ -71,7 +88,7 @@ func TestNew_InvalidRoot(t *testing.T) {
 
 func TestSetSize(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	m.SetSize(80, 24)
 	require.Equal(t, 80, m.width)
@@ -80,7 +97,7 @@ func TestSetSize(t *testing.T) {
 
 func TestMoveCursor_Basic(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	require.Equal(t, 0, m.cursor)
 
@@ -96,7 +113,7 @@ func TestMoveCursor_Basic(t *testing.T) {
 
 func TestMoveCursor_Bounds(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	// Try to go above top
 	m.MoveCursor(-10)
@@ -113,7 +130,7 @@ func TestMoveCursor_Bounds(t *testing.T) {
 
 func TestSelectedNode(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	node := m.SelectedNode()
 	require.NotNil(t, node)
@@ -126,7 +143,7 @@ func TestSelectedNode(t *testing.T) {
 
 func TestSelectedNode_Empty(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("nonexistent", issueMap, DirectionDown, ModeDeps)
+	m := New("nonexistent", issueMap, DirectionDown, ModeDeps, testClock)
 
 	node := m.SelectedNode()
 	require.Nil(t, node)
@@ -134,7 +151,7 @@ func TestSelectedNode_Empty(t *testing.T) {
 
 func TestRoot(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	root := m.Root()
 	require.NotNil(t, root)
@@ -143,7 +160,7 @@ func TestRoot(t *testing.T) {
 
 func TestDirection(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	require.Equal(t, DirectionDown, m.Direction())
 
@@ -153,7 +170,7 @@ func TestDirection(t *testing.T) {
 
 func TestRefocus_AndGoBack(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	// Refocus on task-2
 	err := m.Refocus("task-2")
@@ -171,7 +188,7 @@ func TestRefocus_AndGoBack(t *testing.T) {
 
 func TestRefocus_MultipleAndGoToOriginal(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	// Refocus twice
 	_ = m.Refocus("task-2")
@@ -188,7 +205,7 @@ func TestRefocus_MultipleAndGoToOriginal(t *testing.T) {
 
 func TestGoBack_EmptyStack_NoParent(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	// GoBack on empty stack with no parent should do nothing
 	needsRequery, parentID := m.GoBack()
@@ -200,7 +217,7 @@ func TestGoBack_EmptyStack_NoParent(t *testing.T) {
 func TestGoBack_EmptyStack_WithParentInMap(t *testing.T) {
 	issueMap := makeTestIssueMap()
 	// Start directly on task-1 which has parent epic-1
-	m := New("task-1", issueMap, DirectionDown, ModeDeps)
+	m := New("task-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	require.Equal(t, "task-1", m.root.Issue.ID)
 	require.Empty(t, m.rootStack)
@@ -219,9 +236,10 @@ func TestGoBack_EmptyStack_ParentNotInMap(t *testing.T) {
 			TitleText: "Task One",
 			Status:    beads.StatusOpen,
 			ParentID:  "missing-parent",
+			CreatedAt: testCreatedAt,
 		},
 	}
-	m := New("task-1", issueMap, DirectionDown, ModeDeps)
+	m := New("task-1", issueMap, DirectionDown, ModeDeps, testClock)
 
 	// GoBack should signal re-query needed when parent not in map
 	needsRequery, parentID := m.GoBack()
@@ -233,7 +251,7 @@ func TestGoBack_EmptyStack_ParentNotInMap(t *testing.T) {
 
 func TestView_Basic(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 	m.SetSize(80, 24)
 
 	view := m.View()
@@ -250,7 +268,7 @@ func TestView_Basic(t *testing.T) {
 
 func TestView_UpDirection(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("task-1", issueMap, DirectionUp, ModeDeps)
+	m := New("task-1", issueMap, DirectionUp, ModeDeps, testClock)
 	m.SetSize(80, 24)
 
 	// Direction should be up (parent container uses this for border title)
@@ -263,7 +281,7 @@ func TestView_UpDirection(t *testing.T) {
 
 func TestView_TreeBranches(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 	m.SetSize(80, 24)
 
 	view := m.View()
@@ -275,7 +293,7 @@ func TestView_TreeBranches(t *testing.T) {
 
 func TestView_StatusIndicators(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 	m.SetSize(80, 24)
 
 	view := m.View()
@@ -288,7 +306,7 @@ func TestView_StatusIndicators(t *testing.T) {
 
 func TestView_Empty(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("nonexistent", issueMap, DirectionDown, ModeDeps)
+	m := New("nonexistent", issueMap, DirectionDown, ModeDeps, testClock)
 
 	view := m.View()
 	require.Contains(t, view, "No tree data")
@@ -300,7 +318,7 @@ func TestView_Empty(t *testing.T) {
 // TestView_Golden_Basic tests the basic tree view rendering with multiple nodes.
 func TestView_Golden_Basic(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 	m.SetSize(100, 30)
 
 	view := m.View()
@@ -310,7 +328,7 @@ func TestView_Golden_Basic(t *testing.T) {
 // TestView_Golden_UpDirection tests tree view with up direction.
 func TestView_Golden_UpDirection(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("subtask-1", issueMap, DirectionUp, ModeDeps)
+	m := New("subtask-1", issueMap, DirectionUp, ModeDeps, testClock)
 	m.SetSize(100, 30)
 
 	view := m.View()
@@ -320,7 +338,7 @@ func TestView_Golden_UpDirection(t *testing.T) {
 // TestView_Golden_CursorMoved tests tree view with cursor on different node.
 func TestView_Golden_CursorMoved(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("epic-1", issueMap, DirectionDown, ModeDeps)
+	m := New("epic-1", issueMap, DirectionDown, ModeDeps, testClock)
 	m.SetSize(100, 30)
 
 	// Move cursor to task-2 (index 2)
@@ -333,7 +351,7 @@ func TestView_Golden_CursorMoved(t *testing.T) {
 // TestView_Golden_Empty tests tree view with no data.
 func TestView_Golden_Empty(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("nonexistent", issueMap, DirectionDown, ModeDeps)
+	m := New("nonexistent", issueMap, DirectionDown, ModeDeps, testClock)
 	m.SetSize(100, 30)
 
 	view := m.View()
@@ -343,8 +361,50 @@ func TestView_Golden_Empty(t *testing.T) {
 // TestView_Golden_LeafNode tests tree view when root has no children.
 func TestView_Golden_LeafNode(t *testing.T) {
 	issueMap := makeTestIssueMap()
-	m := New("task-1", issueMap, DirectionDown, ModeDeps)
+	m := New("task-1", issueMap, DirectionDown, ModeDeps, testClock)
 	m.SetSize(100, 30)
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+// TestView_Golden_NarrowWidth tests tree view with narrow width and long title.
+// At width 60, there's enough room for metadata.
+func TestView_Golden_NarrowWidth(t *testing.T) {
+	issueMap := map[string]*beads.Issue{
+		"long-1": {
+			ID:           "long-1",
+			TitleText:    "This is a very long title that should definitely be truncated to fit",
+			Status:       beads.StatusOpen,
+			Type:         beads.TypeEpic,
+			Priority:     beads.PriorityHigh,
+			CreatedAt:    testCreatedAt,
+			CommentCount: 3,
+		},
+	}
+	m := New("long-1", issueMap, DirectionDown, ModeDeps, testClock)
+	m.SetSize(60, 30)
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+// TestView_Golden_VeryNarrowWidth tests tree view with very narrow width.
+// Metadata should be hidden when there's not enough room.
+func TestView_Golden_VeryNarrowWidth(t *testing.T) {
+	issueMap := map[string]*beads.Issue{
+		"long-1": {
+			ID:           "long-1",
+			TitleText:    "This is a very long title that should definitely be truncated to fit",
+			Status:       beads.StatusOpen,
+			Type:         beads.TypeEpic,
+			Priority:     beads.PriorityHigh,
+			CreatedAt:    testCreatedAt,
+			CommentCount: 3,
+		},
+	}
+	m := New("long-1", issueMap, DirectionDown, ModeDeps, testClock)
+	m.SetSize(40, 30) // Very narrow - metadata should be hidden
 
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))

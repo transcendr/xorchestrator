@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"perles/internal/beads"
+	"perles/internal/mode/shared"
 	"perles/internal/ui/styles"
 
 	"github.com/charmbracelet/lipgloss"
@@ -20,18 +21,20 @@ type Model struct {
 	rootStack  []string                // Stack of previous root IDs for back navigation
 	originalID string                  // Original root issue ID (for 'U' to return)
 	issueMap   map[string]*beads.Issue // Cached issues for tree building
+	clock      shared.Clock            // Clock for formatting relative timestamps
 	width      int
 	height     int
 	scrollTop  int // First visible line index (for viewport scrolling)
 }
 
 // New creates a new tree model with default mode (deps).
-func New(rootID string, issueMap map[string]*beads.Issue, dir Direction, mode TreeMode) *Model {
+func New(rootID string, issueMap map[string]*beads.Issue, dir Direction, mode TreeMode, clock shared.Clock) *Model {
 	m := &Model{
 		direction:  dir,
 		mode:       mode,
 		originalID: rootID,
 		issueMap:   issueMap,
+		clock:      clock,
 		cursor:     0,
 	}
 
@@ -341,21 +344,69 @@ func (m *Model) renderNode(node *TreeNode, isLast bool, isSelected bool) string 
 	sb.WriteString(idStyle.Render("[" + node.Issue.ID + "]"))
 	sb.WriteString(" ")
 
+	// Status indicator
+	statusText := m.renderStatus(node.Issue.Status)
+	statusWidth := lipgloss.Width(statusText)
+
+	// Build right metadata: comment indicator + timestamp
+	metaStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
+	timestamp := shared.FormatRelativeTimeWithClock(node.Issue.CreatedAt, m.clock)
+	commentInd := styles.FormatCommentIndicator(node.Issue.CommentCount)
+
+	rightMeta := timestamp
+	if commentInd != "" {
+		rightMeta = commentInd + " " + timestamp
+	}
+	rightRendered := metaStyle.Render(rightMeta)
+	rightWidth := lipgloss.Width(rightRendered)
+
+	// Calculate available width for title
+	// Format: [prefix][type][priority][id] title status    metadata
+	leftWidth := lipgloss.Width(sb.String())
+	minPadding := 2
+	minTitleWidth := 10 // Minimum chars for a readable title
+
+	// Check if we have enough room for metadata
+	// Need: leftWidth + minTitleWidth + 1 (space) + statusWidth + minPadding + rightWidth <= m.width
+	showMetadata := m.width >= leftWidth+minTitleWidth+1+statusWidth+minPadding+rightWidth
+
+	var availableForTitle int
+	if showMetadata {
+		// Leave room for: title + " " + status + padding (min 2) + metadata
+		availableForTitle = m.width - leftWidth - 1 - statusWidth - minPadding - rightWidth
+	} else {
+		// No metadata - just need room for title + " " + status
+		availableForTitle = m.width - leftWidth - 1 - statusWidth
+		rightWidth = 0
+		rightRendered = ""
+	}
+	if availableForTitle < 0 {
+		availableForTitle = 0
+	}
+
 	// Title (truncate if needed)
 	title := node.Issue.TitleText
-	maxTitleLen := m.width - lipgloss.Width(sb.String()) - 3 // Leave room for " ○" status
-	if maxTitleLen >= 4 && len(title) > maxTitleLen {
-		title = title[:maxTitleLen-3] + "..."
-	} else if maxTitleLen > 0 && maxTitleLen < 4 && len(title) > maxTitleLen {
-		title = title[:maxTitleLen]
-	} else if maxTitleLen <= 0 {
+	if availableForTitle > 0 && lipgloss.Width(title) > availableForTitle {
+		title = styles.TruncateString(title, availableForTitle)
+	} else if availableForTitle <= 0 {
 		title = ""
 	}
 	sb.WriteString(title)
 
-	statusText := m.renderStatus(node.Issue.Status)
 	sb.WriteString(" ")
 	sb.WriteString(statusText)
+
+	// Add metadata if showing
+	if showMetadata && rightWidth > 0 {
+		// Calculate padding to right-align metadata
+		currentWidth := lipgloss.Width(sb.String())
+		paddingNeeded := m.width - currentWidth - rightWidth
+		if paddingNeeded < minPadding {
+			paddingNeeded = minPadding
+		}
+		sb.WriteString(strings.Repeat(" ", paddingNeeded))
+		sb.WriteString(rightRendered)
+	}
 
 	return sb.String()
 }

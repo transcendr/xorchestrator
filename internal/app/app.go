@@ -49,11 +49,6 @@ type Model struct {
 	watcherHandle *watcher.Watcher
 }
 
-// New creates a new application model with default settings.
-func New(client *beads.Client) Model {
-	return NewWithConfig(client, config.Defaults(), "", "", false)
-}
-
 // NewWithConfig creates a new application model with the provided configuration.
 // dbPath is the path to the database file for watching changes.
 // configPath is the path to the config file for saving column changes.
@@ -91,6 +86,7 @@ func NewWithConfig(client *beads.Client, cfg config.Config, dbPath, configPath s
 		ConfigPath: configPath,
 		DBPath:     dbPath,
 		Clipboard:  shared.SystemClipboard{},
+		Clock:      shared.RealClock{},
 	}
 
 	return Model{

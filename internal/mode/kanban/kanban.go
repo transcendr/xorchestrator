@@ -104,7 +104,9 @@ func New(services mode.Services) Model {
 	s.Style = lipgloss.NewStyle().Foreground(styles.SpinnerColor)
 
 	// Create board from views (GetViews returns defaults if none configured)
-	boardModel := board.NewFromViews(services.Config.GetViews(), services.Executor).SetShowCounts(services.Config.UI.ShowCounts)
+	clock := services.Clock
+	boardModel := board.NewFromViews(services.Config.GetViews(), services.Executor, clock).
+		SetShowCounts(services.Config.UI.ShowCounts)
 
 	return Model{
 		services:            services,
@@ -576,7 +578,8 @@ func (m Model) boardHeight() int {
 func (m *Model) rebuildBoard() {
 	currentView := m.board.CurrentViewIndex()
 
-	m.board = board.NewFromViews(m.services.Config.GetViews(), m.services.Executor).
+	clock := m.services.Clock
+	m.board = board.NewFromViews(m.services.Config.GetViews(), m.services.Executor, clock).
 		SetShowCounts(m.services.Config.UI.ShowCounts).
 		SetSize(m.width, m.boardHeight())
 

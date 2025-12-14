@@ -5,6 +5,7 @@ import (
 	"perles/internal/beads"
 	"perles/internal/bql"
 	"perles/internal/config"
+	"perles/internal/mode/shared"
 	"perles/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -41,13 +42,14 @@ type Model struct {
 	columns  []BoardColumn
 	configs  []config.ColumnConfig
 	executor *bql.Executor // BQL executor for column loading
+	clock    shared.Clock  // Clock for timestamp formatting
 	focused  int
 	width    int
 	height   int
 }
 
 // NewFromViews creates a board from multiple view configurations.
-func NewFromViews(viewConfigs []config.ViewConfig, executor *bql.Executor) Model {
+func NewFromViews(viewConfigs []config.ViewConfig, executor *bql.Executor, clock shared.Clock) Model {
 	views := make([]View, len(viewConfigs))
 
 	for i, vc := range viewConfigs {
@@ -55,7 +57,7 @@ func NewFromViews(viewConfigs []config.ViewConfig, executor *bql.Executor) Model
 		for j, cc := range vc.Columns {
 			if cc.Type == "tree" {
 				// Create TreeColumn for tree type
-				treeCol := NewTreeColumn(cc.Name, cc.IssueID, cc.TreeMode, executor)
+				treeCol := NewTreeColumn(cc.Name, cc.IssueID, cc.TreeMode, executor, clock)
 				treeCol = treeCol.SetColumnIndex(j) // Set column index for message routing
 				if cc.Color != "" {
 					treeCol = treeCol.SetColor(lipgloss.Color(cc.Color))
@@ -68,7 +70,8 @@ func NewFromViews(viewConfigs []config.ViewConfig, executor *bql.Executor) Model
 				if cc.Color != "" {
 					col = col.SetColor(lipgloss.Color(cc.Color))
 				}
-				columns[j] = col
+				// Set clock for timestamp formatting
+				columns[j] = col.SetClock(clock)
 			}
 		}
 		views[i] = View{
@@ -97,6 +100,7 @@ func NewFromViews(viewConfigs []config.ViewConfig, executor *bql.Executor) Model
 		columns:     columns,
 		configs:     configs,
 		executor:    executor,
+		clock:       clock,
 		focused:     focusIdx,
 	}
 }

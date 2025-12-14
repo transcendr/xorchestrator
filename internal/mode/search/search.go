@@ -540,7 +540,7 @@ func (m Model) SetSize(width, height int) Model {
 	if m.tree != nil {
 		// Tree height accounts for: borders (2)
 		treeHeight := max(height-2, 1)
-		m.tree.SetSize(leftWidth-2, treeHeight) // -2 for left/right border
+		m.tree.SetSize(leftWidth-3, treeHeight) // -2 for border, -1 for left padding in renderTreeLeftPanel
 	}
 
 	return m
@@ -1662,13 +1662,14 @@ func (m Model) handleTreeLoaded(msg treeLoadedMsg) (Model, tea.Cmd) {
 
 	// Initialize tree model
 	m.treeRoot = root
-	m.tree = tree.New(msg.RootID, issueMap, dir, treeMode)
+	clock := m.services.Clock
+	m.tree = tree.New(msg.RootID, issueMap, dir, treeMode, clock)
 
 	// Set tree size based on available space (must be done before restoring cursor)
 	leftWidth := m.width / 2
 	// Tree height accounts for: borders (2)
 	treeHeight := max(m.height-2, 1)
-	m.tree.SetSize(leftWidth-2, treeHeight) // -2 for left/right border
+	m.tree.SetSize(leftWidth-3, treeHeight) // -2 for border, -1 for left padding in renderTreeLeftPanel
 
 	// Restore cursor to previously selected issue if it exists in new tree
 	if previousSelectedID != "" {

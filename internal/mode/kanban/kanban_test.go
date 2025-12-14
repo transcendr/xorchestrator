@@ -221,7 +221,7 @@ func createTestModelWithIssue(issueID string, query string) Model {
 	boardConfigs := []config.ColumnConfig{
 		{Name: "Test", Query: query, Color: "#888888"},
 	}
-	brd := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil).SetSize(100, 40)
+	brd := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil, nil).SetSize(100, 40)
 
 	// The board columns are unexported, so we use the ColumnLoadedMsg to populate
 	// Since we don't have an executor, simulate the load completion
@@ -289,7 +289,7 @@ func TestKanban_EnterKey_NoIssue_NoCommand(t *testing.T) {
 	boardConfigs := []config.ColumnConfig{
 		{Name: "Empty", Query: "status = open"},
 	}
-	brd := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil).SetSize(100, 40)
+	brd := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil, nil).SetSize(100, 40)
 
 	m := Model{
 		services: services,
@@ -317,7 +317,7 @@ func TestKanban_TKey_NoIssue_NoCommand(t *testing.T) {
 	boardConfigs := []config.ColumnConfig{
 		{Name: "Empty", Query: "status = open"},
 	}
-	brd := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil).SetSize(100, 40)
+	brd := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil, nil).SetSize(100, 40)
 
 	m := Model{
 		services: services,

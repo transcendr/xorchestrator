@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"perles/internal/beads"
 	"perles/internal/config"
+	"perles/internal/mode/shared"
 	"perles/internal/ui/board"
 	"perles/internal/ui/forms/bqlinput"
 	"perles/internal/ui/modals/help"
@@ -941,7 +942,7 @@ func (m Model) renderPreview(width int) string {
 			if m.treeMode == "child" {
 				treeMode = tree.ModeChildren
 			}
-			treeModel := tree.New(m.treeRootID, m.treeIssueMap, tree.DirectionDown, treeMode)
+			treeModel := tree.New(m.treeRootID, m.treeIssueMap, tree.DirectionDown, treeMode, shared.RealClock{})
 			// Account for border wrapper (2 chars for left/right border, 2 for top/bottom)
 			treeModel.SetSize(colWidth-2, colHeight-2)
 			countInfo = countStyle.Render(fmt.Sprintf("Tree with %d nodes", len(m.treeIssueMap)))
