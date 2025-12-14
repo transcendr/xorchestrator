@@ -92,6 +92,8 @@ func buildNode(
 		if mode == ModeDeps {
 			// Include dependency relationships
 			relatedIDs = append(relatedIDs, issue.Blocks...)
+			// Include discovered-from relationships (down = issues discovered from this one)
+			relatedIDs = append(relatedIDs, issue.Discovered...)
 		}
 	} else {
 		// Up direction
@@ -101,6 +103,8 @@ func buildNode(
 		if mode == ModeDeps {
 			// Include dependency relationships
 			relatedIDs = append(relatedIDs, issue.BlockedBy...)
+			// Include discovered-from relationships (up = issues this was discovered from)
+			relatedIDs = append(relatedIDs, issue.DiscoveredFrom...)
 		}
 	}
 

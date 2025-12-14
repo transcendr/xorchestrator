@@ -67,6 +67,23 @@ func (b *Builder) WithHierarchyTestData() *Builder {
 		WithDependency("blocked-2", "blocked-1", "blocks")
 }
 
+// WithDiscoveredFromTestData adds test data for discovered-from dependencies.
+// Structure:
+//
+//	origin-1 ----discovered-from----> discovered-1 ----discovered-from----> discovered-2
+//
+// discovered-1 was discovered from origin-1
+// discovered-2 was discovered from discovered-1
+func (b *Builder) WithDiscoveredFromTestData() *Builder {
+	return b.
+		WithIssue("origin-1", Title("Original Feature"), IssueType("feature")).
+		WithIssue("discovered-1", Title("Bug Found During Origin"), IssueType("bug")).
+		WithIssue("discovered-2", Title("Bug Found During Fix"), IssueType("bug")).
+		WithIssue("unrelated", Title("Unrelated Issue"), IssueType("task")).
+		WithDependency("discovered-1", "origin-1", "discovered-from").
+		WithDependency("discovered-2", "discovered-1", "discovered-from")
+}
+
 // WithClientTestData adds client test data.
 // Mirrors beads/client_test.go setupTestDB.
 func (b *Builder) WithClientTestData() *Builder {

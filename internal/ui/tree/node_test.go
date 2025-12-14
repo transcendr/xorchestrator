@@ -21,6 +21,21 @@ func makeIssue(id string, status beads.Status, children []string, blocks []strin
 	}
 }
 
+// Helper to create test issues with directional discovered-from fields
+func makeIssueWithDiscovered(id string, status beads.Status, children []string, blocks []string, blockedBy []string, discoveredFrom []string, discovered []string, parentID string) *beads.Issue {
+	return &beads.Issue{
+		ID:             id,
+		TitleText:      "Issue " + id,
+		Status:         status,
+		Children:       children,
+		Blocks:         blocks,
+		BlockedBy:      blockedBy,
+		DiscoveredFrom: discoveredFrom,
+		Discovered:     discovered,
+		ParentID:       parentID,
+	}
+}
+
 func TestBuildTree_Down_Basic(t *testing.T) {
 	// Epic -> Task1, Task2
 	issueMap := map[string]*beads.Issue{
@@ -318,4 +333,63 @@ func TestBuildTree_Down_ChainedBlocking(t *testing.T) {
 	// task-b -> task-c
 	require.Len(t, root.Children[0].Children[0].Children, 1)
 	require.Equal(t, "task-c", root.Children[0].Children[0].Children[0].Issue.ID)
+}
+
+func TestBuildTree_Down_WithDiscovered(t *testing.T) {
+	// Issue with discovered-from relationships
+	// bug-1 was discovered while working on feature-1 (discovered-from relationship)
+	// Down traversal from feature-1 shows bug-1 via Discovered field
+	issueMap := map[string]*beads.Issue{
+		"feature-1": makeIssueWithDiscovered("feature-1", beads.StatusOpen, nil, nil, nil, nil, []string{"bug-1"}, ""),
+		"bug-1":     makeIssueWithDiscovered("bug-1", beads.StatusOpen, nil, nil, nil, []string{"feature-1"}, nil, ""),
+	}
+
+	root, err := BuildTree(issueMap, "feature-1", DirectionDown, ModeDeps)
+	require.NoError(t, err)
+	require.Len(t, root.Children, 1)
+	require.Equal(t, "bug-1", root.Children[0].Issue.ID)
+}
+
+func TestBuildTree_Up_WithDiscoveredFrom(t *testing.T) {
+	// Issue with discovered-from relationships (up direction)
+	// bug-1 was discovered from feature-1, so traversing up from bug-1 shows feature-1
+	// Up traversal from bug-1 shows feature-1 via DiscoveredFrom field
+	issueMap := map[string]*beads.Issue{
+		"feature-1": makeIssueWithDiscovered("feature-1", beads.StatusOpen, nil, nil, nil, nil, []string{"bug-1"}, ""),
+		"bug-1":     makeIssueWithDiscovered("bug-1", beads.StatusOpen, nil, nil, nil, []string{"feature-1"}, nil, ""),
+	}
+
+	root, err := BuildTree(issueMap, "bug-1", DirectionUp, ModeDeps)
+	require.NoError(t, err)
+	require.Len(t, root.Children, 1)
+	require.Equal(t, "feature-1", root.Children[0].Issue.ID)
+}
+
+func TestBuildTree_Down_DiscoveredNotInChildrenMode(t *testing.T) {
+	// Discovered issues should NOT appear in ModeChildren (only parent-child hierarchy)
+	issueMap := map[string]*beads.Issue{
+		"feature-1": makeIssueWithDiscovered("feature-1", beads.StatusOpen, nil, nil, nil, nil, []string{"bug-1"}, ""),
+		"bug-1":     makeIssueWithDiscovered("bug-1", beads.StatusOpen, nil, nil, nil, []string{"feature-1"}, nil, ""),
+	}
+
+	root, err := BuildTree(issueMap, "feature-1", DirectionDown, ModeChildren)
+	require.NoError(t, err)
+	// No children in children-only mode since there's no parent-child relationship
+	require.Empty(t, root.Children)
+}
+
+func TestBuildTree_Down_CombinedDiscoveredAndBlocks(t *testing.T) {
+	// Issue with both blocks and discovered-from relationships
+	issueMap := map[string]*beads.Issue{
+		"feature-1": makeIssueWithDiscovered("feature-1", beads.StatusOpen, nil, []string{"feature-2"}, nil, nil, []string{"bug-1"}, ""),
+		"feature-2": makeIssue("feature-2", beads.StatusOpen, nil, nil, []string{"feature-1"}, ""),
+		"bug-1":     makeIssueWithDiscovered("bug-1", beads.StatusOpen, nil, nil, nil, []string{"feature-1"}, nil, ""),
+	}
+
+	root, err := BuildTree(issueMap, "feature-1", DirectionDown, ModeDeps)
+	require.NoError(t, err)
+	require.Len(t, root.Children, 2) // Both blocked issue and discovered issue
+	ids := []string{root.Children[0].Issue.ID, root.Children[1].Issue.ID}
+	require.Contains(t, ids, "feature-2") // blocked by feature-1
+	require.Contains(t, ids, "bug-1")     // discovered from feature-1
 }

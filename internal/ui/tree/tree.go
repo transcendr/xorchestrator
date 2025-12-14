@@ -400,10 +400,7 @@ func (m *Model) renderNode(node *TreeNode, isLast bool, isSelected bool) string 
 	if showMetadata && rightWidth > 0 {
 		// Calculate padding to right-align metadata
 		currentWidth := lipgloss.Width(sb.String())
-		paddingNeeded := m.width - currentWidth - rightWidth
-		if paddingNeeded < minPadding {
-			paddingNeeded = minPadding
-		}
+		paddingNeeded := max(m.width-currentWidth-rightWidth, minPadding)
 		sb.WriteString(strings.Repeat(" ", paddingNeeded))
 		sb.WriteString(rightRendered)
 	}

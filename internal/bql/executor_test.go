@@ -344,6 +344,71 @@ func TestExecutor_LoadsChildrenForEpicWithChildren(t *testing.T) {
 	require.Contains(t, issues[0].Children, "test-2", "epic should show child in Blocks")
 }
 
+func TestExecutor_LoadsRelated(t *testing.T) {
+	db := setupDB(t, (*testutil.Builder).WithDiscoveredFromTestData)
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	// Get origin-1 which has discovered-1 as a related issue (discovered FROM origin-1)
+	issues, err := executor.Execute("id = origin-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.Contains(t, issues[0].Discovered, "discovered-1", "origin-1 should show discovered-1 in Discovered")
+	require.Empty(t, issues[0].DiscoveredFrom, "origin-1 should have no DiscoveredFrom (it's the origin)")
+
+	// Get discovered-1 which has both origin-1 (discovered from) and discovered-2 (discoverer)
+	issues, err = executor.Execute("id = discovered-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.Contains(t, issues[0].DiscoveredFrom, "origin-1", "discovered-1 should show origin-1 in DiscoveredFrom")
+	require.Contains(t, issues[0].Discovered, "discovered-2", "discovered-1 should show discovered-2 in Discovered")
+}
+
+func TestExecutor_ExpandUpWithDiscoveredFrom(t *testing.T) {
+	db := setupDB(t, (*testutil.Builder).WithDiscoveredFromTestData)
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	// Get discovered-1 with expand up - should include origin-1 (the issue it was discovered from)
+	issues, err := executor.Execute("id = discovered-1 expand up")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 2)
+
+	ids := make(map[string]bool)
+	for _, issue := range issues {
+		ids[issue.ID] = true
+	}
+
+	require.True(t, ids["discovered-1"], "should include base issue")
+	require.True(t, ids["origin-1"], "should include origin issue via discovered-from")
+}
+
+func TestExecutor_ExpandDownWithDiscoveredFrom(t *testing.T) {
+	db := setupDB(t, (*testutil.Builder).WithDiscoveredFromTestData)
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	// Get origin-1 with expand down - should include discovered-1 (discovered from origin-1)
+	issues, err := executor.Execute("id = origin-1 expand down")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 2)
+
+	ids := make(map[string]bool)
+	for _, issue := range issues {
+		ids[issue.ID] = true
+	}
+
+	require.True(t, ids["origin-1"], "should include base issue")
+	require.True(t, ids["discovered-1"], "should include discovered issue")
+}
+
 func TestIsBQLQuery(t *testing.T) {
 	tests := []struct {
 		input string

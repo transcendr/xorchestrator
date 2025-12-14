@@ -59,11 +59,12 @@ type Issue struct {
 	UpdatedAt          time.Time `json:"updated_at"`
 
 	// Dependency tracking
-	BlockedBy []string `json:"blocked_by"`
-	Blocks    []string `json:"blocks"`
-	Children  []string `json:"children"`
-	Related   []string `json:"related"`
-	ParentID  string   `json:"parent_id"`
+	BlockedBy      []string `json:"blocked_by"`
+	Blocks         []string `json:"blocks"`
+	Children       []string `json:"children"`
+	DiscoveredFrom []string `json:"discovered_from"` // Issues this was discovered from
+	Discovered     []string `json:"discovered"`      // Issues discovered from this one
+	ParentID       string   `json:"parent_id"`
 
 	// Comments (populated on demand)
 	Comments []Comment `json:"comments,omitempty"`

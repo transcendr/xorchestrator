@@ -111,6 +111,22 @@ func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 					AND child.status != 'deleted'
 			), '') as children_ids,
 			COALESCE((
+				SELECT GROUP_CONCAT(d.issue_id)
+				FROM dependencies d
+				JOIN issues related ON d.issue_id = related.id
+				WHERE d.depends_on_id = i.id
+					AND d.type = 'discovered-from'
+					AND related.status != 'deleted'
+			), '') as discovered_ids,
+			COALESCE((
+				SELECT GROUP_CONCAT(d.depends_on_id)
+				FROM dependencies d
+				JOIN issues related ON d.depends_on_id = related.id
+				WHERE d.issue_id = i.id
+					AND d.type = 'discovered-from'
+					AND related.status != 'deleted'
+			), '') as discovered_from_ids,
+			COALESCE((
 				SELECT GROUP_CONCAT(l.label)
 				FROM labels l
 				WHERE l.issue_id = i.id
@@ -161,6 +177,8 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 			childrenIDs        string
 			blockerIDs         string
 			blocksIDs          string
+			discoveredIDs      string
+			discoveredFromIDs  string
 			labelsStr          string
 		)
 
@@ -181,6 +199,8 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 			&blockerIDs,
 			&blocksIDs,
 			&childrenIDs,
+			&discoveredIDs,
+			&discoveredFromIDs,
 			&labelsStr,
 			&issue.CommentCount,
 		)
@@ -221,6 +241,16 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 
 		if childrenIDs != "" {
 			issue.Children = strings.Split(childrenIDs, ",")
+		}
+
+		// Parse discovered IDs (issues discovered from this one)
+		if discoveredIDs != "" {
+			issue.Discovered = strings.Split(discoveredIDs, ",")
+		}
+
+		// Parse discovered-from IDs (issues this was discovered from)
+		if discoveredFromIDs != "" {
+			issue.DiscoveredFrom = strings.Split(discoveredFromIDs, ",")
 		}
 
 		// Parse labels from comma-separated string
@@ -336,6 +366,14 @@ func (e *Executor) queryRelatedIDs(issueIDs []string, expandType ExpandType) ([]
 				AND d.type = 'blocks'
 				AND i.status != 'deleted'
 		`, inClause))
+		// Discovered-from: issues this one was discovered from (origin direction)
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.depends_on_id FROM dependencies d
+			JOIN issues i ON d.depends_on_id = i.id
+			WHERE d.issue_id IN (%s)
+				AND d.type = 'discovered-from'
+				AND i.status != 'deleted'
+		`, inClause))
 
 	case ExpandDown:
 		// Down: traverse toward dependents (children + blocks)
@@ -353,6 +391,14 @@ func (e *Executor) queryRelatedIDs(issueIDs []string, expandType ExpandType) ([]
 			JOIN issues i ON d.issue_id = i.id
 			WHERE d.depends_on_id IN (%s)
 				AND d.type = 'blocks'
+				AND i.status != 'deleted'
+		`, inClause))
+		// Discovered-from: issues discovered from this one (discoverer direction)
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.issue_id FROM dependencies d
+			JOIN issues i ON d.issue_id = i.id
+			WHERE d.depends_on_id IN (%s)
+				AND d.type = 'discovered-from'
 				AND i.status != 'deleted'
 		`, inClause))
 
@@ -469,6 +515,22 @@ func (e *Executor) fetchIssuesByIDs(ids []string) ([]beads.Issue, error) {
 					AND d.type = 'parent-child'
 					AND child.status != 'deleted'
 			), '') as children_ids,
+			COALESCE((
+				SELECT GROUP_CONCAT(d.issue_id)
+				FROM dependencies d
+				JOIN issues related ON d.issue_id = related.id
+				WHERE d.depends_on_id = i.id
+					AND d.type = 'discovered-from'
+					AND related.status != 'deleted'
+			), '') as discovered_ids,
+			COALESCE((
+				SELECT GROUP_CONCAT(d.depends_on_id)
+				FROM dependencies d
+				JOIN issues related ON d.depends_on_id = related.id
+				WHERE d.issue_id = i.id
+					AND d.type = 'discovered-from'
+					AND related.status != 'deleted'
+			), '') as discovered_from_ids,
 			COALESCE((
 				SELECT GROUP_CONCAT(l.label)
 				FROM labels l

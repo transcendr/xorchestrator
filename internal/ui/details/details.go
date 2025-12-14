@@ -39,8 +39,8 @@ type CommentLoader interface {
 // DependencyItem holds loaded dependency data for display.
 type DependencyItem struct {
 	Issue    *beads.Issue // Full issue data (nil if load failed)
-	ID       string       // Always available (from BlockedBy/Blocks/Related)
-	Category string       // "blocked_by", "blocks", or "related"
+	ID       string       // Always available (from BlockedBy/Blocks/DiscoveredFrom/Discovered)
+	Category string       // "blocked_by", "blocks", "children", "discovered_from", or "discovered"
 }
 
 // Messages emitted by the details view for the app to handle.
@@ -690,7 +690,7 @@ func (m Model) renderDependenciesSection() string {
 	indentedDivider := indent + divider
 
 	// Group by category
-	var children, blockedBy, blocks, related []DependencyItem
+	var children, blockedBy, blocks, discoveredFrom, discovered []DependencyItem
 	for _, dep := range m.dependencies {
 		switch dep.Category {
 		case "children":
@@ -699,8 +699,10 @@ func (m Model) renderDependenciesSection() string {
 			blockedBy = append(blockedBy, dep)
 		case "blocks":
 			blocks = append(blocks, dep)
-		case "related":
-			related = append(related, dep)
+		case "discovered_from":
+			discoveredFrom = append(discoveredFrom, dep)
+		case "discovered":
+			discovered = append(discovered, dep)
 		}
 	}
 
@@ -745,13 +747,26 @@ func (m Model) renderDependenciesSection() string {
 		}
 	}
 
-	if len(related) > 0 {
+	if len(discoveredFrom) > 0 {
 		sb.WriteString(indentedDivider)
 		sb.WriteString("\n")
 		sb.WriteString(indent)
-		sb.WriteString(labelStyle.Render("Related"))
+		sb.WriteString(labelStyle.Render("Disc. from"))
 		sb.WriteString("\n")
-		for _, dep := range related {
+		for _, dep := range discoveredFrom {
+			sb.WriteString(m.renderDependencyItem(dep, depIndex == m.selectedDependency))
+			sb.WriteString("\n")
+			depIndex++
+		}
+	}
+
+	if len(discovered) > 0 {
+		sb.WriteString(indentedDivider)
+		sb.WriteString("\n")
+		sb.WriteString(indent)
+		sb.WriteString(labelStyle.Render("Discovered"))
+		sb.WriteString("\n")
+		for _, dep := range discovered {
 			sb.WriteString(m.renderDependencyItem(dep, depIndex == m.selectedDependency))
 			sb.WriteString("\n")
 			depIndex++
@@ -878,11 +893,11 @@ func (m Model) IssueID() string {
 }
 
 // loadDependencies populates the dependencies slice from the issue's
-// BlockedBy, Blocks, Children and Related fields. If a client is available,
+// BlockedBy, Blocks, Children, DiscoveredFrom, and Discovered fields. If a client is available,
 // it fetches full issue data for each dependency.
 func (m *Model) loadDependencies() {
 	// Collect all dependency IDs with their categories
-	// Order must match renderDependenciesSection: blocked_by, blocks, children, related
+	// Order must match renderDependenciesSection: blocked_by, blocks, children, discovered_from, discovered
 	var items []DependencyItem
 	for _, id := range m.issue.BlockedBy {
 		items = append(items, DependencyItem{ID: id, Category: "blocked_by"})
@@ -893,8 +908,11 @@ func (m *Model) loadDependencies() {
 	for _, id := range m.issue.Children {
 		items = append(items, DependencyItem{ID: id, Category: "children"})
 	}
-	for _, id := range m.issue.Related {
-		items = append(items, DependencyItem{ID: id, Category: "related"})
+	for _, id := range m.issue.DiscoveredFrom {
+		items = append(items, DependencyItem{ID: id, Category: "discovered_from"})
+	}
+	for _, id := range m.issue.Discovered {
+		items = append(items, DependencyItem{ID: id, Category: "discovered"})
 	}
 
 	if len(items) == 0 {
