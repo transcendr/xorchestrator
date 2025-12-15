@@ -159,7 +159,7 @@ func (m Model) SetSize(width, height int) Model {
 		m.viewport.Width = viewportWidth
 		m.viewport.Height = viewportHeight
 		m.viewport.SetContent(m.renderLeftColumn())
-		m.viewport.GotoTop()
+		// Scroll position preserved - GotoTop() removed to enable scroll restoration
 	}
 
 	return m
@@ -906,6 +906,18 @@ func formatType(t beads.IssueType) string {
 // IssueID returns the ID of the currently displayed issue.
 func (m Model) IssueID() string {
 	return m.issue.ID
+}
+
+// YOffset returns the current viewport scroll position.
+func (m Model) YOffset() int {
+	return m.viewport.YOffset
+}
+
+// SetYOffset restores the viewport scroll position.
+// The offset is clamped to valid range by the viewport.
+func (m Model) SetYOffset(offset int) Model {
+	m.viewport.SetYOffset(offset)
+	return m
 }
 
 // loadDependencies populates the dependencies slice from the issue's

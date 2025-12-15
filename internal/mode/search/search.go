@@ -1353,6 +1353,17 @@ func (m *Model) updateDetailPanel() {
 	if m.selectedIdx >= 0 && m.selectedIdx < len(m.results) {
 		issue := m.results[m.selectedIdx]
 		rightWidth := m.width - (m.width / 2) - 1
+
+		// Preserve scroll position if viewing the same issue
+		var prevOffset int
+		var sameIssue bool
+		if m.hasDetail {
+			sameIssue = m.details.IssueID() == issue.ID
+			if sameIssue {
+				prevOffset = m.details.YOffset()
+			}
+		}
+
 		// rightWidth-2 for left/right border, height-2 for top/bottom border
 		// Pass nil for loaders if Executor/Client is nil to avoid interface nil vs typed-nil issues
 		var depLoader details.DependencyLoader
@@ -1364,6 +1375,12 @@ func (m *Model) updateDetailPanel() {
 			commentLoader = m.services.Client
 		}
 		m.details = details.New(issue, depLoader, commentLoader).SetSize(rightWidth-2, m.height-2)
+
+		// Restore scroll position for same issue
+		if sameIssue {
+			m.details = m.details.SetYOffset(prevOffset)
+		}
+
 		m.hasDetail = true
 	}
 }
@@ -1378,6 +1395,17 @@ func (m *Model) updateDetailFromTree() {
 		return
 	}
 	rightWidth := m.width - (m.width / 2) - 1
+
+	// Preserve scroll position if viewing the same issue
+	var prevOffset int
+	var sameIssue bool
+	if m.hasDetail {
+		sameIssue = m.details.IssueID() == node.Issue.ID
+		if sameIssue {
+			prevOffset = m.details.YOffset()
+		}
+	}
+
 	// rightWidth-2 for left/right border, height-2 for top/bottom border
 	// Pass nil for loaders if Executor/Client is nil to avoid interface nil vs typed-nil issues
 	var depLoader details.DependencyLoader
@@ -1389,6 +1417,12 @@ func (m *Model) updateDetailFromTree() {
 		commentLoader = m.services.Client
 	}
 	m.details = details.New(node.Issue, depLoader, commentLoader).SetSize(rightWidth-2, m.height-2)
+
+	// Restore scroll position for same issue
+	if sameIssue {
+		m.details = m.details.SetYOffset(prevOffset)
+	}
+
 	m.hasDetail = true
 }
 
@@ -1597,6 +1631,13 @@ func (m Model) handleSearchResults(msg searchResultsMsg) (Model, tea.Cmd) {
 
 	m.searchErr = nil
 	m.showSearchErr = false // Clear error display on successful search
+
+	// Preserve selected issue ID before updating results
+	var prevSelectedID string
+	if m.selectedIdx >= 0 && m.selectedIdx < len(m.results) {
+		prevSelectedID = m.results[m.selectedIdx].ID
+	}
+
 	m.results = msg.issues
 
 	// Convert to list items
@@ -1606,10 +1647,19 @@ func (m Model) handleSearchResults(msg searchResultsMsg) (Model, tea.Cmd) {
 	}
 	m.resultsList.SetItems(items)
 
-	// Select first item and show details
+	// Try to preserve selection on same issue, fall back to first item
 	if len(msg.issues) > 0 {
-		m.selectedIdx = 0
-		m.resultsList.Select(0)
+		newIdx := 0
+		if prevSelectedID != "" {
+			for i, issue := range msg.issues {
+				if issue.ID == prevSelectedID {
+					newIdx = i
+					break
+				}
+			}
+		}
+		m.selectedIdx = newIdx
+		m.resultsList.Select(newIdx)
 		m.updateDetailPanel()
 	} else {
 		m.hasDetail = false

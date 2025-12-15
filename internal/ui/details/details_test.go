@@ -1143,3 +1143,70 @@ func TestFormatDuration(t *testing.T) {
 		})
 	}
 }
+
+func TestDetails_YOffset_GetterSetter(t *testing.T) {
+	issue := beads.Issue{
+		ID:              "test-1",
+		TitleText:       "Test Issue",
+		DescriptionText: strings.Repeat("Long content line\n", 100), // Lots of content to enable scrolling
+		CreatedAt:       time.Now(),
+	}
+	m := New(issue, nil, nil)
+	m = m.SetSize(100, 20) // Small height to enable scrolling (matching existing test pattern)
+
+	// Initial offset is 0
+	require.Equal(t, 0, m.YOffset(), "initial YOffset should be 0")
+
+	// Scroll down using key (like TestDetails_Update_ScrollDown)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	offset1 := m.viewport.YOffset // Direct access like existing tests
+	require.Greater(t, offset1, 0, "should have scrolled down")
+
+	// Verify YOffset() getter returns same value
+	require.Equal(t, offset1, m.YOffset(), "YOffset() should return viewport.YOffset")
+
+	// Test SetYOffset to restore position to top
+	m = m.SetYOffset(0)
+	require.Equal(t, 0, m.YOffset(), "YOffset should be 0 after SetYOffset(0)")
+
+	// Restore to previous offset
+	m = m.SetYOffset(offset1)
+	require.Equal(t, offset1, m.YOffset(), "YOffset should be restored to previous value")
+}
+
+func TestDetails_SetSize_PreservesScroll(t *testing.T) {
+	// Create issue with enough content to scroll
+	issue := beads.Issue{
+		ID:              "test-1",
+		TitleText:       "Test Issue",
+		DescriptionText: strings.Repeat("Long content line\n", 100),
+		CreatedAt:       time.Now(),
+	}
+	m := New(issue, nil, nil)
+	m = m.SetSize(100, 20) // Small height to enable scrolling
+
+	// Scroll down using key presses (like TestDetails_Update_ScrollDown)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	scrolledOffset := m.viewport.YOffset
+	require.Greater(t, scrolledOffset, 0, "should have scrolled down")
+
+	// Resize - scroll should be preserved (no GotoTop in else branch)
+	m = m.SetSize(120, 25)
+	require.Equal(t, scrolledOffset, m.YOffset(), "scroll should be preserved on resize")
+}
+
+func TestDetails_SetSize_InitializedAtTop(t *testing.T) {
+	// Create issue with long content
+	issue := beads.Issue{
+		ID:              "test-1",
+		TitleText:       "Test Issue",
+		DescriptionText: strings.Repeat("Line\n", 50),
+		CreatedAt:       time.Now(),
+	}
+
+	// New model starts at top on first SetSize (initialization)
+	m := New(issue, nil, nil).SetSize(80, 20)
+	require.Equal(t, 0, m.YOffset(), "new model should start at top")
+}
