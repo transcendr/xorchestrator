@@ -1210,3 +1210,26 @@ func TestDetails_SetSize_InitializedAtTop(t *testing.T) {
 	m := New(issue, nil, nil).SetSize(80, 20)
 	require.Equal(t, 0, m.YOffset(), "new model should start at top")
 }
+
+// TestDetails_View_Golden_LongLabels tests that long labels wrap within the metadata column bounds.
+// This is a regression test for labels overflowing into the left content column.
+// Run with -update flag to update golden files: go test -update ./internal/ui/details/...
+func TestDetails_View_Golden_LongLabels(t *testing.T) {
+	issue := beads.Issue{
+		ID:              "sesh-r3z",
+		TitleText:       "Spec: Embed Children in Session List",
+		DescriptionText: "## Overview\n\nAdd `--include-children` flag to `session:list`.",
+		Type:            beads.TypeFeature,
+		Priority:        beads.PriorityMedium,
+		Status:          beads.StatusOpen,
+		// Labels longer than metadataColWidth (34) minus indent (2) = 32 chars available
+		// "spec:018-embed-children-list" is 28 chars - fits
+		// "very-long-label-that-exceeds-column-bounds" is 42 chars - should wrap
+		Labels:    []string{"spec:018-embed-children-list", "very-long-label-that-exceeds-column-bounds"},
+		CreatedAt: time.Date(2025, 12, 17, 16, 24, 59, 0, time.UTC),
+	}
+	m := New(issue, nil, nil).SetSize(120, 30)
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}

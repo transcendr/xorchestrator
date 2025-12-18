@@ -593,8 +593,16 @@ func (m Model) renderMetadataColumn() string {
 		sb.WriteString(indent)
 		sb.WriteString(labelStyle.Render("Labels"))
 		sb.WriteString("\n")
+
+		labelIndent := indent + " "
+		maxLabelWidth := metadataColWidth - len(labelIndent) - 4
 		for _, label := range issue.Labels {
-			sb.WriteString(indent + " " + label + "\n")
+			// Split long labels across multiple lines, each properly indented
+			for len(label) > 0 {
+				lineLen := min(len(label), maxLabelWidth)
+				sb.WriteString(labelIndent + label[:lineLen] + "\n")
+				label = label[lineLen:]
+			}
 		}
 	}
 
