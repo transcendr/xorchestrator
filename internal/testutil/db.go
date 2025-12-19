@@ -24,6 +24,8 @@ CREATE TABLE issues (
 	priority INTEGER NOT NULL DEFAULT 2,
 	issue_type TEXT NOT NULL DEFAULT 'task',
 	assignee TEXT,
+	sender TEXT,
+	ephemeral INTEGER,
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	closed_at DATETIME,

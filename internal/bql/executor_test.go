@@ -1242,3 +1242,126 @@ func TestExecutor_FetchByIDsExcludesDeletedAt(t *testing.T) {
 	require.True(t, ids["task-1"])
 	require.False(t, ids["deleted-task"], "deleted task should be excluded from expand")
 }
+
+// =============================================================================
+// Sender and Ephemeral Field Tests
+// =============================================================================
+
+func TestExecutor_SenderPopulated(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Issue with sender"), testutil.Sender("alice@example.com"))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("id = issue-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.Equal(t, "alice@example.com", issues[0].Sender)
+}
+
+func TestExecutor_SenderEmptyByDefault(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Issue without sender"))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("id = issue-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.Equal(t, "", issues[0].Sender, "default sender should be empty string")
+}
+
+func TestExecutor_EphemeralTrue(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Ephemeral issue"), testutil.Ephemeral(true))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("id = issue-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.True(t, issues[0].Ephemeral, "Ephemeral should be true")
+}
+
+func TestExecutor_EphemeralFalseByDefault(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Non-ephemeral issue"))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("id = issue-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.False(t, issues[0].Ephemeral, "default ephemeral should be false")
+}
+
+func TestExecutor_SenderAndEphemeralTogether(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Full issue"),
+				testutil.Sender("bob@example.com"),
+				testutil.Ephemeral(true),
+			)
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("id = issue-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.Equal(t, "bob@example.com", issues[0].Sender)
+	require.True(t, issues[0].Ephemeral)
+}
+
+func TestExecutor_MultipleIssuesWithDifferentSenderAndEphemeral(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Issue 1"), testutil.Sender("alice"), testutil.Ephemeral(true)).
+			WithIssue("issue-2", testutil.Title("Issue 2"), testutil.Sender("bob")).
+			WithIssue("issue-3", testutil.Title("Issue 3")) // No sender or ephemeral
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("order by id asc")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 3)
+
+	// Build map for easier assertion
+	issueMap := make(map[string]beads.Issue)
+	for _, issue := range issues {
+		issueMap[issue.ID] = issue
+	}
+
+	// issue-1: sender=alice, ephemeral=true
+	require.Equal(t, "alice", issueMap["issue-1"].Sender)
+	require.True(t, issueMap["issue-1"].Ephemeral)
+
+	// issue-2: sender=bob, ephemeral=false (default)
+	require.Equal(t, "bob", issueMap["issue-2"].Sender)
+	require.False(t, issueMap["issue-2"].Ephemeral)
+
+	// issue-3: no sender or ephemeral (defaults)
+	require.Equal(t, "", issueMap["issue-3"].Sender)
+	require.False(t, issueMap["issue-3"].Ephemeral)
+}

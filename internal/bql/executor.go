@@ -78,6 +78,8 @@ func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 			i.priority,
 			i.issue_type,
 			i.assignee,
+			i.sender,
+			i.ephemeral,
 			i.created_at,
 			i.updated_at,
 			i.closed_at,
@@ -175,6 +177,8 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 			acceptanceCriteria sql.NullString
 			notes              sql.NullString
 			assignee           sql.NullString
+			sender             sql.NullString
+			ephemeral          sql.NullBool
 			closedAt           sql.NullTime
 			parentId           string
 			childrenIDs        string
@@ -196,6 +200,8 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 			&issue.Priority,
 			&issue.Type,
 			&assignee,
+			&sender,
+			&ephemeral,
 			&issue.CreatedAt,
 			&issue.UpdatedAt,
 			&closedAt,
@@ -227,6 +233,12 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 		}
 		if assignee.Valid {
 			issue.Assignee = assignee.String
+		}
+		if sender.Valid {
+			issue.Sender = sender.String
+		}
+		if ephemeral.Valid && ephemeral.Bool {
+			issue.Ephemeral = true
 		}
 		if closedAt.Valid {
 			issue.ClosedAt = closedAt.Time
@@ -490,6 +502,8 @@ func (e *Executor) fetchIssuesByIDs(ids []string) ([]beads.Issue, error) {
 			i.priority,
 			i.issue_type,
 			i.assignee,
+			i.sender,
+			i.ephemeral,
 			i.created_at,
 			i.updated_at,
 			i.closed_at,

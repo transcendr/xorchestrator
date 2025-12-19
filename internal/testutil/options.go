@@ -22,6 +22,8 @@ type issueData struct {
 	priority    int
 	issueType   string
 	assignee    *string
+	sender      string
+	ephemeral   bool
 	labels      []string
 	comments    []CommentData
 	createdAt   time.Time
@@ -111,4 +113,14 @@ func ClosedAt(t time.Time) IssueOption {
 // DeletedAt sets the deleted_at timestamp for soft-deleted issues.
 func DeletedAt(t time.Time) IssueOption {
 	return func(i *issueData) { i.deletedAt = &t }
+}
+
+// Sender sets the sender field for the issue.
+func Sender(s string) IssueOption {
+	return func(i *issueData) { i.sender = s }
+}
+
+// Ephemeral sets the ephemeral flag for the issue.
+func Ephemeral(e bool) IssueOption {
+	return func(i *issueData) { i.ephemeral = e }
 }
