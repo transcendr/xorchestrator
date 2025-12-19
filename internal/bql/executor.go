@@ -138,7 +138,8 @@ func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 				WHERE c.issue_id = i.id
 			) as comment_count
 		FROM issues i
-		WHERE i.status != 'deleted'
+		WHERE i.status not in ('deleted', 'tombstone')
+	  AND i.deleted_at is null
 	`
 
 	if whereClause != "" {
@@ -550,7 +551,8 @@ func (e *Executor) fetchIssuesByIDs(ids []string) ([]beads.Issue, error) {
 			) as comment_count
 		FROM issues i
 		WHERE i.id IN (%s)
-			AND i.status != 'deleted'
+			AND i.status not in ('deleted', 'tombstone')
+		  AND i.deleted_at is null 
 	`, inClause)
 
 	rows, err := e.db.Query(sqlQuery, params...)

@@ -1103,3 +1103,142 @@ func TestExecutor_ExpandLargeFanout(t *testing.T) {
 	require.Len(t, issues, 101, "should return epic + 100 children")
 	require.Less(t, elapsed, time.Second, "large fan-out should complete in <1s, took %v", elapsed)
 }
+
+// =============================================================================
+// Soft Delete and Tombstone Tests
+// =============================================================================
+
+func TestExecutor_ExcludesTombstoneStatus(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("open-1", testutil.Title("Open Issue"), testutil.Status("open")).
+			WithIssue("tombstone-1", testutil.Title("Tombstone Issue"), testutil.Status("tombstone"))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	// Query all issues - tombstone should be excluded
+	issues, err := executor.Execute("order by id asc")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1, "tombstone issues should be excluded")
+	require.Equal(t, "open-1", issues[0].ID)
+}
+
+func TestExecutor_ExcludesDeletedAtIssues(t *testing.T) {
+	deletedTime := time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("open-1", testutil.Title("Open Issue"), testutil.Status("open")).
+			WithIssue("soft-deleted-1", testutil.Title("Soft Deleted"), testutil.Status("deleted"), testutil.DeletedAt(deletedTime))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	// Query all issues - soft-deleted should be excluded
+	issues, err := executor.Execute("order by id asc")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1, "soft-deleted issues should be excluded")
+	require.Equal(t, "open-1", issues[0].ID)
+}
+
+func TestExecutor_ExcludesDeletedStatusWithDeletedAt(t *testing.T) {
+	deletedTime := time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("open-1", testutil.Title("Open Issue"), testutil.Status("open")).
+			WithIssue("deleted-1", testutil.Title("Deleted Issue"), testutil.Status("deleted"), testutil.DeletedAt(deletedTime))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	// Query all issues - deleted should be excluded (both status and deleted_at check)
+	issues, err := executor.Execute("order by id asc")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1, "deleted issues should be excluded")
+	require.Equal(t, "open-1", issues[0].ID)
+}
+
+func TestExecutor_ExcludesMultipleSoftDeleteStates(t *testing.T) {
+	deletedTime := time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("open-1", testutil.Title("Open Issue")).
+			WithIssue("closed-1", testutil.Title("Closed Issue"), testutil.Status("closed")).
+			WithIssue("deleted-1", testutil.Title("Deleted"), testutil.Status("deleted"), testutil.DeletedAt(deletedTime)).
+			WithIssue("tombstone-1", testutil.Title("Tombstone"), testutil.Status("tombstone"))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	// Query all issues
+	issues, err := executor.Execute("order by id asc")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 2, "should return only open and closed, not deleted/tombstone")
+
+	ids := collectIDs(issues)
+	require.True(t, ids["open-1"], "open issues should be included")
+	require.True(t, ids["closed-1"], "closed issues should be included")
+	require.False(t, ids["deleted-1"], "deleted issues should be excluded")
+	require.False(t, ids["tombstone-1"], "tombstone issues should be excluded")
+}
+
+func TestExecutor_FetchByIDsExcludesTombstone(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("epic-1", testutil.Title("Epic"), testutil.IssueType("epic")).
+			WithIssue("task-1", testutil.Title("Task")).
+			WithIssue("tombstone-task", testutil.Title("Tombstone Task"), testutil.Status("tombstone")).
+			WithDependency("task-1", "epic-1", "parent-child").
+			WithDependency("tombstone-task", "epic-1", "parent-child")
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	// Expand down should not include tombstone task
+	issues, err := executor.Execute("id = epic-1 expand down")
+	require.NoError(t, err)
+
+	ids := collectIDs(issues)
+	require.Len(t, ids, 2, "should return epic + non-tombstone child")
+	require.True(t, ids["epic-1"])
+	require.True(t, ids["task-1"])
+	require.False(t, ids["tombstone-task"], "tombstone task should be excluded from expand")
+}
+
+func TestExecutor_FetchByIDsExcludesDeletedAt(t *testing.T) {
+	deletedTime := time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("epic-1", testutil.Title("Epic"), testutil.IssueType("epic")).
+			WithIssue("task-1", testutil.Title("Task")).
+			WithIssue("deleted-task", testutil.Title("Deleted Task"), testutil.Status("deleted"), testutil.DeletedAt(deletedTime)).
+			WithDependency("task-1", "epic-1", "parent-child").
+			WithDependency("deleted-task", "epic-1", "parent-child")
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	// Expand down should not include soft-deleted task
+	issues, err := executor.Execute("id = epic-1 expand down")
+	require.NoError(t, err)
+
+	ids := collectIDs(issues)
+	require.Len(t, ids, 2, "should return epic + non-deleted child")
+	require.True(t, ids["epic-1"])
+	require.True(t, ids["task-1"])
+	require.False(t, ids["deleted-task"], "deleted task should be excluded from expand")
+}

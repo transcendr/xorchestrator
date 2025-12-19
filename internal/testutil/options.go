@@ -27,6 +27,7 @@ type issueData struct {
 	createdAt   time.Time
 	updatedAt   time.Time
 	closedAt    *time.Time
+	deletedAt   *time.Time
 }
 
 // defaultIssue returns an issueData with sensible defaults.
@@ -105,4 +106,9 @@ func UpdatedAt(t time.Time) IssueOption {
 // ClosedAt sets the closed_at timestamp explicitly.
 func ClosedAt(t time.Time) IssueOption {
 	return func(i *issueData) { i.closedAt = &t }
+}
+
+// DeletedAt sets the deleted_at timestamp for soft-deleted issues.
+func DeletedAt(t time.Time) IssueOption {
+	return func(i *issueData) { i.deletedAt = &t }
 }

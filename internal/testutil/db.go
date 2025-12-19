@@ -27,7 +27,8 @@ CREATE TABLE issues (
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	closed_at DATETIME,
-	CHECK ((status = 'closed') = (closed_at IS NOT NULL))
+	deleted_at DATETIME,
+	CHECK ((status = 'closed') = (closed_at IS NOT NULL) OR status IN ('deleted', 'tombstone'))
 );
 
 CREATE TABLE labels (
