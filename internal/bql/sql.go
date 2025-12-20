@@ -81,6 +81,15 @@ func (b *SQLBuilder) buildCompare(e *CompareExpr) string {
 		}
 		return "i.pinned = 0"
 
+	case "is_template":
+		// is_template is a nullable boolean column (INTEGER in SQLite)
+		// is_template = true -> i.is_template = 1
+		// is_template = false -> i.is_template = 0 (won't match NULL)
+		if e.Value.Bool {
+			return "i.is_template = 1"
+		}
+		return "i.is_template = 0"
+
 	case "label":
 		// Label check via labels table
 		// Supports exact match (=, !=) and partial match (~, !~)

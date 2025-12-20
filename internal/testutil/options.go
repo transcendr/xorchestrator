@@ -25,6 +25,7 @@ type issueData struct {
 	sender      string
 	ephemeral   bool
 	pinned      *bool
+	isTemplate  *bool
 	labels      []string
 	comments    []CommentData
 	createdAt   time.Time
@@ -129,4 +130,9 @@ func Ephemeral(e bool) IssueOption {
 // Pinned sets the pinned flag for the issue.
 func Pinned(p bool) IssueOption {
 	return func(i *issueData) { i.pinned = &p }
+}
+
+// IsTemplate sets the is_template flag for the issue.
+func IsTemplate(t bool) IssueOption {
+	return func(i *issueData) { i.isTemplate = &t }
 }

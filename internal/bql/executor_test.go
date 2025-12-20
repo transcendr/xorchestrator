@@ -1496,3 +1496,134 @@ func TestExecutor_QueryByPinnedFalse(t *testing.T) {
 	require.Len(t, issues, 1)
 	require.Equal(t, "not-pinned", issues[0].ID)
 }
+
+// =============================================================================
+// IsTemplate Field Tests
+// =============================================================================
+
+func TestExecutor_IsTemplateTrue(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Template issue"), testutil.IsTemplate(true))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("id = issue-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.NotNil(t, issues[0].IsTemplate, "IsTemplate should not be nil")
+	require.True(t, *issues[0].IsTemplate, "IsTemplate should be true")
+}
+
+func TestExecutor_IsTemplateFalse(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Not template issue"), testutil.IsTemplate(false))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("id = issue-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.NotNil(t, issues[0].IsTemplate, "IsTemplate should not be nil when explicitly set to false")
+	require.False(t, *issues[0].IsTemplate, "IsTemplate should be false")
+}
+
+func TestExecutor_IsTemplateNilByDefault(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Issue without is_template"))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("id = issue-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.Nil(t, issues[0].IsTemplate, "default is_template should be nil")
+}
+
+func TestExecutor_MultipleIssuesWithDifferentIsTemplate(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Issue 1"), testutil.IsTemplate(true)).
+			WithIssue("issue-2", testutil.Title("Issue 2"), testutil.IsTemplate(false)).
+			WithIssue("issue-3", testutil.Title("Issue 3")) // No is_template (nil)
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("order by id asc")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 3)
+
+	// Build map for easier assertion
+	issueMap := make(map[string]beads.Issue)
+	for _, issue := range issues {
+		issueMap[issue.ID] = issue
+	}
+
+	// issue-1: is_template=true
+	require.NotNil(t, issueMap["issue-1"].IsTemplate)
+	require.True(t, *issueMap["issue-1"].IsTemplate)
+
+	// issue-2: is_template=false (explicitly set)
+	require.NotNil(t, issueMap["issue-2"].IsTemplate)
+	require.False(t, *issueMap["issue-2"].IsTemplate)
+
+	// issue-3: is_template=nil (not set)
+	require.Nil(t, issueMap["issue-3"].IsTemplate)
+}
+
+func TestExecutor_QueryByIsTemplateTrue(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("template-1", testutil.Title("Template issue"), testutil.IsTemplate(true)).
+			WithIssue("template-2", testutil.Title("Also template"), testutil.IsTemplate(true)).
+			WithIssue("not-template", testutil.Title("Not template"), testutil.IsTemplate(false)).
+			WithIssue("unset-template", testutil.Title("IsTemplate unset")) // nil
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("is_template = true")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 2)
+	ids := make(map[string]bool)
+	for _, issue := range issues {
+		ids[issue.ID] = true
+	}
+	require.True(t, ids["template-1"])
+	require.True(t, ids["template-2"])
+}
+
+func TestExecutor_QueryByIsTemplateFalse(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("template-1", testutil.Title("Template issue"), testutil.IsTemplate(true)).
+			WithIssue("not-template", testutil.Title("Not template"), testutil.IsTemplate(false)).
+			WithIssue("unset-template", testutil.Title("IsTemplate unset")) // nil
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("is_template = false")
+	require.NoError(t, err)
+
+	// Only explicitly false, not nil
+	require.Len(t, issues, 1)
+	require.Equal(t, "not-template", issues[0].ID)
+}

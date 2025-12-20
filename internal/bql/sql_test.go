@@ -133,6 +133,30 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		require.Empty(t, params)
 	})
 
+	t.Run("is_template true", func(t *testing.T) {
+		parser := NewParser("is_template = true")
+		query, err := parser.Parse()
+		require.NoError(t, err)
+
+		builder := NewSQLBuilder(query)
+		where, _, params := builder.Build()
+
+		require.Equal(t, "i.is_template = 1", where)
+		require.Empty(t, params)
+	})
+
+	t.Run("is_template false", func(t *testing.T) {
+		parser := NewParser("is_template = false")
+		query, err := parser.Parse()
+		require.NoError(t, err)
+
+		builder := NewSQLBuilder(query)
+		where, _, params := builder.Build()
+
+		require.Equal(t, "i.is_template = 0", where)
+		require.Empty(t, params)
+	})
+
 	t.Run("single label", func(t *testing.T) {
 		parser := NewParser("label = urgent")
 		query, err := parser.Parse()

@@ -27,6 +27,7 @@ CREATE TABLE issues (
 	sender TEXT,
 	ephemeral INTEGER,
 	pinned INTEGER,
+	is_template INTEGER,
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	closed_at DATETIME,

@@ -7,17 +7,18 @@ import (
 
 // ValidFields defines the set of valid field names in BQL.
 var ValidFields = map[string]FieldType{
-	"type":     FieldEnum,
-	"priority": FieldPriority,
-	"status":   FieldEnum,
-	"blocked":  FieldBool,
-	"ready":    FieldBool,
-	"pinned":   FieldBool,
-	"label":    FieldString,
-	"title":    FieldString,
-	"id":       FieldString,
-	"created":  FieldDate,
-	"updated":  FieldDate,
+	"type":        FieldEnum,
+	"priority":    FieldPriority,
+	"status":      FieldEnum,
+	"blocked":     FieldBool,
+	"ready":       FieldBool,
+	"pinned":      FieldBool,
+	"is_template": FieldBool,
+	"label":       FieldString,
+	"title":       FieldString,
+	"id":          FieldString,
+	"created":     FieldDate,
+	"updated":     FieldDate,
 }
 
 // FieldType categorizes fields for validation.
