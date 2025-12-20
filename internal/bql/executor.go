@@ -344,8 +344,12 @@ func (e *Executor) expandIssues(baseIssues []beads.Issue, expand *ExpandClause) 
 			break
 		}
 
-		// Fetch the new issues
-		newIssues, err := e.fetchIssuesByIDs(newIDs)
+		// Fetch the new issues using existing BQL pipeline
+		idQuery := BuildIDQuery(newIDs)
+		if idQuery == "" {
+			break
+		}
+		newIssues, err := e.Execute(idQuery)
 		if err != nil {
 			log.ErrorErr(log.CatBQL, "Fetch expanded issues failed", err, "ids", len(newIDs))
 			return nil, fmt.Errorf("fetch expanded issues error: %w", err)
@@ -484,113 +488,6 @@ func (e *Executor) queryRelatedIDs(issueIDs []string, expandType ExpandType) ([]
 	}
 
 	return relatedIDs, nil
-}
-
-// fetchIssuesByIDs fetches full issue details for a list of IDs.
-func (e *Executor) fetchIssuesByIDs(ids []string) ([]beads.Issue, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-
-	// Build placeholder string for IN clause
-	placeholders := make([]string, len(ids))
-	params := make([]any, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		params[i] = id
-	}
-	inClause := strings.Join(placeholders, ",")
-
-	//nolint:gosec // G201 - inClause contains only safe ? placeholders, not user input
-	sqlQuery := fmt.Sprintf(`
-		SELECT
-			i.id,
-			i.title,
-			i.description,
-			i.design,
-			i.acceptance_criteria,
-			i.notes,
-			i.status,
-			i.priority,
-			i.issue_type,
-			i.assignee,
-			i.sender,
-			i.ephemeral,
-			i.pinned,
-			i.is_template,
-			i.created_at,
-			i.updated_at,
-			i.closed_at,
-			COALESCE((
-				SELECT d.depends_on_id
-				FROM dependencies d
-				WHERE d.issue_id = i.id AND d.type = 'parent-child'
-				LIMIT 1
-			), '') as parent_id,
-			COALESCE((
-				SELECT GROUP_CONCAT(d.depends_on_id)
-				FROM dependencies d
-				JOIN issues blocker ON d.depends_on_id = blocker.id
-				WHERE d.issue_id = i.id
-					AND d.type = 'blocks'
-				    AND blocker.status != 'deleted'
-			), '') as blocker_ids,
-			COALESCE((
-				SELECT GROUP_CONCAT(d.issue_id)
-				FROM dependencies d
-				JOIN issues child ON d.issue_id = child.id
-				WHERE d.depends_on_id = i.id
-					AND d.type = 'blocks'
-					AND child.status != 'deleted'
-			), '') as blocks_ids,
-			COALESCE((
-				SELECT GROUP_CONCAT(d.issue_id)
-				FROM dependencies d
-				JOIN issues child ON d.issue_id = child.id
-				WHERE d.depends_on_id = i.id
-					AND d.type = 'parent-child'
-					AND child.status != 'deleted'
-			), '') as children_ids,
-			COALESCE((
-				SELECT GROUP_CONCAT(d.issue_id)
-				FROM dependencies d
-				JOIN issues related ON d.issue_id = related.id
-				WHERE d.depends_on_id = i.id
-					AND d.type = 'discovered-from'
-					AND related.status != 'deleted'
-			), '') as discovered_ids,
-			COALESCE((
-				SELECT GROUP_CONCAT(d.depends_on_id)
-				FROM dependencies d
-				JOIN issues related ON d.depends_on_id = related.id
-				WHERE d.issue_id = i.id
-					AND d.type = 'discovered-from'
-					AND related.status != 'deleted'
-			), '') as discovered_from_ids,
-			COALESCE((
-				SELECT GROUP_CONCAT(l.label)
-				FROM labels l
-				WHERE l.issue_id = i.id
-			), '') as labels,
-			(
-				SELECT COUNT(*)
-				FROM comments c
-				WHERE c.issue_id = i.id
-			) as comment_count
-		FROM issues i
-		WHERE i.id IN (%s)
-			AND i.status not in ('deleted', 'tombstone')
-		  AND i.deleted_at is null 
-	`, inClause)
-
-	rows, err := e.db.Query(sqlQuery, params...)
-	if err != nil {
-		log.ErrorErr(log.CatDB, "Fetch by IDs failed", err, "idCount", len(ids))
-		return nil, fmt.Errorf("fetch by IDs error: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	return e.scanIssues(rows)
 }
 
 // BuildIDQuery constructs a BQL query to fetch issues by their IDs.
