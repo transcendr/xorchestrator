@@ -90,7 +90,7 @@ type Model struct {
 	labelEditor   labeleditor.Model
 
 	// Delete operation state
-	deleteIsCascade bool // True if deleting an epic with children
+	deleteIssueIDs []string // IDs to delete (includes descendants for epics)
 
 	// Focus management
 	focus FocusPane
@@ -2365,7 +2365,7 @@ func (m Model) openDeleteConfirm(msg details.DeleteIssueMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.modal, m.deleteIsCascade = shared.CreateDeleteModal(issue, m.services.Executor)
+	m.modal, _, m.deleteIssueIDs = shared.CreateDeleteModal(issue, m.services.Executor)
 	m.modal.SetSize(m.width, m.height)
 	m.selectedIssue = issue
 	m.view = ViewDeleteConfirm
@@ -2376,19 +2376,18 @@ func (m Model) openDeleteConfirm(msg details.DeleteIssueMsg) (Model, tea.Cmd) {
 func (m Model) handleModalSubmit(_ modal.SubmitMsg) (Model, tea.Cmd) {
 	if m.view == ViewDeleteConfirm {
 		if m.selectedIssue != nil {
-			issueID := m.selectedIssue.ID
+			issueIDs := m.deleteIssueIDs
 			parentID := m.selectedIssue.ParentID
-			cascade := m.deleteIsCascade
 			// Determine if this is the tree root being deleted
 			wasTreeRoot := m.subMode == mode.SubModeTree &&
 				m.treeRoot != nil &&
 				m.selectedIssue.ID == m.treeRoot.ID
 			m.selectedIssue = nil
-			m.deleteIsCascade = false
-			return m, deleteIssueCmd(issueID, parentID, wasTreeRoot, cascade)
+			m.deleteIssueIDs = nil
+			return m, deleteIssueCmd(issueIDs, parentID, wasTreeRoot)
 		}
 		m.view = ViewSearch
-		m.deleteIsCascade = false
+		m.deleteIssueIDs = nil
 		return m, nil
 	}
 	return m, nil
@@ -2399,7 +2398,7 @@ func (m Model) handleModalCancel() (Model, tea.Cmd) {
 	if m.view == ViewDeleteConfirm {
 		m.view = ViewSearch
 		m.selectedIssue = nil
-		m.deleteIsCascade = false
+		m.deleteIssueIDs = nil
 		return m, nil
 	}
 	return m, nil
@@ -2487,16 +2486,14 @@ type labelsChangedMsg struct {
 
 // Async commands
 
-func deleteIssueCmd(issueID, parentID string, wasTreeRoot, cascade bool) tea.Cmd {
+func deleteIssueCmd(issueIDs []string, parentID string, wasTreeRoot bool) tea.Cmd {
 	return func() tea.Msg {
-		var err error
-		if cascade {
-			err = beads.DeleteIssueCascade(issueID)
-		} else {
-			err = beads.DeleteIssue(issueID)
+		if len(issueIDs) == 0 {
+			return issueDeletedMsg{parentID: parentID, wasTreeRoot: wasTreeRoot, err: nil}
 		}
+		err := beads.DeleteIssues(issueIDs)
 		return issueDeletedMsg{
-			issueID:     issueID,
+			issueID:     issueIDs[0],
 			parentID:    parentID,
 			wasTreeRoot: wasTreeRoot,
 			err:         err,

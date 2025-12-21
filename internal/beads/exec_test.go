@@ -51,24 +51,13 @@ func TestReopenIssue_InvalidIssue(t *testing.T) {
 	require.Error(t, err, "expected error for nonexistent issue")
 }
 
-// TestDeleteIssue_InvalidIssue tests error handling for invalid issue IDs.
-func TestDeleteIssue_InvalidIssue(t *testing.T) {
+// TestDeleteIssues_InvalidIssue tests error handling for invalid issue IDs.
+func TestDeleteIssues_InvalidIssue(t *testing.T) {
 	// Check if bd command is available
 	if _, err := exec.LookPath("bd"); err != nil {
 		t.Skip("bd CLI not available, skipping integration test")
 	}
 
-	err := DeleteIssue("nonexistent-xyz")
-	require.Error(t, err, "expected error for nonexistent issue")
-}
-
-// TestDeleteIssueCascade_InvalidIssue tests error handling for invalid issue IDs.
-func TestDeleteIssueCascade_InvalidIssue(t *testing.T) {
-	// Check if bd command is available
-	if _, err := exec.LookPath("bd"); err != nil {
-		t.Skip("bd CLI not available, skipping integration test")
-	}
-
-	err := DeleteIssueCascade("nonexistent-xyz")
+	err := DeleteIssues([]string{"nonexistent-xyz"})
 	require.Error(t, err, "expected error for nonexistent issue")
 }

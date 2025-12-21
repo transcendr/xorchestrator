@@ -112,10 +112,11 @@ func TestCreateDeleteModal_RegularIssue(t *testing.T) {
 		Type:      beads.TypeTask,
 	}
 
-	modal, isCascade := shared.CreateDeleteModal(issue, m.services.Executor)
+	modal, isCascade, issueIDs := shared.CreateDeleteModal(issue, m.services.Executor)
 
 	require.NotNil(t, modal)
 	require.False(t, isCascade, "expected non-cascade for regular task")
+	require.Equal(t, []string{"test-456"}, issueIDs, "expected single-element slice with issue ID")
 }
 
 func TestCreateDeleteModal_EpicWithoutChildren(t *testing.T) {
@@ -128,10 +129,11 @@ func TestCreateDeleteModal_EpicWithoutChildren(t *testing.T) {
 		Blocks:    []string{}, // No children
 	}
 
-	modal, isCascade := shared.CreateDeleteModal(issue, m.services.Executor)
+	modal, isCascade, issueIDs := shared.CreateDeleteModal(issue, m.services.Executor)
 
 	require.NotNil(t, modal)
 	require.False(t, isCascade, "expected non-cascade for epic without children")
+	require.Equal(t, []string{"epic-1"}, issueIDs, "expected single-element slice with epic ID")
 }
 
 func TestCreateDeleteModal_EpicWithChildren(t *testing.T) {
@@ -144,10 +146,13 @@ func TestCreateDeleteModal_EpicWithChildren(t *testing.T) {
 		Children:  []string{"task-1", "task-2", "task-3"},
 	}
 
-	modal, isCascade := shared.CreateDeleteModal(issue, m.services.Executor)
+	modal, isCascade, issueIDs := shared.CreateDeleteModal(issue, m.services.Executor)
 
 	require.NotNil(t, modal)
 	require.True(t, isCascade, "expected cascade for epic with children")
+	// issueIDs includes epic and all descendants from BQL expand
+	// Since mock executor returns empty results, we get just the epic ID
+	require.Contains(t, issueIDs, "epic-1", "expected epic ID in delete list")
 }
 
 func TestDeleteFlow_CascadeSubmit(t *testing.T) {
@@ -162,7 +167,7 @@ func TestDeleteFlow_CascadeSubmit(t *testing.T) {
 	}
 	m.view = ViewDeleteConfirm
 	m.selectedIssue = &issue
-	m.deleteIsCascade = true
+	m.deleteIssueIDs = []string{"epic-1", "task-1", "task-2"}
 
 	// Simulate modal submit
 	m, cmd := m.handleModalSubmit(modal.SubmitMsg{})
@@ -170,10 +175,10 @@ func TestDeleteFlow_CascadeSubmit(t *testing.T) {
 	// Should return a delete command
 	require.NotNil(t, cmd, "expected delete command")
 	require.Nil(t, m.selectedIssue, "expected selectedIssue to be cleared")
-	require.False(t, m.deleteIsCascade, "expected deleteIsCascade to be cleared")
+	require.Nil(t, m.deleteIssueIDs, "expected deleteIssueIDs to be cleared")
 }
 
-func TestDeleteFlow_CancelClearsCascadeFlag(t *testing.T) {
+func TestDeleteFlow_CancelClearsDeleteState(t *testing.T) {
 	m := createTestModel()
 
 	issue := beads.Issue{
@@ -183,12 +188,12 @@ func TestDeleteFlow_CancelClearsCascadeFlag(t *testing.T) {
 	}
 	m.view = ViewDeleteConfirm
 	m.selectedIssue = &issue
-	m.deleteIsCascade = true
+	m.deleteIssueIDs = []string{"epic-1"}
 
 	// Simulate cancel
 	m, _ = m.handleModalCancel()
 
-	require.False(t, m.deleteIsCascade, "expected deleteIsCascade to be cleared on cancel")
+	require.Nil(t, m.deleteIssueIDs, "expected deleteIssueIDs to be cleared on cancel")
 }
 
 func TestDeleteFlow_SubmitWithNoSelectedIssue(t *testing.T) {

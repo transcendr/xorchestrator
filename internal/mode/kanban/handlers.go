@@ -725,14 +725,13 @@ func (m Model) handleModalSubmit(msg modal.SubmitMsg) (Model, tea.Cmd) {
 	}
 	if m.view == ViewDeleteConfirm {
 		if m.selectedIssue != nil {
-			issueID := m.selectedIssue.ID
-			cascade := m.deleteIsCascade
+			issueIDs := m.deleteIssueIDs
 			m.selectedIssue = nil
-			m.deleteIsCascade = false
-			return m, deleteIssueCmd(issueID, cascade)
+			m.deleteIssueIDs = nil
+			return m, deleteIssueCmd(issueIDs)
 		}
 		m.view = ViewBoard
-		m.deleteIsCascade = false
+		m.deleteIssueIDs = nil
 		return m, nil
 	}
 	// Route to column editor for delete confirmation modal
@@ -754,7 +753,7 @@ func (m Model) handleModalCancel() (Model, tea.Cmd) {
 	if m.view == ViewDeleteConfirm {
 		m.view = ViewDetails
 		m.selectedIssue = nil
-		m.deleteIsCascade = false
+		m.deleteIssueIDs = nil
 		return m, nil
 	}
 	// Route to column editor for delete confirmation modal

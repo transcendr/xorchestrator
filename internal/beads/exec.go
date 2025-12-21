@@ -144,14 +144,24 @@ func ReopenIssue(issueID string) error {
 	return nil
 }
 
-// DeleteIssue deletes a single issue via bd CLI.
-func DeleteIssue(issueID string) error {
+// DeleteIssues deletes one or more issues in a single bd CLI call.
+func DeleteIssues(issueIDs []string) error {
+	if len(issueIDs) == 0 {
+		return nil
+	}
+
 	start := time.Now()
 	defer func() {
-		log.Debug(log.CatBeads, "DeleteIssue completed", "issueID", issueID, "duration", time.Since(start))
+		log.Debug(log.CatBeads, "DeleteIssues completed",
+			"count", len(issueIDs),
+			"duration", time.Since(start))
 	}()
 
-	cmd := exec.Command("bd", "delete", issueID, "--force", "--json")
+	args := append([]string{"delete"}, issueIDs...)
+	args = append(args, "--force", "--json")
+
+	//nolint:gosec // G204: issueIDs come from bd database, not user input
+	cmd := exec.Command("bd", args...)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -159,36 +169,11 @@ func DeleteIssue(issueID string) error {
 	if err := cmd.Run(); err != nil {
 		if stderr.Len() > 0 {
 			err = fmt.Errorf("bd delete failed: %s", stderr.String())
-			log.Error(log.CatBeads, "DeleteIssue failed", "issueID", issueID, "error", err)
+			log.Error(log.CatBeads, "DeleteIssues failed", "count", len(issueIDs), "error", err)
 			return err
 		}
 		err = fmt.Errorf("bd delete failed: %w", err)
-		log.Error(log.CatBeads, "DeleteIssue failed", "issueID", issueID, "error", err)
-		return err
-	}
-	return nil
-}
-
-// DeleteIssueCascade deletes an issue and all its dependents via bd CLI.
-func DeleteIssueCascade(issueID string) error {
-	start := time.Now()
-	defer func() {
-		log.Debug(log.CatBeads, "DeleteIssueCascade completed", "issueID", issueID, "duration", time.Since(start))
-	}()
-
-	cmd := exec.Command("bd", "delete", issueID, "--cascade", "--force", "--json")
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			err = fmt.Errorf("bd delete cascade failed: %s", stderr.String())
-			log.Error(log.CatBeads, "DeleteIssueCascade failed", "issueID", issueID, "error", err)
-			return err
-		}
-		err = fmt.Errorf("bd delete cascade failed: %w", err)
-		log.Error(log.CatBeads, "DeleteIssueCascade failed", "issueID", issueID, "error", err)
+		log.Error(log.CatBeads, "DeleteIssues failed", "count", len(issueIDs), "error", err)
 		return err
 	}
 	return nil

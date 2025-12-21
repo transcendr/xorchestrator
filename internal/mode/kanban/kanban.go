@@ -75,8 +75,8 @@ type Model struct {
 	selectedIssue *beads.Issue
 
 	// Delete operation state
-	deleteIsCascade     bool // True if deleting an epic with children
-	pendingDeleteColumn int  // Index of column to delete, -1 if none
+	deleteIssueIDs      []string // IDs to delete (includes descendants for epics)
+	pendingDeleteColumn int      // Index of column to delete, -1 if none
 
 	// Pending cursor restoration after refresh
 	pendingCursor *cursorState
@@ -259,7 +259,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if issue == nil {
 			return m, nil
 		}
-		m.modal, m.deleteIsCascade = shared.CreateDeleteModal(issue, m.services.Executor)
+		m.modal, _, m.deleteIssueIDs = shared.CreateDeleteModal(issue, m.services.Executor)
 		m.modal.SetSize(m.width, m.height)
 		m.selectedIssue = issue
 		m.view = ViewDeleteConfirm
@@ -919,15 +919,13 @@ func updatePriorityCmd(issueID string, priority beads.Priority) tea.Cmd {
 	}
 }
 
-func deleteIssueCmd(issueID string, cascade bool) tea.Cmd {
+func deleteIssueCmd(issueIDs []string) tea.Cmd {
 	return func() tea.Msg {
-		var err error
-		if cascade {
-			err = beads.DeleteIssueCascade(issueID)
-		} else {
-			err = beads.DeleteIssue(issueID)
+		if len(issueIDs) == 0 {
+			return issueDeletedMsg{err: nil}
 		}
-		return issueDeletedMsg{issueID: issueID, err: err}
+		err := beads.DeleteIssues(issueIDs)
+		return issueDeletedMsg{issueID: issueIDs[0], err: err}
 	}
 }
 
