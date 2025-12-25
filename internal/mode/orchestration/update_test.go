@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/workflow"
 )
 
 func TestUpdate_WindowSize(t *testing.T) {
@@ -177,14 +178,37 @@ func TestUpdate_PauseMsg(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Ctrl+P pauses (input is always focused)
+	// Ctrl+Z pauses (input is always focused)
 	var cmd tea.Cmd
-	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlZ})
 
 	require.NotNil(t, cmd)
 	msg := cmd()
 	_, ok := msg.(PauseMsg)
 	require.True(t, ok)
+}
+
+func TestUpdate_WorkflowPicker(t *testing.T) {
+	// Create a registry with a test workflow
+	reg := workflow.NewRegistry()
+	reg.Add(workflow.Workflow{
+		ID:          "test-workflow",
+		Name:        "Test Workflow",
+		Description: "A test workflow",
+		Content:     "Test content",
+		Source:      workflow.SourceBuiltIn,
+	})
+
+	m := New(Config{
+		WorkflowRegistry: reg,
+	})
+	m = m.SetSize(120, 40)
+
+	// Ctrl+P opens workflow picker
+	require.False(t, m.showWorkflowPicker)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	require.True(t, m.showWorkflowPicker)
+	require.NotNil(t, m.workflowPicker)
 }
 
 func TestUpdate_TabKeepsInputFocused(t *testing.T) {

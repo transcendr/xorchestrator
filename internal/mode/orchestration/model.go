@@ -9,6 +9,7 @@ package orchestration
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/orchestration/coordinator"
@@ -23,7 +25,10 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
 	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/workflow"
+	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	"github.com/zjrosen/perles/internal/pubsub"
 )
@@ -98,6 +103,11 @@ type Model struct {
 	fullscreenPaneType    int  // Which pane type is fullscreen: 0=none, 1=coordinator, 2=messages, 3=worker
 	fullscreenWorkerIndex int  // -1 = no fullscreen, 0-3 = worker index (only used when fullscreenPaneType=3)
 
+	// Workflow template picker
+	workflowPicker     *commandpalette.Model
+	showWorkflowPicker bool
+	workflowRegistry   *workflow.Registry
+
 	// Dimensions
 	width  int
 	height int
@@ -142,6 +152,8 @@ type Config struct {
 	// Amp-specific settings
 	AmpModel string // opus (default), sonnet
 	AmpMode  string // free, rush, smart (default)
+	// Workflow templates
+	WorkflowRegistry *workflow.Registry // Pre-loaded workflow registry (optional)
 }
 
 // New creates a new orchestration mode model with the given configuration.
@@ -167,6 +179,7 @@ func New(cfg Config) Model {
 		claudeModel:           cfg.ClaudeModel,
 		ampModel:              cfg.AmpModel,
 		ampMode:               cfg.AmpMode,
+		workflowRegistry:      cfg.WorkflowRegistry,
 	}
 }
 
@@ -279,6 +292,12 @@ func (m Model) SetSize(width, height int) Model {
 	// Update error modal size if present
 	if m.errorModal != nil {
 		m.errorModal.SetSize(width, height)
+	}
+
+	// Update workflow picker size if present
+	if m.workflowPicker != nil {
+		picker := m.workflowPicker.SetSize(width, height)
+		m.workflowPicker = &picker
 	}
 
 	return m
@@ -624,4 +643,70 @@ func (m *Model) CancelSubscriptions() {
 	if m.nudgeBatcher != nil {
 		m.nudgeBatcher.Stop()
 	}
+}
+
+// openWorkflowPicker creates and shows the workflow picker modal.
+// If no workflow registry is available, this is a no-op.
+func (m Model) openWorkflowPicker() Model {
+	if m.workflowRegistry == nil {
+		return m
+	}
+
+	// Build items from workflow registry
+	workflows := m.workflowRegistry.List()
+	items := make([]commandpalette.Item, 0, len(workflows))
+	for _, wf := range workflows {
+		// Color based on source: blue for built-in, green for user-defined
+		var color lipgloss.TerminalColor
+		if wf.Source == workflow.SourceUser {
+			color = styles.IssueFeatureColor // Green
+		} else {
+			color = styles.StatusInProgressColor // Blue
+		}
+		items = append(items, commandpalette.Item{
+			ID:          wf.ID,
+			Name:        wf.Name,
+			Description: wf.Description,
+			Color:       color,
+		})
+	}
+
+	// Create the picker
+	picker := commandpalette.New(commandpalette.Config{
+		Title:       "Workflow Templates",
+		Placeholder: "Search workflows...",
+		Items:       items,
+	})
+	picker = picker.SetSize(m.width, m.height)
+	m.workflowPicker = &picker
+	m.showWorkflowPicker = true
+
+	return m
+}
+
+// handleWorkflowSelected handles when a workflow is selected from the picker.
+func (m Model) handleWorkflowSelected(item commandpalette.Item) (Model, tea.Cmd) {
+	m.showWorkflowPicker = false
+	m.workflowPicker = nil
+
+	return m.sendWorkflowToCoordinator(item.ID)
+}
+
+// sendWorkflowToCoordinator sends the selected workflow content to the coordinator.
+func (m Model) sendWorkflowToCoordinator(workflowID string) (Model, tea.Cmd) {
+	if m.workflowRegistry == nil {
+		m = m.SetError("Workflow registry not available")
+		return m, nil
+	}
+
+	wf, ok := m.workflowRegistry.Get(workflowID)
+	if !ok {
+		m = m.SetError("Workflow not found: " + workflowID)
+		return m, nil
+	}
+
+	// Format as instruction to coordinator
+	content := fmt.Sprintf("[WORKFLOW: %s]\n\n%s", wf.Name, wf.Content)
+
+	return m.handleUserInputToCoordinator(content)
 }

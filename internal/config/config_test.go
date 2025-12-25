@@ -430,3 +430,75 @@ func TestDefaults_Orchestration(t *testing.T) {
 	require.Equal(t, "opus", cfg.Orchestration.Amp.Model)
 	require.Equal(t, "smart", cfg.Orchestration.Amp.Mode)
 }
+
+// Tests for workflow config validation
+
+func TestValidateWorkflows_Empty(t *testing.T) {
+	// Empty workflows should be valid
+	err := ValidateWorkflows(nil)
+	require.NoError(t, err)
+}
+
+func TestValidateWorkflows_ValidWithNameOnly(t *testing.T) {
+	// Name only is valid (for disabling built-ins)
+	workflows := []WorkflowConfig{
+		{Name: "Debate"},
+	}
+	err := ValidateWorkflows(workflows)
+	require.NoError(t, err)
+}
+
+func TestValidateWorkflows_ValidWithAllFields(t *testing.T) {
+	enabled := true
+	workflows := []WorkflowConfig{
+		{
+			Name:        "Code Review",
+			Description: "Multi-perspective code review",
+			Enabled:     &enabled,
+		},
+	}
+	err := ValidateWorkflows(workflows)
+	require.NoError(t, err)
+}
+
+func TestValidateWorkflows_MultipleWorkflows(t *testing.T) {
+	enabled := false
+	workflows := []WorkflowConfig{
+		{Name: "Code Review"},
+		{Name: "Debate", Enabled: &enabled},
+		{Name: "Research", Description: "Custom research workflow"},
+	}
+	err := ValidateWorkflows(workflows)
+	require.NoError(t, err)
+}
+
+func TestValidateOrchestration_WithValidWorkflows(t *testing.T) {
+	cfg := OrchestrationConfig{
+		Client: "claude",
+		Workflows: []WorkflowConfig{
+			{Name: "Code Review"},
+		},
+	}
+	err := ValidateOrchestration(cfg)
+	require.NoError(t, err)
+}
+
+// Tests for WorkflowConfig.IsEnabled
+
+func TestWorkflowConfig_IsEnabled_NilEnabled(t *testing.T) {
+	// nil Enabled should default to true
+	wf := WorkflowConfig{Name: "Test"}
+	require.True(t, wf.IsEnabled())
+}
+
+func TestWorkflowConfig_IsEnabled_True(t *testing.T) {
+	enabled := true
+	wf := WorkflowConfig{Name: "Test", Enabled: &enabled}
+	require.True(t, wf.IsEnabled())
+}
+
+func TestWorkflowConfig_IsEnabled_False(t *testing.T) {
+	enabled := false
+	wf := WorkflowConfig{Name: "Test", Enabled: &enabled}
+	require.False(t, wf.IsEnabled())
+}

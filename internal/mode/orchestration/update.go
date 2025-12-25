@@ -19,6 +19,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 
 	"github.com/zjrosen/perles/internal/pubsub"
@@ -33,6 +34,7 @@ type KeyMap struct {
 	Quit       key.Binding
 	Help       key.Binding
 	Fullscreen key.Binding
+	Workflows  key.Binding
 }
 
 // DefaultKeyMap returns the default keybindings.
@@ -47,8 +49,8 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("enter", "send message"),
 		),
 		Pause: key.NewBinding(
-			key.WithKeys("ctrl+p"),
-			key.WithHelp("ctrl+p", "pause/resume"),
+			key.WithKeys("ctrl+z"),
+			key.WithHelp("ctrl+z", "pause/resume"),
 		),
 		Replace: key.NewBinding(
 			key.WithKeys("ctrl+r"),
@@ -65,6 +67,10 @@ func DefaultKeyMap() KeyMap {
 		Fullscreen: key.NewBinding(
 			key.WithKeys("ctrl+f"),
 			key.WithHelp("ctrl+f", "toggle navigation mode"),
+		),
+		Workflows: key.NewBinding(
+			key.WithKeys("ctrl+p"),
+			key.WithHelp("ctrl+p", "workflow templates"),
 		),
 	}
 }
@@ -143,6 +149,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		// Forward key events to workflow picker when it's visible
+		if m.showWorkflowPicker && m.workflowPicker != nil {
+			var cmd tea.Cmd
+			updatedPicker, cmd := m.workflowPicker.Update(msg)
+			m.workflowPicker = &updatedPicker
+			return m, cmd
+		}
+
 		// ctrl+f toggles navigation mode (works in both modes)
 		if key.Matches(msg, keys.Fullscreen) {
 			m = m.toggleNavigationMode()
@@ -198,6 +212,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 		case key.Matches(msg, keys.Tab):
 			m = m.CycleMessageTarget()
+			return m, nil
+
+		case key.Matches(msg, keys.Workflows):
+			m = m.openWorkflowPicker()
 			return m, nil
 		}
 
@@ -351,6 +369,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	// Handle worker errors from user input commands
 	case WorkerErrorMsg:
 		log.Debug("orchestration", "Worker error", "workerID", msg.WorkerID, "error", msg.Error)
+		return m, nil
+
+	// Handle workflow picker selection
+	case commandpalette.SelectMsg:
+		return m.handleWorkflowSelected(msg.Item)
+
+	// Handle workflow picker cancel
+	case commandpalette.CancelMsg:
+		m.showWorkflowPicker = false
+		m.workflowPicker = nil
 		return m, nil
 	}
 

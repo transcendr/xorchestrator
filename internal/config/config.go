@@ -59,9 +59,10 @@ type ThemeConfig struct {
 
 // OrchestrationConfig holds orchestration mode configuration.
 type OrchestrationConfig struct {
-	Client string             `mapstructure:"client"` // "claude" (default) or "amp"
-	Claude ClaudeClientConfig `mapstructure:"claude"`
-	Amp    AmpClientConfig    `mapstructure:"amp"`
+	Client    string             `mapstructure:"client"` // "claude" (default) or "amp"
+	Claude    ClaudeClientConfig `mapstructure:"claude"`
+	Amp       AmpClientConfig    `mapstructure:"amp"`
+	Workflows []WorkflowConfig   `mapstructure:"workflows"` // Workflow template configurations
 }
 
 // ClaudeClientConfig holds Claude-specific settings.
@@ -73,6 +74,18 @@ type ClaudeClientConfig struct {
 type AmpClientConfig struct {
 	Model string `mapstructure:"model"` // opus (default), sonnet
 	Mode  string `mapstructure:"mode"`  // free, rush, smart (default)
+}
+
+// WorkflowConfig defines configuration for a workflow template.
+type WorkflowConfig struct {
+	Name        string `mapstructure:"name"`        // Display name for the workflow
+	Description string `mapstructure:"description"` // Description shown in picker
+	Enabled     *bool  `mapstructure:"enabled"`     // nil = true (default enabled)
+}
+
+// IsEnabled returns whether the workflow is enabled (defaults to true if nil).
+func (w WorkflowConfig) IsEnabled() bool {
+	return w.Enabled == nil || *w.Enabled
 }
 
 // DefaultColumns returns the default column configuration matching current behavior.
@@ -180,6 +193,19 @@ func ValidateOrchestration(orch OrchestrationConfig) error {
 		}
 	}
 
+	// Validate workflows
+	if err := ValidateWorkflows(orch.Workflows); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidateWorkflows checks workflow configurations for errors.
+// Returns nil if workflows are valid or empty.
+func ValidateWorkflows(workflows []WorkflowConfig) error {
+	// Currently no validation required - name is optional (used for matching)
+	// and enabled defaults to true
 	return nil
 }
 
@@ -350,6 +376,22 @@ orchestration:
   amp:
     model: opus    # opus (default) or sonnet
     mode: smart    # free, rush, or smart (default)
+
+  # Workflow templates (Ctrl+P to open picker in orchestration mode)
+  # User workflows are loaded from ~/.perles/workflows/*.md
+  # workflows:
+  #   # Define a user workflow (loaded from ~/.perles/workflows/)
+  #   - name: "Code Review"
+  #     description: "Multi-perspective code review"
+  #     file: "code_review.md"
+  #
+  #   # Disable a built-in workflow
+  #   - name: "Debate"
+  #     enabled: false
+  #
+  #   # Override name/description of a built-in workflow
+  #   - name: "Research Proposal"
+  #     description: "Custom description for research workflow"
 `
 }
 

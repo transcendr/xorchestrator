@@ -36,6 +36,7 @@ test-update:
 	@echo "Updating golden files in packages with teatest..."
 	@go test ./internal/ui/board/... \
 		./internal/ui/coleditor/... \
+		./internal/ui/commandpalette/... \
 		./internal/ui/details/... \
 		./internal/ui/forms/bqlinput/... \
 		./internal/ui/modals/help/... \

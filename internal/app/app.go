@@ -19,6 +19,7 @@ import (
 	"github.com/zjrosen/perles/internal/mode/orchestration"
 	"github.com/zjrosen/perles/internal/mode/search"
 	"github.com/zjrosen/perles/internal/mode/shared"
+	"github.com/zjrosen/perles/internal/orchestration/workflow"
 
 	"github.com/zjrosen/perles/internal/ui/shared/logoverlay"
 	"github.com/zjrosen/perles/internal/ui/shared/toaster"
@@ -177,13 +178,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Get orchestration config from services.Config
 		orchConfig := m.services.Config.Orchestration
 
+		// Ensure user workflow directory exists and load workflow registry
+		_, _ = workflow.EnsureUserWorkflowDir() // Ignore errors, directory creation is best-effort
+		workflowRegistry, err := workflow.NewRegistryWithConfig(orchConfig)
+		if err != nil {
+			log.Warn(log.CatMode, "Failed to load workflow registry", "error", err)
+			// Continue without workflows - not a fatal error
+		}
+
 		m.orchestration = orchestration.New(orchestration.Config{
-			Services:    m.services,
-			WorkDir:     workDir,
-			ClientType:  orchConfig.Client,
-			ClaudeModel: orchConfig.Claude.Model,
-			AmpModel:    orchConfig.Amp.Model,
-			AmpMode:     orchConfig.Amp.Mode,
+			Services:         m.services,
+			WorkDir:          workDir,
+			ClientType:       orchConfig.Client,
+			ClaudeModel:      orchConfig.Claude.Model,
+			AmpModel:         orchConfig.Amp.Model,
+			AmpMode:          orchConfig.Amp.Mode,
+			WorkflowRegistry: workflowRegistry,
 		}).SetSize(m.width, m.height)
 		return m, m.orchestration.Init()
 

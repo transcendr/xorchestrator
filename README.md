@@ -79,6 +79,14 @@ perles
 | `--help` | `-h` | Print help |
 | `--debug` | `-d` | Enable developer/debug mode |
 
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `perles` | Launch the TUI application |
+| `perles themes` | List available theme presets |
+| `perles workflows` | List available workflow templates |
+
 ### Global Keybindings
 
 | Key | Action |

@@ -72,7 +72,12 @@ func (m Model) renderMainView() string {
 	// Stack vertically
 	mainView := lipgloss.JoinVertical(lipgloss.Left, panes, inputBar)
 
-	// Show error modal overlay
+	// Show workflow picker overlay
+	if m.showWorkflowPicker && m.workflowPicker != nil {
+		mainView = m.workflowPicker.Overlay(mainView)
+	}
+
+	// Show error modal overlay (on top of workflow picker if both visible)
 	if m.errorModal != nil {
 		mainView = m.errorModal.Overlay(mainView)
 	}
