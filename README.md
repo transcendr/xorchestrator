@@ -1,97 +1,18 @@
 # Perles
 
-A terminal-based search and kanban board for [beads](https://github.com/steveyegge/beads) issue tracking.
-
-
-## Kanban Board
-
-### Single BQL Columns
-
-<p align="center">
-  <img src="./assets/board.png" width="1440" alt="board">
-</p>
-
-### Mixed Dependency and BQL Columns
-
-<p align="center">
-  <img src="./assets/multiple-column-types.png" width="1440" alt="board">
-</p>
-
-## Search
+Perles is a terminal UI for [beads](https://github.com/steveyegge/beads) issue tracking, powered by a custom **BQL (Beads Query Language)**. Search with boolean logic, filter by dates, traverse dependency trees, and build custom kanban views — without leaving your terminal. BQL also drives custom configured kanban boards, each column is defined by a query, so you can slice your issues however you want.
 
 <p align="center">
   <img src="./assets/search.png" width="1440" alt="search">
 </p>
 
-## Dependencies
-
-### Dependency chain
-
 <p align="center">
-  <img src="./assets/issues-dependencies.png" width="1440" alt="search">
+  <img src="./assets/board.png" width="1440" alt="board">
 </p>
 
-### Parent/child hierarchy
-
 <p align="center">
-  <img src="./assets/issue-children.png" width="1440" alt="search">
+  <img src="./assets/issues-dependencies.png" width="1440" alt="board">
 </p>
-
-## Features
-
-### BQL (Beads Query Language)
-- Query syntax for filtering issues
-- Fields: type, priority, status, blocked, ready, label, title, id, created, updated
-- Operators: = != < > <= >= ~ (contains) !~ (not contains) in not-in
-- Boolean logic: and, or, not, parentheses
-- Sorting: order by field asc/desc
-- Date filters: today, yesterday, -7d, -24h, -3m
-
-### Kanban Board
-- Four-column default layout: Blocked, Ready, In Progress, Closed
-- Fully customizable columns with BQL queries or view an issues dependency tree
-- Multi-view support - create unlimited board views
-- Real-time auto-refresh when database changes
-- Column management: add, edit, reorder, delete
-
-### Search Mode
-- Full-screen BQL-powered search interface
-- Save searches as kanban columns
-- Create new views from search results
-- Sub-mode for viewing issue dependencies and hierarchies
-
-### Issue Management
-- View detailed issue information with markdown rendering
-- Edit priority, status, and labels inline
-- Navigate to dependency issues
-- Copy issue IDs to clipboard
-
-## Videos
-
-### BQL Search Mode
-
-Use `ctrl+space` to switch modes between Kanban and Search or while on a column use `/` to be dropped into search
-mode with the current columns BQL query.
-
-https://github.com/user-attachments/assets/d0d61c71-a037-4f7b-9718-15156d6bf278
-
-### Creating a view from search results
-
-Use `ctrl+s` from search mode to save the BQL query to a new or existing view
-
-https://github.com/user-attachments/assets/21085552-a62f-441e-bba7-0960c00f5029
-
-### Adding a new column
-
-Use `a` from kanban mode to add a new column
-
-https://github.com/user-attachments/assets/8ce16144-15dd-4509-8cd9-aa8e07477b5d
-
-### Kanban Board 
-
-Use `h` and `l` to move left and right between columns, `ctrl+h` / `ctrl+l` to move column positions and `ctrl+n` / `ctrl+p` to switch between views. Use `ctrl+v` to open the view menu to create, rename or delete a view.
-
-https://github.com/user-attachments/assets/174dc673-66fa-46be-9ca5-fbd5ac0034dd
 
 ## Requirements
 
@@ -158,9 +79,7 @@ perles
 | `--help` | `-h` | Print help |
 | `--debug` | `-d` | Enable developer/debug mode |
 
-## Keybindings
-
-### Global
+### Global Keybindings
 
 | Key | Action |
 |-----|--------|
@@ -168,7 +87,49 @@ perles
 | `?` | Toggle help overlay |
 | `q` / `Ctrl+C` | Quit |
 
-### Kanban Mode - Navigation
+---
+
+## Kanban Mode
+
+Organize issues into customizable columns powered by BQL queries or dependency trees.
+
+### BQL Columns
+
+<p align="center">
+  <img src="./assets/board.png" width="1440" alt="board">
+</p>
+
+### Mixed Column Types (BQL + Dependency Trees)
+
+<p align="center">
+  <img src="./assets/multiple-column-types.png" width="1440" alt="board">
+</p>
+
+### Features
+
+- Four-column default layout: Blocked, Ready, In Progress, Closed
+- Fully customizable columns with BQL queries or dependency trees
+- Multi-view support — create unlimited board views
+- Real-time auto-refresh when database changes
+- Column management: add, edit, reorder, delete
+
+### Videos
+
+#### Navigating Views and Columns
+
+Use `h` and `l` to move left and right between columns, `ctrl+h` / `ctrl+l` to move column positions and `ctrl+n` / `ctrl+p` to switch between views. Use `ctrl+v` to open the view menu to create, rename or delete a view.
+
+https://github.com/user-attachments/assets/174dc673-66fa-46be-9ca5-fbd5ac0034dd
+
+#### Adding a New Column
+
+Use `a` from kanban mode to add a new column.
+
+https://github.com/user-attachments/assets/8ce16144-15dd-4509-8cd9-aa8e07477b5d
+
+### Keybindings
+
+#### Navigation
 
 | Key | Action |
 |-----|--------|
@@ -178,7 +139,7 @@ perles
 | `k` / `↑` | Move up in column |
 | `Enter` | View issue details |
 
-### Kanban Mode - Views
+#### Views
 
 | Key | Action |
 |-----|--------|
@@ -187,7 +148,7 @@ perles
 | `Ctrl+V` | View menu (Create/Delete/Rename) |
 | `Ctrl+D` | Delete current column |
 
-### Kanban Mode - Columns
+#### Columns
 
 | Key | Action |
 |-----|--------|
@@ -197,7 +158,7 @@ perles
 | `Ctrl+L` | Move column right |
 | `/` | Open search with column's BQL query |
 
-### Kanban Mode - Issues
+#### Issues
 
 | Key | Action |
 |-----|--------|
@@ -214,7 +175,49 @@ perles
 | `j` / `k` | Scroll content |
 | `Esc` | Back to kanban board |
 
-### Search Mode
+### Default Columns
+
+The default view includes these columns (all configurable via BQL):
+
+| Column | BQL Query |
+|--------|-----------|
+| **Blocked** | `status = open and blocked = true` |
+| **Ready** | `status = open and ready = true` |
+| **In Progress** | `status = in_progress` |
+| **Closed** | `status = closed` |
+
+---
+
+## Search Mode
+
+Full-screen BQL-powered search interface with live results and issue details.
+
+<p align="center">
+  <img src="./assets/search.png" width="1440" alt="search">
+</p>
+
+### Features
+
+- Full-screen BQL-powered search interface
+- Save searches as kanban columns
+- Create new views from search results
+- Sub-mode for viewing issue dependencies and hierarchies
+
+### Videos
+
+#### BQL Search
+
+Use `ctrl+space` to switch modes between Kanban and Search or while on a column use `/` to be dropped into search mode with the current columns BQL query.
+
+https://github.com/user-attachments/assets/d0d61c71-a037-4f7b-9718-15156d6bf278
+
+#### Creating a View from Search Results
+
+Use `ctrl+s` from search mode to save the BQL query to a new or existing view.
+
+https://github.com/user-attachments/assets/21085552-a62f-441e-bba7-0960c00f5029
+
+### Keybindings
 
 | Key | Action |
 |-----|--------|
@@ -229,7 +232,25 @@ perles
 | `Ctrl+S` | Save search as column |
 | `Esc` | Exit to kanban mode |
 
-### Search Mode - Tree View
+---
+
+## Dependency Explorer
+
+Visualize and navigate issue relationships — blockers, dependencies, and parent/child hierarchies.
+
+### Dependency Chain
+
+<p align="center">
+  <img src="./assets/issues-dependencies.png" width="1440" alt="board">
+</p>
+
+### Parent/Child Hierarchy
+
+<p align="center">
+  <img src="./assets/issues-children.png" width="1440" alt="parent child hierarchy">
+</p>
+
+### Keybindings (Tree View)
 
 | Key | Action |
 |-----|--------|
@@ -245,16 +266,7 @@ perles
 | `/` | Switch to list mode |
 | `Esc` | Exit to kanban mode |
 
-## Default Columns
-
-The default view includes these columns (all configurable via BQL):
-
-| Column | BQL Query |
-|--------|-----------|
-| **Blocked** | `status = open and blocked = true` |
-| **Ready** | `status = open and ready = true` |
-| **In Progress** | `status = in_progress` |
-| **Closed** | `status = closed` |
+---
 
 ## BQL Query Language
 
@@ -398,6 +410,8 @@ title ~ authentication or title ~ login
 type = epic expand down depth *
 ```
 
+---
+
 ## Configuration
 
 Perles looks for configuration in these locations (in order):
@@ -481,6 +495,8 @@ views:
         color: "#EF4444"
 ```
 
+---
+
 ## Theming
 
 Perles supports comprehensive theming with built-in presets and customizable color tokens.
@@ -550,6 +566,8 @@ Colors are organized by category:
 
 See `internal/ui/styles/tokens.go` for the complete list of 51 color tokens.
 
+---
+
 ## Developer Mode
 
 Developer mode provides logging and debugging tools for troubleshooting and development.
@@ -585,6 +603,8 @@ When reporting bugs, please include the `debug.log` file to help with diagnosis:
 2. Reproduce the issue
 3. Attach `debug.log` to your bug report
 
+---
+
 ## Development
 
 ### Testing
@@ -607,6 +627,8 @@ make test-update
 ```
 
 This regenerates golden files in packages with teatest tests (currently `internal/ui/help`). Review the changes before committing to ensure they're expected.
+
+---
 
 ## License
 
