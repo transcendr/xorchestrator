@@ -24,6 +24,10 @@ const (
 
 	// MessageError indicates something went wrong.
 	MessageError MessageType = "error"
+
+	// MessageHandoff indicates a coordinator context refresh handoff.
+	// Contains summary of current state for the incoming coordinator.
+	MessageHandoff MessageType = "handoff"
 )
 
 // Entry represents a single message in the communication log.

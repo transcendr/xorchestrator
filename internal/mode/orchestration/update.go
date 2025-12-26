@@ -91,6 +91,9 @@ type PauseMsg struct{}
 // ReplaceCoordinatorMsg requests replacing the coordinator process.
 type ReplaceCoordinatorMsg struct{}
 
+// RefreshTimeoutMsg indicates handoff timed out.
+type RefreshTimeoutMsg struct{}
+
 // Coordinator event messages
 
 // StartCoordinatorMsg signals to start the coordinator.
@@ -424,6 +427,31 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	// Handle initializer events from the state machine
 	case pubsub.Event[InitializerEvent]:
 		return m.handleInitializerEvent(msg)
+
+	// Handle refresh timeout - coordinator didn't respond to handoff request
+	case RefreshTimeoutMsg:
+		if m.pendingRefresh {
+			m.pendingRefresh = false
+			coord := m.coord
+			msgLog := m.messageLog
+			return m, func() tea.Msg {
+				log.Debug("orchestration", "Handoff timeout - proceeding with generic handoff")
+				// Post fallback message
+				if msgLog != nil {
+					_, _ = msgLog.Append(
+						message.ActorCoordinator,
+						message.ActorAll,
+						"[HANDOFF] Context refresh initiated (coordinator did not respond)",
+						message.MessageHandoff,
+					)
+				}
+				if err := coord.Replace(); err != nil {
+					return CoordinatorErrorMsg{Error: err}
+				}
+				return nil
+			}
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -537,6 +565,20 @@ func (m Model) handleMessageEvent(event pubsub.Event[message.Event]) (Model, tea
 		m = m.AppendMessageEntry(payload.Entry)
 
 		entry := payload.Entry
+
+		// Check if this is a handoff message while we're waiting for refresh
+		if m.pendingRefresh && entry.Type == message.MessageHandoff {
+			m.pendingRefresh = false
+			// Trigger the actual replacement
+			coord := m.coord
+			cmd := func() tea.Msg {
+				if err := coord.Replace(); err != nil {
+					return CoordinatorErrorMsg{Error: err}
+				}
+				return nil
+			}
+			return m, tea.Batch(m.messageListener.Listen(), cmd)
+		}
 
 		// Nudge coordinator if message is to COORDINATOR or ALL (via debounced batcher)
 		if entry.To == message.ActorCoordinator || entry.To == message.ActorAll {
@@ -913,23 +955,60 @@ func (m Model) handlePauseToggle() (Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleReplaceCoordinator replaces the coordinator process (hot swap).
-// This preserves the session ID for Claude continuity while spawning a fresh process.
+// handleReplaceCoordinator requests a handoff from the coordinator before replacing.
+// Sets pendingRefresh flag and sends a message to the coordinator asking it to post
+// a handoff message via prepare_handoff. The actual Replace() is triggered when the
+// handoff message is received in handleMessageEvent.
+// Also starts a 5-second timeout to handle cases where coordinator doesn't respond.
 func (m Model) handleReplaceCoordinator() (Model, tea.Cmd) {
 	if m.coord == nil {
 		m = m.SetError("Coordinator not started")
 		return m, nil
 	}
 
-	// Capture coordinator for closure
-	coord := m.coord
+	// Set pending refresh flag
+	m.pendingRefresh = true
 
-	return m, func() tea.Msg {
-		if err := coord.Replace(); err != nil {
-			return CoordinatorErrorMsg{Error: err}
+	// Start timeout timer
+	timeoutCmd := tea.Tick(15*time.Second, func(time.Time) tea.Msg {
+		return RefreshTimeoutMsg{}
+	})
+
+	// Send message to coordinator to post handoff
+	coord := m.coord
+	sendCmd := func() tea.Msg {
+		handoffMessage := `[CONTEXT REFRESH INITIATED]
+
+Your context window is approaching limits. The user has initiated a coordinator refresh (Ctrl+R).
+
+WHAT'S ABOUT TO HAPPEN:
+- You will be replaced with a fresh coordinator session
+- All workers will continue running (their state is preserved)
+- External state (message log, bd tasks, etc.) is preserved
+- The new coordinator will start with a clean context window
+
+YOUR TASK:
+Call ` + "`prepare_handoff`" + ` with a comprehensive summary for the incoming coordinator. This summary is CRITICAL - it's the primary way the new coordinator will understand what work is in progress.
+
+WHAT TO INCLUDE IN THE HANDOFF:
+1. Current work state: Which workers are doing what? What tasks are in progress?
+2. Recent decisions: What approach did you take? Why?
+3. Blockers or issues: Anything the new coordinator should know about?
+4. Recommendations: What should the new coordinator do next?
+5. Context that isn't in the message log: Internal reasoning, strategy, patterns you've noticed
+
+The more detailed your handoff, the smoother the transition will be. Think of this as briefing your replacement.
+
+When you're ready, call: ` + "`prepare_handoff`" + ` with your summary.`
+
+		err := coord.SendUserMessage(handoffMessage)
+		if err != nil {
+			return CoordinatorErrorMsg{Error: fmt.Errorf("failed to request handoff: %w", err)}
 		}
 		return nil
 	}
+
+	return m, tea.Batch(sendCmd, timeoutCmd)
 }
 
 // updateStatusFromCoordinator updates model state based on coordinator status.

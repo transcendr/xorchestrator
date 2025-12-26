@@ -143,6 +143,9 @@ type Model struct {
 	showWorkflowPicker bool
 	workflowRegistry   *workflow.Registry
 
+	// Coordinator refresh handoff state
+	pendingRefresh bool // True when waiting for handoff before refresh
+
 	// Dimensions
 	width  int
 	height int

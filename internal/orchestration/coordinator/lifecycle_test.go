@@ -283,3 +283,73 @@ func TestBrokersCloseIdempotent(t *testing.T) {
 	eventsCh := coord.Broker().Subscribe(ctx)
 	require.NotNil(t, eventsCh)
 }
+
+func TestBuildReplacePrompt_ContainsHandoffInstructions(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+
+	coord, err := New(Config{
+		Client:       claude.NewClient(),
+		WorkDir:      "/tmp",
+		Pool:         workerPool,
+		MessageIssue: msgIssue,
+	})
+	require.NoError(t, err)
+
+	prompt := coord.buildReplacePrompt()
+
+	// Should mention reading the handoff message
+	require.Contains(t, prompt, "READ THE HANDOFF FIRST", "prompt should instruct reading handoff")
+	require.Contains(t, prompt, "handoff message", "prompt should mention handoff message")
+	require.Contains(t, prompt, "previous coordinator", "prompt should mention previous coordinator")
+	require.Contains(t, prompt, "read_message_log", "prompt should mention read_message_log tool")
+}
+
+func TestBuildReplacePrompt_WaitsForUser(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+
+	coord, err := New(Config{
+		Client:       claude.NewClient(),
+		WorkDir:      "/tmp",
+		Pool:         workerPool,
+		MessageIssue: msgIssue,
+	})
+	require.NoError(t, err)
+
+	prompt := coord.buildReplacePrompt()
+
+	// Should instruct waiting for user direction
+	require.Contains(t, prompt, "Wait for the user to provide direction", "prompt should say to wait for user")
+	require.Contains(t, prompt, "Do NOT assign tasks", "prompt should prohibit autonomous task assignment")
+	require.Contains(t, prompt, "Do NOT", "prompt should contain prohibitions")
+	require.Contains(t, prompt, "until the user tells you what to do", "prompt should emphasize waiting for user")
+}
+
+func TestBuildReplacePrompt_NoImmediateActions(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+
+	coord, err := New(Config{
+		Client:       claude.NewClient(),
+		WorkDir:      "/tmp",
+		Pool:         workerPool,
+		MessageIssue: msgIssue,
+	})
+	require.NoError(t, err)
+
+	prompt := coord.buildReplacePrompt()
+
+	// Should NOT contain the old "IMMEDIATE ACTIONS REQUIRED" section
+	require.NotContains(t, prompt, "IMMEDIATE ACTIONS REQUIRED", "prompt should not contain immediate actions")
+
+	// Should still be a valid prompt with header
+	require.Contains(t, prompt, "[CONTEXT REFRESH - NEW SESSION]", "prompt should have header")
+	require.Contains(t, prompt, "WHAT TO DO NOW", "prompt should have guidance section")
+}

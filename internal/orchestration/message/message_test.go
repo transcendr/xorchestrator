@@ -36,6 +36,13 @@ func TestMessageTypeConstants(t *testing.T) {
 	require.Equal(t, "response", string(MessageResponse))
 	require.Equal(t, "completion", string(MessageCompletion))
 	require.Equal(t, "error", string(MessageError))
+	require.Equal(t, "handoff", string(MessageHandoff))
+}
+
+func TestMessageHandoffType(t *testing.T) {
+	// Verify MessageHandoff constant exists and has value "handoff"
+	require.Equal(t, MessageType("handoff"), MessageHandoff)
+	require.Equal(t, "handoff", string(MessageHandoff))
 }
 
 func TestEntry_ReadByTracking(t *testing.T) {

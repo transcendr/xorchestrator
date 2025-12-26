@@ -226,6 +226,22 @@ func (cs *CoordinatorServer) registerTools() {
 			Required:   []string{},
 		},
 	}, cs.handleListWorkers)
+
+	// prepare_handoff - Post handoff message before coordinator refresh
+	cs.RegisterTool(Tool{
+		Name:        "prepare_handoff",
+		Description: "Post a handoff message before coordinator context refresh. Call this when the user initiates a refresh (Ctrl+R). Include a summary of current work state, in-progress tasks, and any important context for the incoming coordinator.",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]*PropertySchema{
+				"summary": {
+					Type:        "string",
+					Description: "Summary of current state: what work is in progress, decisions made, any blockers or issues, and recommendations for the incoming coordinator",
+				},
+			},
+			Required: []string{"summary"},
+		},
+	}, cs.handlePrepareHandoff)
 }
 
 // Tool argument structs for JSON parsing.
@@ -260,6 +276,10 @@ type markTaskFailedArgs struct {
 
 type readMessageLogArgs struct {
 	Limit int `json:"limit,omitempty"`
+}
+
+type prepareHandoffArgs struct {
+	Summary string `json:"summary"`
 }
 
 // SpawnIdleWorker spawns a new idle worker in the pool.
@@ -752,6 +772,38 @@ func (cs *CoordinatorServer) handleListWorkers(_ context.Context, _ json.RawMess
 	}
 
 	return SuccessResult(string(data)), nil
+}
+
+// handlePrepareHandoff posts a handoff message before coordinator context refresh.
+func (cs *CoordinatorServer) handlePrepareHandoff(_ context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
+	var args prepareHandoffArgs
+	if err := json.Unmarshal(rawArgs, &args); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if args.Summary == "" {
+		return nil, fmt.Errorf("summary is required")
+	}
+
+	if cs.msgIssue == nil {
+		return nil, fmt.Errorf("message issue not available")
+	}
+
+	// Build handoff content with marker
+	content := fmt.Sprintf("[HANDOFF]\n%s", args.Summary)
+
+	_, err := cs.msgIssue.Append(
+		message.ActorCoordinator,
+		message.ActorAll,
+		content,
+		message.MessageHandoff,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to post handoff: %w", err)
+	}
+
+	log.Debug(logCat, "Posted handoff message")
+	return SuccessResult("Handoff message posted. Refresh will proceed."), nil
 }
 
 // formatContextUsage returns a human-readable context usage string (e.g., "27k/200k (13%)").

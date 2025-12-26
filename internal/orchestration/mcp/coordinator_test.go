@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/zjrosen/perles/internal/orchestration/claude"
+	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/pool"
 )
 
@@ -27,6 +28,7 @@ func TestCoordinatorServer_RegistersAllTools(t *testing.T) {
 		"mark_task_failed",
 		"read_message_log",
 		"list_workers",
+		"prepare_handoff",
 	}
 
 	for _, toolName := range expectedTools {
@@ -536,5 +538,97 @@ func TestCoordinatorServer_ListWorkers_WithWorkers(t *testing.T) {
 
 	if result.Content[0].Text == "" {
 		t.Error("Expected non-empty result")
+	}
+}
+
+// TestPrepareHandoff_PostsMessage verifies tool posts message with correct type and content.
+func TestPrepareHandoff_PostsMessage(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	handler := cs.handlers["prepare_handoff"]
+
+	summary := "Worker 1 is processing task perles-abc. Task is 50% complete."
+	args := `{"summary": "` + summary + `"}`
+
+	result, err := handler(context.Background(), json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if result.Content[0].Text != "Handoff message posted. Refresh will proceed." {
+		t.Errorf("Unexpected result: %q", result.Content[0].Text)
+	}
+
+	// Verify message was posted to the issue
+	entries := msgIssue.Entries()
+	if len(entries) != 1 {
+		t.Fatalf("Expected 1 message, got %d", len(entries))
+	}
+
+	entry := entries[0]
+	if entry.Type != message.MessageHandoff {
+		t.Errorf("Message type = %q, want %q", entry.Type, message.MessageHandoff)
+	}
+	if entry.From != message.ActorCoordinator {
+		t.Errorf("From = %q, want %q", entry.From, message.ActorCoordinator)
+	}
+	if entry.To != message.ActorAll {
+		t.Errorf("To = %q, want %q", entry.To, message.ActorAll)
+	}
+	expectedContent := "[HANDOFF]\n" + summary
+	if entry.Content != expectedContent {
+		t.Errorf("Content = %q, want %q", entry.Content, expectedContent)
+	}
+}
+
+// TestPrepareHandoff_EmptySummary verifies error returned when summary is empty.
+func TestPrepareHandoff_EmptySummary(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	handler := cs.handlers["prepare_handoff"]
+
+	tests := []struct {
+		name string
+		args string
+	}{
+		{
+			name: "empty string summary",
+			args: `{"summary": ""}`,
+		},
+		{
+			name: "missing summary",
+			args: `{}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := handler(context.Background(), json.RawMessage(tt.args))
+			if err == nil {
+				t.Error("Expected error for empty summary")
+			}
+		})
+	}
+}
+
+// TestPrepareHandoff_NoMessageIssue verifies error when message issue is nil.
+func TestPrepareHandoff_NoMessageIssue(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	// No message issue
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	handler := cs.handlers["prepare_handoff"]
+
+	args := `{"summary": "Test summary"}`
+	_, err := handler(context.Background(), json.RawMessage(args))
+	if err == nil {
+		t.Error("Expected error when message issue is nil")
 	}
 }

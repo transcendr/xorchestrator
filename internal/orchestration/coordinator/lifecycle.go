@@ -270,6 +270,8 @@ func (c *Coordinator) Replace() error {
 // buildReplacePrompt creates a comprehensive prompt for a replacement coordinator.
 // Since the new session has fresh context, we need to provide enough information
 // for the coordinator to understand the current state and continue orchestrating.
+// The prompt instructs the coordinator to read the handoff message first and then
+// wait for user direction before taking any autonomous actions.
 func (c *Coordinator) buildReplacePrompt() string {
 	var prompt strings.Builder
 
@@ -277,12 +279,20 @@ func (c *Coordinator) buildReplacePrompt() string {
 	prompt.WriteString("Your context window was approaching limits, so you've been replaced with a fresh session.\n")
 	prompt.WriteString("Your workers are still running and all external state is preserved.\n\n")
 
-	prompt.WriteString("IMMEDIATE ACTIONS REQUIRED:\n")
-	prompt.WriteString("1. Run `list_workers` to see current worker status and assignments\n")
-	prompt.WriteString("2. Run `read_message_log` to see recent activity and any pending messages\n")
+	prompt.WriteString("WHAT YOU HAVE ACCESS TO:\n")
+	prompt.WriteString("- `list_workers`: See current worker status and assignments\n")
+	prompt.WriteString("- `read_message_log`: See recent activity (including handoff from previous coordinator)\n")
+	prompt.WriteString("- All standard coordinator tools\n\n")
 
-	prompt.WriteString("The worker pool, MCP server, and message log are all still active.\n")
-	prompt.WriteString("You have full access to all coordinator tools.\n")
+	prompt.WriteString("IMPORTANT - READ THE HANDOFF FIRST:\n")
+	prompt.WriteString("The previous coordinator posted a handoff message to the message log.\n")
+	prompt.WriteString("Run `read_message_log` to see this handoff and understand current state.\n\n")
+
+	prompt.WriteString("WHAT TO DO NOW:\n")
+	prompt.WriteString("1. Read the handoff message from the previous coordinator\n")
+	prompt.WriteString("2. **Wait for the user to provide direction before taking any other action.**\n")
+	prompt.WriteString("3. Do NOT assign tasks, spawn workers, or make decisions until the user tells you what to do.\n")
+	prompt.WriteString("4. Acknowledge that you've read the handoff and are ready for instructions.\n")
 
 	return prompt.String()
 }
