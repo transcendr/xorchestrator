@@ -34,6 +34,9 @@ type CoordinatorServer struct {
 	// workerTaskMap maps workerID -> taskID for lookup
 	workerTaskMap map[string]string
 	taskMapMu     sync.RWMutex // protects workerTaskMap
+
+	// dedup tracks recent messages to prevent duplicate sends to workers
+	dedup *MessageDeduplicator
 }
 
 // NewCoordinatorServer creates a new coordinator MCP server.
@@ -51,6 +54,7 @@ func NewCoordinatorServer(aiClient client.HeadlessClient, workerPool *pool.Worke
 		port:          port,
 		extensions:    extensions,
 		workerTaskMap: make(map[string]string),
+		dedup:         NewMessageDeduplicator(DefaultDeduplicationWindow),
 	}
 
 	cs.registerTools()
@@ -490,6 +494,12 @@ func (cs *CoordinatorServer) handleSendToWorker(ctx context.Context, rawArgs jso
 	}
 	if args.Message == "" {
 		return nil, fmt.Errorf("message is required")
+	}
+
+	// Check for duplicate message within deduplication window
+	if cs.dedup.IsDuplicate(args.WorkerID, args.Message) {
+		log.Debug(log.CatMCP, "Duplicate message suppressed", "workerID", args.WorkerID)
+		return SuccessResult(fmt.Sprintf("Message sent to %s", args.WorkerID)), nil
 	}
 
 	worker := cs.pool.GetWorker(args.WorkerID)

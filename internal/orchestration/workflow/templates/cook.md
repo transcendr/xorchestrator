@@ -265,6 +265,22 @@ This ensures:
 - Fresh workers for next task (no context pollution)
 - Retired workers get replaced automatically
 
+**Handling replacement worker "ready" messages:**
+
+After calling `replace_worker`, new workers will spawn and send "ready" messages. The human will nudge you with "[worker-X sent a message]".
+
+When this happens:
+1. Call `read_message_log()` to confirm the new workers are ready
+2. Note their readiness: "worker-9 and worker-10 are now ready"
+3. **Do NOT assign them work yet** - they're backups for future tasks
+4. Continue with the next task using workers that haven't been used yet
+5. Only assign work to completely fresh workers (never reuse a worker that already worked on a previous task in this epic)
+
+**Worker selection priority:**
+- Use workers that have NEVER been assigned work in this epic
+- Skip workers that completed previous tasks (even if they've been replaced)
+- Replacement workers are available for future tasks if you run out of fresh workers
+
 ### Phase 3: Epic Completion
 
 When all tasks in the epic are complete:
@@ -319,10 +335,65 @@ Provide status updates:
 
 ### Message Log Monitoring
 
-Check `read_message_log()` when workers send nudges:
-- Track last processed timestamp to identify new messages
-- Deduplicate completion notifications
-- Only report meaningful state changes
+**CRITICAL: Coordinator must deduplicate worker messages to avoid duplicate actions.**
+
+Workers may send duplicate messages due to system behavior. The coordinator MUST track which state transitions have been processed and ignore duplicates.
+
+#### Deduplication Strategy
+
+**Track worker state in your working memory:**
+```
+worker-1: assigned → implementing
+worker-2: assigned → reviewing
+worker-1: implementing → completed (PROCESSED)
+worker-2: reviewing → approved (PROCESSED)
+```
+
+**When human nudges you that a worker sent a message:**
+
+1. Call `read_message_log()` to see new messages
+2. Identify the worker and the state transition (e.g., "worker-3 completed implementation")
+3. **Check if you've already processed this exact state transition:**
+   - If YES: Respond "Already processed: worker-3 completion. No action needed."
+   - If NO: Process the message and take action (assign reviewer, tell worker to commit, etc.)
+4. Update your mental state tracker after taking action
+
+#### Examples of Duplicate Messages
+
+**Scenario 1: Worker sends 3 identical "implementation complete" messages**
+- First message at 14:08:42: Process it → Assign reviewer
+- Second message at 14:08:44: "Already processed: worker-3 completion. No action needed."
+- Third message at 14:08:48: "Already processed: worker-3 completion. No action needed."
+
+**Scenario 2: Reviewer sends 3 identical "APPROVED" messages**
+- First message at 14:09:49: Process it → Tell writer to commit
+- Second message at 14:10:14: "Already processed: worker-4 approval. No action needed."
+- Third message at 14:10:15: "Already processed: worker-4 approval. No action needed."
+
+**Scenario 3: New worker sends "ready" message after replacement**
+- This is a NEW state transition (worker spawned → ready)
+- Process it once: "worker-5 ready"
+- Don't confuse with task completion messages
+
+#### What NOT to do
+
+❌ Don't just say "No response requested" without explanation
+❌ Don't re-assign work that's already been assigned
+❌ Don't tell a worker to commit multiple times
+❌ Don't assign multiple reviewers for the same task
+
+#### State Transition Examples
+
+Valid state transitions to track:
+- `worker-X: idle → assigned task Y`
+- `worker-X: working on task Y → completed task Y`
+- `worker-X: reviewing task Y → approved task Y`
+- `worker-X: reviewing task Y → denied task Y`
+- `worker-X: approved → committed task Y`
+- `worker-X: retired → replaced by worker-Z`
+- `worker-Z: spawned → ready`
+
+Each transition should only be processed ONCE.
 
 ## Commit Message Format
 
@@ -425,13 +496,21 @@ Coordinator: Presents execution plan → User approves
 
 [Task 1: perles-abc1.1]
 Coordinator: Assigns to worker-1 (with proposal review)
-Worker-1: Completes implementation
-Coordinator: Assigns review to worker-2
-Worker-2: Reviews → APPROVED
-Coordinator: Tells worker-1 to commit
-Worker-1: Commits
-Coordinator: Marks task complete (bd close perles-abc1.1)
+Worker-1: Completes implementation (sends message)
+Coordinator: Reads message log → Assigns review to worker-2
+Worker-1: Sends duplicate "complete" message
+Coordinator: "Already processed: worker-1 completion. No action needed."
+Worker-2: Reviews → APPROVED (sends message)
+Coordinator: Reads message log → Tells worker-1 to commit
+Worker-2: Sends duplicate "APPROVED" message
+Coordinator: "Already processed: worker-2 approval. No action needed."
+Worker-1: Commits (sends message)
+Coordinator: Reads message log → Marks task complete (bd close perles-abc1.1)
 Coordinator: Replaces worker-1 and worker-2
+Worker-5: Sends "ready" message (new worker spawned)
+Coordinator: "worker-5 ready" (notes but doesn't assign yet)
+Worker-6: Sends "ready" message (new worker spawned)
+Coordinator: "worker-6 ready" (notes but doesn't assign yet)
 
 [Task 2: perles-abc1.2]
 Coordinator: Assigns to worker-3 (with proposal review)
@@ -471,6 +550,10 @@ Coordinator: "Epic perles-abc1 is now complete. All 7 tasks implemented and revi
 ❌ **Committing before approval** - Can't easily undo if problems found
 ❌ **Batching multiple tasks** - Harder to track and review
 ❌ **Skipping tests** - Bugs ship to next task
+❌ **Ignoring duplicate messages** - Process each state transition only once
+❌ **Re-assigning already assigned work** - Check if you've already assigned a reviewer/committer
+❌ **Assigning work to replacement workers immediately** - Let them sit idle as backups
+❌ **Saying "No response requested" without explanation** - Always explain why you're not taking action
 
 ## Adaptation for Different Scenarios
 

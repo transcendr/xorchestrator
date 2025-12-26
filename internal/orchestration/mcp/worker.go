@@ -23,6 +23,8 @@ type WorkerServer struct {
 	*Server
 	workerID string
 	msgStore MessageStore
+	// dedup tracks recent messages to prevent duplicate sends to coordinator
+	dedup *MessageDeduplicator
 }
 
 // NewWorkerServer creates a new worker MCP server.
@@ -36,6 +38,7 @@ func NewWorkerServer(workerID string, msgStore MessageStore) *WorkerServer {
 		Server:   NewServer("perles-worker", "1.0.0", WithInstructions(instructions)),
 		workerID: workerID,
 		msgStore: msgStore,
+		dedup:    NewMessageDeduplicator(DefaultDeduplicationWindow),
 	}
 
 	ws.registerTools()
@@ -181,6 +184,12 @@ func (ws *WorkerServer) handlePostMessage(_ context.Context, rawArgs json.RawMes
 
 	if ws.msgStore == nil {
 		return nil, fmt.Errorf("message store not available")
+	}
+
+	// Check for duplicate message within deduplication window
+	if ws.dedup.IsDuplicate(ws.workerID, args.Content) {
+		log.Debug(log.CatMCP, "Duplicate message suppressed", "workerID", ws.workerID)
+		return SuccessResult(fmt.Sprintf("Message sent to %s", args.To)), nil
 	}
 
 	_, err := ws.msgStore.Append(ws.workerID, args.To, args.Content, message.MessageInfo)
