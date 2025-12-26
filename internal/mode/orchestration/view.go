@@ -24,6 +24,12 @@ func (m Model) View() string {
 		return ""
 	}
 
+	// During initialization phases, show the init screen instead of main view
+	initPhase := m.getInitPhase()
+	if initPhase != InitReady && initPhase != InitNotStarted {
+		return m.renderInitScreen()
+	}
+
 	return m.renderMainView()
 }
 

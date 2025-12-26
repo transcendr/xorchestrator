@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -20,6 +21,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zjrosen/perles/internal/mode"
+	"github.com/zjrosen/perles/internal/orchestration/client"
 	"github.com/zjrosen/perles/internal/orchestration/coordinator"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -53,6 +55,27 @@ type ChatMessage struct {
 	IsToolCall bool // True if this is a tool call (for grouped rendering)
 }
 
+// InitPhase represents the current initialization phase.
+type InitPhase int
+
+const (
+	InitNotStarted           InitPhase = iota
+	InitCreatingWorkspace              // Consolidates client, pool, message log, MCP server creation
+	InitSpawningCoordinator            // Coordinator process started
+	InitAwaitingFirstMessage           // Waiting for coordinator's first response
+	InitSpawningWorkers                // Workers are being spawned
+	InitWorkersReady                   // All workers have reported ready
+	InitReady
+	InitFailed
+	InitTimedOut
+)
+
+// InitTimeoutMsg signals initialization timeout (used by tests).
+type InitTimeoutMsg struct{}
+
+// SpinnerTickMsg advances the spinner frame.
+type SpinnerTickMsg struct{}
+
 // Model holds the orchestration mode state.
 type Model struct {
 	// Pane components
@@ -69,6 +92,13 @@ type Model struct {
 	// Workflow state
 	paused bool
 
+	// Initialization state machine
+	initializer  *Initializer
+	initListener *pubsub.ContinuousListener[InitializerEvent]
+
+	// Spinner animation frame (view-only, advanced by SpinnerTickMsg)
+	spinnerFrame int
+
 	// Backend integration (the actual coordinator and worker pool)
 	coord              *coordinator.Coordinator
 	pool               *pool.WorkerPool
@@ -84,6 +114,10 @@ type Model struct {
 	claudeModel string // Claude model: sonnet, opus, haiku
 	ampModel    string // Amp model: opus, sonnet
 	ampMode     string // Amp mode: free, rush, smart
+
+	// Phased initialization state (used during startup)
+	aiClient           client.HeadlessClient // Created during InitCreatingClient phase
+	aiClientExtensions map[string]any        // Provider-specific extensions
 
 	// Pub/sub subscriptions (initialized when coordinator starts)
 	coordListener   *pubsub.ContinuousListener[events.CoordinatorEvent] // Coordinator events listener
@@ -643,6 +677,45 @@ func (m *Model) CancelSubscriptions() {
 	if m.nudgeBatcher != nil {
 		m.nudgeBatcher.Stop()
 	}
+}
+
+// cleanup cleans up any partial initialization state before retrying.
+// This is called when the user presses R to retry after a failed or timed out initialization.
+func (m *Model) cleanup() {
+	// Cancel any active subscriptions
+	m.CancelSubscriptions()
+
+	// Shutdown MCP server if running
+	if m.mcpServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = m.mcpServer.Shutdown(ctx)
+		cancel()
+		m.mcpServer = nil
+	}
+
+	// Stop coordinator if running
+	if m.coord != nil {
+		_ = m.coord.Cancel()
+		m.coord = nil
+	}
+
+	// Clear pool
+	m.pool = nil
+
+	// Clear message log
+	m.messageLog = nil
+
+	// Clear AI client
+	m.aiClient = nil
+	m.aiClientExtensions = nil
+
+	// Reset listeners
+	m.coordListener = nil
+	m.workerListener = nil
+	m.messageListener = nil
+	m.ctx = nil
+	m.cancel = nil
+	m.nudgeBatcher = nil
 }
 
 // openWorkflowPicker creates and shows the workflow picker modal.

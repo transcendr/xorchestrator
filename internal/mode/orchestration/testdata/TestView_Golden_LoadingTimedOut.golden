@@ -1,0 +1,30 @@
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                  \│/                                                   
+                          ╔═══════╗   ╔═══════╗   ╔═══════╗   ╔════╲   │   ╱════╗   ╔═══════╗                           
+                          ║       ╠═══╣       ╠═══╣       ╠═══╣     ╲  │  ╱     ╠═══╣       ║                           
+                          ║       ╠═══╣       ╠═══╣       ╠═══╣     ╱  │  ╲     ╠═══╣       ║                           
+                          ╚═══════╝   ╚═══════╝   ╚═══════╝   ╚════╱   │   ╲════╝   ╚═══════╝                           
+                                                                  /│\                                                   
+                                                                                                                        
+                                               Initialization Timed Out                                                 
+                                                                                                                        
+                                                 ✓ Creating Workspace                                                   
+                                                ✓ Spawning Coordinator                                                  
+                                                 ✓ Coordinator Loaded                                                   
+                                                  ✗ Spawning Workers                                                    
+                                               Workers Loaded (timed out)                                               
+                                                                                                                        
+                                           The workers did not load in time.                                            
+                                      This may indicate an API or network issue.                                        
+                                                                                                                        
+                                                                                                                        
+                                          [R] Retry     [ESC] Exit to Kanban                                            
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        

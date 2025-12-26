@@ -12,7 +12,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/amp"
 	"github.com/zjrosen/perles/internal/orchestration/client"
 	"github.com/zjrosen/perles/internal/orchestration/coordinator"
 	"github.com/zjrosen/perles/internal/orchestration/events"
@@ -97,16 +96,16 @@ type ReplaceCoordinatorMsg struct{}
 // StartCoordinatorMsg signals to start the coordinator.
 type StartCoordinatorMsg struct{}
 
-// CoordinatorStartedMsg indicates the coordinator started successfully.
-type CoordinatorStartedMsg struct{}
-
-// CoordinatorStartFailedMsg indicates the coordinator failed to start.
-type CoordinatorStartFailedMsg struct {
-	Error error
-}
-
 // CoordinatorStoppedMsg indicates the coordinator stopped.
 type CoordinatorStoppedMsg struct{}
+
+// spinnerTick returns a command that sends SpinnerTickMsg after 80ms.
+// Used to animate the braille spinner during initialization loading phases.
+func spinnerTick() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg {
+		return SpinnerTickMsg{}
+	})
+}
 
 // CoordinatorErrorMsg indicates an error from the coordinator.
 // Still used by handleUserInputToCoordinator for error handling.
@@ -155,6 +154,39 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			updatedPicker, cmd := m.workflowPicker.Update(msg)
 			m.workflowPicker = &updatedPicker
 			return m, cmd
+		}
+
+		// Handle keys during initialization phases
+		initPhase := m.getInitPhase()
+		if initPhase != InitReady && initPhase != InitNotStarted {
+			// In failed/timeout state: R retries, ESC/Ctrl+C exits
+			if initPhase == InitFailed || initPhase == InitTimedOut {
+				switch {
+				case msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && (msg.Runes[0] == 'r' || msg.Runes[0] == 'R'):
+					// Retry: use the initializer's Retry method
+					if m.initializer != nil && m.initListener != nil {
+						if err := m.initializer.Retry(); err != nil {
+							m = m.SetError(err.Error())
+							return m, nil
+						}
+						// Reset spinner frame for view
+						m.spinnerFrame = 0
+						return m, tea.Batch(spinnerTick(), m.initListener.Listen())
+					}
+					// Fallback if no initializer or listener (e.g., in tests) - restart initialization
+					m.cleanup()
+					return m, func() tea.Msg { return StartCoordinatorMsg{} }
+				case key.Matches(msg, keys.Quit) || msg.Type == tea.KeyCtrlC:
+					return m, func() tea.Msg { return QuitMsg{} }
+				}
+				return m, nil // Ignore all other keys in error/timeout state
+			}
+
+			// During active loading phases: only ESC/Ctrl+C cancels
+			if key.Matches(msg, keys.Quit) || msg.Type == tea.KeyCtrlC {
+				return m, func() tea.Msg { return QuitMsg{} }
+			}
+			return m, nil // Block all other input during loading
 		}
 
 		// ctrl+f toggles navigation mode (works in both modes)
@@ -313,19 +345,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case StartCoordinatorMsg:
 		return m.handleStartCoordinator()
 
-	case CoordinatorStartedMsg:
-		// Start listening for coordinator, worker, and message events via pub/sub
-		// Each listener.Listen() returns a tea.Cmd that waits for the next event
-		return m, tea.Batch(
-			m.coordListener.Listen(),
-			m.workerListener.Listen(),
-			m.messageListener.Listen(),
-		)
-
-	case CoordinatorStartFailedMsg:
-		m = m.SetError(msg.Error.Error())
-		return m, nil
-
 	// Handle coordinator events from pub/sub
 	case pubsub.Event[events.CoordinatorEvent]:
 		return m.handleCoordinatorEvent(msg)
@@ -380,6 +399,31 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.showWorkflowPicker = false
 		m.workflowPicker = nil
 		return m, nil
+
+	// Handle spinner animation tick
+	case SpinnerTickMsg:
+		// Only continue ticking during active loading phases
+		phase := m.getInitPhase()
+		if phase == InitReady ||
+			phase == InitFailed ||
+			phase == InitTimedOut ||
+			phase == InitNotStarted {
+			// Terminal or inactive state - stop spinning
+			return m, nil
+		}
+		// Advance to next frame and continue ticking
+		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		return m, spinnerTick()
+
+	// Handle initialization timeout (used by tests to simulate timeout)
+	case InitTimeoutMsg:
+		// This message is used by tests to simulate timeout
+		// The actual timeout is handled by the Initializer
+		return m, nil
+
+	// Handle initializer events from the state machine
+	case pubsub.Event[InitializerEvent]:
+		return m.handleInitializerEvent(msg)
 	}
 
 	return m, nil
@@ -396,8 +440,11 @@ func (m Model) handleCoordinatorEvent(event pubsub.Event[events.CoordinatorEvent
 
 	payload := event.Payload
 
+	cmds := make([]tea.Cmd, 0)
+
 	switch payload.Type {
 	case events.CoordinatorChat:
+		// Add message to coordinator pane
 		m = m.AddChatMessage(payload.Role, payload.Content)
 
 	case events.CoordinatorStatusChange:
@@ -422,8 +469,9 @@ func (m Model) handleCoordinatorEvent(event pubsub.Event[events.CoordinatorEvent
 		m.coordinatorWorking = false
 	}
 
-	// Always continue listening for more events
-	return m, m.coordListener.Listen()
+	cmds = append(cmds, m.coordListener.Listen())
+
+	return m, tea.Batch(cmds...)
 }
 
 // handleWorkerEvent processes worker events from the pub/sub broker.
@@ -488,8 +536,9 @@ func (m Model) handleMessageEvent(event pubsub.Event[message.Event]) (Model, tea
 		// Append entry to message pane directly (real-time, no polling needed)
 		m = m.AppendMessageEntry(payload.Entry)
 
-		// Nudge coordinator if message is to COORDINATOR or ALL (via debounced batcher)
 		entry := payload.Entry
+
+		// Nudge coordinator if message is to COORDINATOR or ALL (via debounced batcher)
 		if entry.To == message.ActorCoordinator || entry.To == message.ActorAll {
 			if m.coord != nil && m.nudgeBatcher != nil && entry.From != message.ActorCoordinator {
 				m.nudgeBatcher.Add(entry.From)
@@ -497,7 +546,6 @@ func (m Model) handleMessageEvent(event pubsub.Event[message.Event]) (Model, tea
 		}
 	}
 
-	// Always continue listening for more events
 	return m, m.messageListener.Listen()
 }
 
@@ -517,144 +565,150 @@ func convertCoordinatorStatus(s events.CoordinatorStatus) coordinator.Status {
 	}
 }
 
+// handleInitializerEvent processes events from the Initializer state machine.
+func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Model, tea.Cmd) {
+	payload := event.Payload
+
+	switch payload.Type {
+	case InitEventPhaseChanged:
+		// Set up TUI event subscriptions once coordinator is available
+		// This allows panes to populate during loading
+		if payload.Phase >= InitAwaitingFirstMessage && m.coordListener == nil {
+			if coord := m.initializer.GetCoordinator(); coord != nil {
+				m.coord = coord
+				m.coordListener = pubsub.NewContinuousListener(m.ctx, coord.Broker())
+				m.workerListener = pubsub.NewContinuousListener(m.ctx, coord.Workers())
+
+				if msgLog := m.initializer.GetMessageLog(); msgLog != nil {
+					m.messageLog = msgLog
+					m.messageListener = pubsub.NewContinuousListener(m.ctx, msgLog.Broker())
+				}
+
+				// Set up nudge batcher early so worker ready messages get forwarded
+				if m.nudgeBatcher == nil {
+					m.nudgeBatcher = NewNudgeBatcher(1 * time.Second)
+					m.nudgeBatcher.SetOnNudge(func(workerIDs []string) {
+						if m.coord == nil {
+							return
+						}
+
+						var nudge string
+						if len(workerIDs) == 1 {
+							nudge = fmt.Sprintf("[%s sent a message] Use read_message_log to check for new messages.", workerIDs[0])
+						} else {
+							nudge = fmt.Sprintf("[%s sent messages] Use read_message_log to check for new messages.", strings.Join(workerIDs, ", "))
+						}
+
+						if err := m.coord.SendUserMessage(nudge); err != nil {
+							log.Debug("orchestration", "Failed to nudge coordinator", "error", err)
+						}
+					})
+				}
+
+				return m, tea.Batch(
+					m.initListener.Listen(),
+					m.coordListener.Listen(),
+					m.workerListener.Listen(),
+					m.messageListener.Listen(),
+				)
+			}
+		}
+
+		return m, m.initListener.Listen()
+
+	case InitEventReady:
+		// Grab all resources from the initializer
+		res := m.initializer.Resources()
+		m.aiClient = res.AIClient
+		m.aiClientExtensions = res.Extensions
+		m.pool = res.Pool
+		m.messageLog = res.MessageLog
+		m.mcpServer = res.MCPServer
+		m.coord = res.Coordinator
+
+		// Set up pub/sub subscriptions if not already set up
+		// (they may have been set up earlier when coordinator became available)
+		var cmds []tea.Cmd
+		if m.coordListener == nil {
+			m.coordListener = pubsub.NewContinuousListener(m.ctx, m.coord.Broker())
+			cmds = append(cmds, m.coordListener.Listen())
+		}
+		if m.workerListener == nil {
+			m.workerListener = pubsub.NewContinuousListener(m.ctx, m.coord.Workers())
+			cmds = append(cmds, m.workerListener.Listen())
+		}
+		if m.messageListener == nil {
+			m.messageListener = pubsub.NewContinuousListener(m.ctx, m.messageLog.Broker())
+			cmds = append(cmds, m.messageListener.Listen())
+		}
+
+		// Mark all panes dirty so they auto-scroll to bottom on first render
+		m.coordinatorPane.contentDirty = true
+		m.messagePane.contentDirty = true
+		for workerID := range m.workerPane.contentDirty {
+			m.workerPane.contentDirty[workerID] = true
+		}
+
+		// Focus input
+		m.input.Focus()
+
+		return m, tea.Batch(cmds...)
+
+	case InitEventFailed:
+		// Error state - Initializer handles the state
+		return m, nil
+
+	case InitEventTimedOut:
+		// Timeout state - Initializer handles the state
+		return m, nil
+	}
+
+	return m, m.initListener.Listen()
+}
+
 // --- Handler methods ---
 
-// handleStartCoordinator initializes the coordinator and starts it.
+// handleStartCoordinator kicks off the phased initialization process.
+// It creates an Initializer and subscribes to its events.
 func (m Model) handleStartCoordinator() (Model, tea.Cmd) {
 	if m.workDir == "" {
 		m = m.SetError("Work directory not configured")
 		return m, nil
 	}
 
-	// Determine client type from config, defaulting to "claude"
-	clientType := client.ClientType(m.clientType)
-	if clientType == "" {
-		clientType = client.ClientClaude
-	}
+	// Blur input during initialization - it will be re-focused when InitReady
+	m.input.Blur()
 
-	// Create the AI client based on configuration
-	aiClient, err := client.NewClient(clientType)
-	if err != nil {
-		return m, func() tea.Msg {
-			return CoordinatorStartFailedMsg{Error: fmt.Errorf("failed to create AI client: %w", err)}
-		}
-	}
-
-	// Build extensions map for provider-specific configuration
-	extensions := make(map[string]any)
-	switch clientType {
-	case client.ClientClaude:
-		if m.claudeModel != "" {
-			extensions[client.ExtClaudeModel] = m.claudeModel
-		}
-	case client.ClientAmp:
-		if m.ampModel != "" {
-			extensions[client.ExtAmpModel] = m.ampModel
-		}
-		if m.ampMode != "" {
-			extensions[amp.ExtAmpMode] = m.ampMode
-		}
-	}
-
-	log.Debug("orchestration", "Creating AI client",
-		"clientType", clientType,
-		"claudeModel", m.claudeModel,
-		"ampModel", m.ampModel,
-		"ampMode", m.ampMode)
-
-	// Create worker pool with the client
-	workerPool := pool.NewWorkerPool(pool.Config{
-		Client: aiClient,
-	})
-	m.pool = workerPool
-
-	// Create in-memory message log
-	msgIssue := message.New()
-	m.messageLog = msgIssue
-
-	// Shut down any existing MCP server before starting a new one
-	if m.mcpServer != nil {
-		log.Debug("orchestration", "Shutting down existing MCP server")
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_ = m.mcpServer.Shutdown(ctx)
-		cancel()
-		m.mcpServer = nil
-	}
-
-	// Start HTTP MCP server with shared pool, client, and provider extensions
-	mcpServer := mcp.NewCoordinatorServer(aiClient, workerPool, msgIssue, m.workDir, extensions)
-
-	// Create worker server cache that shares the same msgIssue
-	workerServers := newWorkerServerCache(msgIssue)
-
-	// Set up HTTP routes - coordinator and workers share the same server
-	mux := http.NewServeMux()
-	mux.Handle("/mcp", mcpServer.ServeHTTP())           // Coordinator tools
-	mux.HandleFunc("/worker/", workerServers.ServeHTTP) // Worker tools (shared msgIssue)
-
-	httpServer := &http.Server{
-		Addr:              ":8765",
-		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-	m.mcpServer = httpServer
-
-	// Start HTTP server in background
-	go func() {
-		log.Debug("orchestration", "Starting MCP HTTP server", "addr", httpServer.Addr)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Debug("orchestration", "MCP server error", "error", err)
-		}
-	}()
-
-	// Create coordinator with the AI client
-	coordCfg := coordinator.Config{
-		WorkDir:      m.workDir,
-		Client:       aiClient,
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	}
-
-	coord, err := coordinator.New(coordCfg)
-	if err != nil {
-		return m, func() tea.Msg {
-			return CoordinatorStartFailedMsg{Error: err}
-		}
-	}
-	m.coord = coord
-
-	// Set up nudge batcher for debouncing worker message notifications
-	m.nudgeBatcher = NewNudgeBatcher(1 * time.Second)
-	m.nudgeBatcher.SetOnNudge(func(workerIDs []string) {
-		if m.coord == nil {
-			return
-		}
-
-		var nudge string
-		if len(workerIDs) == 1 {
-			nudge = fmt.Sprintf("[%s sent a message] Use read_message_log to check for new messages.", workerIDs[0])
-		} else {
-			nudge = fmt.Sprintf("[%s sent messages] Use read_message_log to check for new messages.", strings.Join(workerIDs, ", "))
-		}
-
-		if err := m.coord.SendUserMessage(nudge); err != nil {
-			log.Debug("orchestration", "Failed to nudge coordinator", "error", err)
-		}
+	// Create and start the Initializer
+	m.initializer = NewInitializer(InitializerConfig{
+		WorkDir:         m.workDir,
+		ClientType:      m.clientType,
+		ClaudeModel:     m.claudeModel,
+		AmpModel:        m.ampModel,
+		AmpMode:         m.ampMode,
+		ExpectedWorkers: 4,
+		Timeout:         20 * time.Second,
 	})
 
-	// Set up pub/sub subscriptions for coordinator, worker, and message events
+	// Create context for subscriptions
 	m.ctx, m.cancel = context.WithCancel(context.Background())
-	m.coordListener = pubsub.NewContinuousListener(m.ctx, coord.Broker())
-	m.workerListener = pubsub.NewContinuousListener(m.ctx, coord.Workers())
-	m.messageListener = pubsub.NewContinuousListener(m.ctx, msgIssue.Broker())
 
-	// Start the coordinator in background
-	return m, func() tea.Msg {
-		if err := coord.Start(); err != nil {
-			return CoordinatorStartFailedMsg{Error: err}
-		}
-		return CoordinatorStartedMsg{}
+	// Subscribe to initializer events
+	m.initListener = pubsub.NewContinuousListener(m.ctx, m.initializer.Broker())
+
+	// Reset spinner frame for view animation
+	m.spinnerFrame = 0
+
+	// Start the initializer
+	if err := m.initializer.Start(); err != nil {
+		m = m.SetError(err.Error())
+		return m, nil
 	}
+
+	return m, tea.Batch(
+		spinnerTick(),
+		m.initListener.Listen(),
+	)
 }
 
 // handleUserInput sends user input to the target (coordinator or worker).
