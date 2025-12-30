@@ -514,16 +514,26 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			// Otherwise ESC cancels the editor
 			if m.focused == FieldQuery && m.vimEnabled && !m.queryInput.InNormalMode() {
 				// Let vimtextarea handle ESC to switch from insert to normal mode
-				m.queryInput, _ = m.queryInput.Update(msg)
-				return m, nil
+				var cmd tea.Cmd
+				m.queryInput, cmd = m.queryInput.Update(msg)
+				return m, cmd
 			}
 			return m, cancelCmd()
 		}
 
 		// Delegate to focused text input and update preview
-		m = m.updateTextInput(msg)
+		var cmd tea.Cmd
+		m, cmd = m.updateTextInput(msg)
 		m = m.updatePreview() // Live preview update on every keystroke
-		return m, nil
+		return m, cmd
+
+	default:
+		// Pass non-key messages (like yank highlight tick) to vimtextarea when focused
+		if m.focused == FieldQuery {
+			var cmd tea.Cmd
+			m.queryInput, cmd = m.queryInput.Update(msg)
+			return m, cmd
+		}
 	}
 	return m, nil
 }
@@ -617,18 +627,19 @@ func (m Model) VimEnabled() bool {
 	return m.vimEnabled
 }
 
-func (m Model) updateTextInput(msg tea.KeyMsg) Model {
+func (m Model) updateTextInput(msg tea.KeyMsg) (Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch m.focused {
 	case FieldName:
-		m.nameInput, _ = m.nameInput.Update(msg)
+		m.nameInput, cmd = m.nameInput.Update(msg)
 		// Clear validation error when user types in name field
 		m.validationError = ""
 	case FieldQuery:
-		m.queryInput, _ = m.queryInput.Update(msg)
+		m.queryInput, cmd = m.queryInput.Update(msg)
 	case FieldIssueID:
-		m.issueIDInput, _ = m.issueIDInput.Update(msg)
+		m.issueIDInput, cmd = m.issueIDInput.Update(msg)
 	}
-	return m
+	return m, cmd
 }
 
 // validate checks the form for errors and returns an error message if invalid.
