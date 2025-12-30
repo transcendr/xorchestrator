@@ -117,17 +117,19 @@ var (
 	PriorityBacklogStyle  = lipgloss.NewStyle().Foreground(PriorityBacklogColor)
 
 	// Issue type colors
-	IssueTaskColor    = lipgloss.AdaptiveColor{Light: "#54A0FF", Dark: "#54A0FF"}
-	IssueChoreColor   = lipgloss.AdaptiveColor{Light: "#888888", Dark: "#777777"}
-	IssueEpicColor    = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	IssueBugColor     = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	IssueFeatureColor = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
+	IssueTaskColor     = lipgloss.AdaptiveColor{Light: "#54A0FF", Dark: "#54A0FF"}
+	IssueChoreColor    = lipgloss.AdaptiveColor{Light: "#888888", Dark: "#777777"}
+	IssueEpicColor     = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	IssueBugColor      = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	IssueFeatureColor  = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
+	IssueMoleculeColor = lipgloss.AdaptiveColor{Light: "#FF731A", Dark: "#FF731A"}
 
-	TypeBugStyle     = lipgloss.NewStyle().Foreground(StatusErrorColor)
-	TypeFeatureStyle = lipgloss.NewStyle().Foreground(IssueFeatureColor)
-	TypeTaskStyle    = lipgloss.NewStyle().Foreground(IssueTaskColor)
-	TypeEpicStyle    = lipgloss.NewStyle().Foreground(IssueEpicColor)
-	TypeChoreStyle   = lipgloss.NewStyle().Foreground(IssueChoreColor)
+	TypeBugStyle      = lipgloss.NewStyle().Foreground(StatusErrorColor)
+	TypeFeatureStyle  = lipgloss.NewStyle().Foreground(IssueFeatureColor)
+	TypeTaskStyle     = lipgloss.NewStyle().Foreground(IssueTaskColor)
+	TypeEpicStyle     = lipgloss.NewStyle().Foreground(IssueEpicColor)
+	TypeChoreStyle    = lipgloss.NewStyle().Foreground(IssueChoreColor)
+	TypeMoleculeStyle = lipgloss.NewStyle().Foreground(IssueMoleculeColor)
 
 	// Status bar
 	StatusBarStyle = lipgloss.NewStyle().
@@ -163,6 +165,8 @@ func GetTypeIndicator(t beads.IssueType) string {
 		return "[E]"
 	case beads.TypeChore:
 		return "[C]"
+	case beads.TypeMolecule:
+		return "[M]"
 	default:
 		return "[?]"
 	}
@@ -181,6 +185,8 @@ func GetTypeStyle(t beads.IssueType) lipgloss.Style {
 		return TypeEpicStyle
 	case beads.TypeChore:
 		return TypeChoreStyle
+	case beads.TypeMolecule:
+		return TypeMoleculeStyle
 	default:
 		return lipgloss.NewStyle()
 	}
