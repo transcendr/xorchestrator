@@ -511,7 +511,7 @@ func TestServer_MCPBroker_Publishes(t *testing.T) {
 		require.Contains(t, string(event.Payload.ResponseJSON), "content", "ResponseJSON should contain content")
 		require.Empty(t, event.Payload.Error, "Error should be empty for success")
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Timeout waiting for MCP event")
+		require.FailNow(t, "Timeout waiting for MCP event")
 	}
 }
 
@@ -545,7 +545,7 @@ func TestServer_MCPBroker_CapturesDuration(t *testing.T) {
 		require.GreaterOrEqual(t, event.Payload.Duration.Milliseconds(), int64(50), "Duration should be at least 50ms")
 		require.Less(t, event.Payload.Duration.Milliseconds(), int64(200), "Duration should be reasonable")
 	case <-time.After(500 * time.Millisecond):
-		t.Fatal("Timeout waiting for MCP event")
+		require.FailNow(t, "Timeout waiting for MCP event")
 	}
 }
 
@@ -577,7 +577,7 @@ func TestServer_MCPBroker_CapturesError(t *testing.T) {
 		require.Equal(t, "context deadline exceeded", event.Payload.Error, "Error message mismatch")
 		require.Equal(t, "failing_tool", event.Payload.ToolName, "ToolName mismatch")
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Timeout waiting for MCP event")
+		require.FailNow(t, "Timeout waiting for MCP event")
 	}
 }
 

@@ -8,23 +8,22 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/pool"
 )
 
 func TestPhaseShortName(t *testing.T) {
 	tests := []struct {
 		name     string
-		phase    events.WorkerPhase
+		phase    events.ProcessPhase
 		expected string
 	}{
-		{"idle returns empty", events.PhaseIdle, ""},
-		{"implementing returns impl", events.PhaseImplementing, "impl"},
-		{"awaiting review returns await", events.PhaseAwaitingReview, "await"},
-		{"reviewing returns review", events.PhaseReviewing, "review"},
-		{"addressing feedback returns feedback", events.PhaseAddressingFeedback, "feedback"},
-		{"committing returns commit", events.PhaseCommitting, "commit"},
-		{"unknown phase returns empty", events.WorkerPhase("unknown"), ""},
-		{"empty phase returns empty", events.WorkerPhase(""), ""},
+		{"idle returns empty", events.ProcessPhaseIdle, "idle"},
+		{"implementing returns impl", events.ProcessPhaseImplementing, "impl"},
+		{"awaiting review returns await", events.ProcessPhaseAwaitingReview, "await"},
+		{"reviewing returns review", events.ProcessPhaseReviewing, "review"},
+		{"addressing feedback returns feedback", events.ProcessPhaseAddressingFeedback, "feedback"},
+		{"committing returns commit", events.ProcessPhaseCommitting, "commit"},
+		{"unknown phase returns empty", events.ProcessPhase("unknown"), ""},
+		{"empty phase returns empty", events.ProcessPhase(""), ""},
 	}
 
 	for _, tt := range tests {
@@ -36,7 +35,7 @@ func TestPhaseShortName(t *testing.T) {
 }
 
 func TestFormatWorkerTitle_WithTaskAndPhase(t *testing.T) {
-	title := formatWorkerTitle("worker-1", pool.WorkerWorking, "perles-abc.1", events.PhaseImplementing)
+	title := formatWorkerTitle("worker-1", events.ProcessStatusWorking, "perles-abc.1", events.ProcessPhaseImplementing)
 
 	// Should contain worker ID in uppercase
 	require.Contains(t, title, "WORKER-1")
@@ -48,27 +47,27 @@ func TestFormatWorkerTitle_WithTaskAndPhase(t *testing.T) {
 
 func TestFormatWorkerTitle_WithTaskNoPhase(t *testing.T) {
 	// Task assigned but phase is idle
-	title := formatWorkerTitle("worker-2", pool.WorkerWorking, "perles-xyz.5", events.PhaseIdle)
+	title := formatWorkerTitle("worker-2", events.ProcessStatusWorking, "perles-xyz.5", events.ProcessPhaseIdle)
 
 	require.Contains(t, title, "WORKER-2")
 	require.Contains(t, title, "perles-xyz.5")
-	// Should NOT contain parentheses when phase is idle
-	require.NotContains(t, title, "(")
+	// Should show (idle) when phase is idle
+	require.Contains(t, title, "(idle)")
 }
 
 func TestFormatWorkerTitle_Idle(t *testing.T) {
 	// Ready worker with no task
-	title := formatWorkerTitle("worker-3", pool.WorkerReady, "", events.PhaseIdle)
+	title := formatWorkerTitle("worker-3", events.ProcessStatusReady, "", events.ProcessPhaseIdle)
 
 	require.Contains(t, title, "WORKER-3")
-	// Should NOT contain task ID or phase
+	// Should NOT contain task ID or phase (no task = no phase display)
 	require.NotContains(t, title, "perles")
 	require.NotContains(t, title, "(")
 }
 
 func TestFormatWorkerTitle_Retired(t *testing.T) {
 	// Retired worker
-	title := formatWorkerTitle("worker-4", pool.WorkerRetired, "", events.PhaseIdle)
+	title := formatWorkerTitle("worker-4", events.ProcessStatusRetired, "", events.ProcessPhaseIdle)
 
 	require.Contains(t, title, "WORKER-4")
 	// Should NOT contain task info
@@ -78,19 +77,19 @@ func TestFormatWorkerTitle_Retired(t *testing.T) {
 func TestFormatWorkerTitle_AllPhases(t *testing.T) {
 	// Test all phases produce expected short names
 	phases := []struct {
-		phase    events.WorkerPhase
+		phase    events.ProcessPhase
 		expected string
 	}{
-		{events.PhaseImplementing, "(impl)"},
-		{events.PhaseAwaitingReview, "(await)"},
-		{events.PhaseReviewing, "(review)"},
-		{events.PhaseAddressingFeedback, "(feedback)"},
-		{events.PhaseCommitting, "(commit)"},
+		{events.ProcessPhaseImplementing, "(impl)"},
+		{events.ProcessPhaseAwaitingReview, "(await)"},
+		{events.ProcessPhaseReviewing, "(review)"},
+		{events.ProcessPhaseAddressingFeedback, "(feedback)"},
+		{events.ProcessPhaseCommitting, "(commit)"},
 	}
 
 	for _, tt := range phases {
 		t.Run(string(tt.phase), func(t *testing.T) {
-			title := formatWorkerTitle("worker-1", pool.WorkerWorking, "task-123", tt.phase)
+			title := formatWorkerTitle("worker-1", events.ProcessStatusWorking, "task-123", tt.phase)
 			require.Contains(t, title, tt.expected)
 		})
 	}
@@ -98,7 +97,7 @@ func TestFormatWorkerTitle_AllPhases(t *testing.T) {
 
 func TestFormatWorkerTitle_UnknownPhase(t *testing.T) {
 	// Unknown phase should be handled gracefully (no parentheses)
-	title := formatWorkerTitle("worker-1", pool.WorkerWorking, "task-123", events.WorkerPhase("unknown_phase"))
+	title := formatWorkerTitle("worker-1", events.ProcessStatusWorking, "task-123", events.ProcessPhase("unknown_phase"))
 
 	require.Contains(t, title, "WORKER-1")
 	require.Contains(t, title, "task-123")
@@ -106,16 +105,15 @@ func TestFormatWorkerTitle_UnknownPhase(t *testing.T) {
 	require.NotContains(t, title, "(")
 }
 
-func TestRenderSingleWorkerPane_NilPoolDoesNotCrash(t *testing.T) {
-	// Create model with nil pool
+func TestRenderSingleWorkerPane_DoesNotCrash(t *testing.T) {
+	// Create model (pool has been removed)
 	m := New(Config{})
-	m.pool = nil // Explicitly ensure pool is nil
 
 	// Initialize worker pane state for the worker
-	m.workerPane.workerStatus["worker-1"] = pool.WorkerWorking
+	m.workerPane.workerStatus["worker-1"] = events.ProcessStatusWorking
 	m.workerPane.viewports = make(map[string]viewport.Model)
 
-	// Should not panic when pool is nil
+	// Should not panic
 	require.NotPanics(t, func() {
 		_ = m.renderSingleWorkerPane("worker-1", 80, 20)
 	})
@@ -124,10 +122,9 @@ func TestRenderSingleWorkerPane_NilPoolDoesNotCrash(t *testing.T) {
 func TestWorkerPane_QueueCountDisplay(t *testing.T) {
 	// Create model with a worker
 	m := New(Config{})
-	m.pool = nil
 
 	// Initialize worker pane state
-	m.workerPane.workerStatus["worker-1"] = pool.WorkerWorking
+	m.workerPane.workerStatus["worker-1"] = events.ProcessStatusWorking
 	m.workerPane.viewports = make(map[string]viewport.Model)
 	m.workerPane.workerQueueCounts["worker-1"] = 3
 
@@ -141,10 +138,9 @@ func TestWorkerPane_QueueCountDisplay(t *testing.T) {
 func TestWorkerPane_NoQueueDisplay(t *testing.T) {
 	// Create model with a worker
 	m := New(Config{})
-	m.pool = nil
 
 	// Initialize worker pane state with zero queue count
-	m.workerPane.workerStatus["worker-1"] = pool.WorkerReady
+	m.workerPane.workerStatus["worker-1"] = events.ProcessStatusReady
 	m.workerPane.viewports = make(map[string]viewport.Model)
 	m.workerPane.workerQueueCounts["worker-1"] = 0
 
@@ -180,11 +176,10 @@ func TestWorkerPane_SetQueueCount(t *testing.T) {
 func TestWorkerPane_QueueCountMultipleWorkers(t *testing.T) {
 	// Create model with multiple workers
 	m := New(Config{})
-	m.pool = nil
 
 	// Initialize worker pane state for two workers
-	m.workerPane.workerStatus["worker-1"] = pool.WorkerWorking
-	m.workerPane.workerStatus["worker-2"] = pool.WorkerWorking
+	m.workerPane.workerStatus["worker-1"] = events.ProcessStatusWorking
+	m.workerPane.workerStatus["worker-2"] = events.ProcessStatusWorking
 	m.workerPane.viewports = make(map[string]viewport.Model)
 
 	// Set different queue counts

@@ -16,20 +16,6 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/client"
 )
 
-// ProcessStatus is an alias to client.ProcessStatus for backward compatibility.
-// Deprecated: Use client.ProcessStatus directly.
-type ProcessStatus = client.ProcessStatus
-
-// Status constants - aliases to client package for backward compatibility.
-// Deprecated: Use client.Status* constants directly.
-const (
-	StatusPending   = client.StatusPending
-	StatusRunning   = client.StatusRunning
-	StatusCompleted = client.StatusCompleted
-	StatusFailed    = client.StatusFailed
-	StatusCancelled = client.StatusCancelled
-)
-
 // Config holds configuration for spawning a Claude process.
 type Config struct {
 	WorkDir            string
@@ -44,32 +30,10 @@ type Config struct {
 	MCPConfig          string // JSON string for --mcp-config flag
 }
 
-// OutputEvent is an alias for client.OutputEvent for backward compatibility.
-// Deprecated: Use client.OutputEvent directly.
-//
-// Event types and their fields:
-//   - system (subtype: init): SessionRef, WorkDir
-//   - assistant: Message (with Content blocks that may include tool_use)
-//   - tool_result: Tool (with Name, Content/Output)
-//   - result (subtype: success): TotalCostUSD, Usage, ModelUsage, DurationMs
-//   - error: Error
-type OutputEvent = client.OutputEvent
-
-// Type aliases for backward compatibility.
-// Deprecated: Use client package types directly.
-type (
-	ModelUsage     = client.ModelUsage
-	MessageContent = client.MessageContent
-	ContentBlock   = client.ContentBlock
-	ToolContent    = client.ToolContent
-	UsageInfo      = client.UsageInfo
-	ErrorInfo      = client.ErrorInfo
-)
-
 // FormatToolDisplay returns a formatted string for displaying a tool call in the TUI.
 // For Bash tools, it shows the description (or command if no description).
 // For other tools, it shows just the tool name.
-func FormatToolDisplay(b *ContentBlock) string {
+func FormatToolDisplay(b *client.ContentBlock) string {
 	if b.Type != "tool_use" || b.Name == "" {
 		return ""
 	}

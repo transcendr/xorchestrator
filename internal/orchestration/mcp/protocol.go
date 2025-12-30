@@ -10,6 +10,8 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+
+	mcptypes "github.com/zjrosen/perles/internal/orchestration/mcp/types"
 )
 
 // ProtocolVersion is the MCP protocol version this implementation supports.
@@ -63,9 +65,8 @@ const (
 
 // MCP-specific error codes (reserved range: -32000 to -32099).
 const (
-	ErrCodeToolNotFound     = -32001
-	ErrCodeToolExecFailed   = -32002
-	ErrCodeResourceNotFound = -32003
+	ErrCodeToolNotFound   = -32001
+	ErrCodeToolExecFailed = -32002
 )
 
 // NewParseError creates a parse error response.
@@ -221,18 +222,12 @@ type ToolCallParams struct {
 }
 
 // ToolCallResult is the response for tools/call.
-type ToolCallResult struct {
-	Content           []ContentItem `json:"content"`
-	IsError           bool          `json:"isError,omitempty"`
-	StructuredContent any           `json:"structuredContent,omitempty"`
-}
+// Re-exported from types package to avoid import cycles.
+type ToolCallResult = mcptypes.ToolCallResult
 
 // ContentItem represents a single content item in a tool result.
-type ContentItem struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
-	// Additional fields for image, audio, resource_link can be added as needed
-}
+// Re-exported from types package to avoid import cycles.
+type ContentItem = mcptypes.ContentItem
 
 // TextContent creates a text content item.
 func TextContent(text string) ContentItem {
@@ -240,30 +235,17 @@ func TextContent(text string) ContentItem {
 }
 
 // SuccessResult creates a successful tool result with text content.
-func SuccessResult(text string) *ToolCallResult {
-	return &ToolCallResult{
-		Content: []ContentItem{TextContent(text)},
-		IsError: false,
-	}
-}
+// Re-exported from types package to avoid import cycles.
+var SuccessResult = mcptypes.SuccessResult
 
 // ErrorResult creates an error tool result with text content.
-func ErrorResult(text string) *ToolCallResult {
-	return &ToolCallResult{
-		Content: []ContentItem{TextContent(text)},
-		IsError: true,
-	}
-}
+// Re-exported from types package to avoid import cycles.
+var ErrorResult = mcptypes.ErrorResult
 
 // StructuredResult creates a successful tool result with both text content and structured content.
 // This is required when a tool defines an outputSchema - the structuredContent field must be populated.
-func StructuredResult(textContent string, structured any) *ToolCallResult {
-	return &ToolCallResult{
-		Content:           []ContentItem{TextContent(textContent)},
-		IsError:           false,
-		StructuredContent: structured,
-	}
-}
+// Re-exported from types package to avoid import cycles.
+var StructuredResult = mcptypes.StructuredResult
 
 // NewResponse creates a success response with the given result.
 func NewResponse(id json.RawMessage, result any) *Response {

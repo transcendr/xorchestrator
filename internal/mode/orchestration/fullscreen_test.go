@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/events"
 )
 
 // TestToggleNavigationMode tests entering and exiting navigation mode.
@@ -33,7 +33,7 @@ func TestToggleNavigationMode(t *testing.T) {
 func TestExitNavigationMode(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 30)
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
 
 	// Enter navigation mode and select a pane
 	m = m.toggleNavigationMode()
@@ -84,8 +84,8 @@ func TestToggleFullscreenPane_Worker(t *testing.T) {
 	m = m.SetSize(120, 30)
 
 	// Add workers
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
 
 	// Toggle worker-1 fullscreen
 	m = m.toggleFullscreenPane(PaneWorker, 0)
@@ -120,7 +120,7 @@ func TestToggleFullscreenPane_WorkerNoWorkers(t *testing.T) {
 func TestToggleFullscreenPane_SwitchBetweenPaneTypes(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 30)
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
 
 	// Start with coordinator
 	m = m.toggleFullscreenPane(PaneCoordinator, 0)
@@ -163,8 +163,8 @@ func TestUpdate_CtrlF_TogglesNavigationMode(t *testing.T) {
 func TestUpdate_NavigationMode_NumberKeys(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 30)
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
 
 	// Enter navigation mode
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
@@ -211,7 +211,7 @@ func TestUpdate_NavigationMode_Escape(t *testing.T) {
 func TestUpdate_NumberKeysIgnoredWhenNotInNavigationMode(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 30)
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
 
 	// Not in navigation mode, input is focused
 	require.False(t, m.navigationMode)

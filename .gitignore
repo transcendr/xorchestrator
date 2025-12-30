@@ -54,8 +54,8 @@ debug.log
 # Perles remove apps own perles config
 .perles/
 
-# Docs
-docs/
+# Docs (top-level only, not nested docs/)
+/docs/
 .spec/
 
 # Build files

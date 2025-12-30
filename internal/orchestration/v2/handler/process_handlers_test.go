@@ -1,0 +1,1594 @@
+package handler_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/orchestration/metrics"
+	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/orchestration/v2/handler"
+	"github.com/zjrosen/perles/internal/orchestration/v2/process"
+	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+)
+
+// ===========================================================================
+// Test Helpers
+// ===========================================================================
+
+func setupProcessRepos() (*repository.MemoryProcessRepository, *repository.MemoryQueueRepository) {
+	return repository.NewMemoryProcessRepository(), repository.NewMemoryQueueRepository(1000)
+}
+
+// mockProcessSpawner is a test implementation of ProcessSpawner.
+type mockProcessSpawner struct {
+	spawnCalls []spawnCall
+	spawnErr   error
+}
+
+type spawnCall struct {
+	ID   string
+	Role repository.ProcessRole
+}
+
+func (m *mockProcessSpawner) SpawnProcess(ctx context.Context, id string, role repository.ProcessRole) (*process.Process, error) {
+	m.spawnCalls = append(m.spawnCalls, spawnCall{ID: id, Role: role})
+	if m.spawnErr != nil {
+		return nil, m.spawnErr
+	}
+	// Return a mock process - in real usage this would be a real process
+	return nil, nil
+}
+
+// ===========================================================================
+// SendToProcessHandler Tests
+// ===========================================================================
+
+func TestSendToProcessHandler_SendToCoordinatorWhileWorking_QueuesMessage(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	// Create coordinator in Working status
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewSendToProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, "test message")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify message was queued
+	queue := queueRepo.GetOrCreate(repository.CoordinatorID)
+	assert.Equal(t, 1, queue.Size())
+
+	// Verify result indicates queued
+	sendResult := result.Data.(*handler.SendToProcessResult)
+	assert.True(t, sendResult.Queued)
+	assert.Equal(t, 1, sendResult.QueueSize)
+
+	// Verify ProcessQueueChanged event was emitted
+	require.Len(t, result.Events, 1)
+	event := result.Events[0].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessQueueChanged, event.Type)
+	assert.Equal(t, repository.CoordinatorID, event.ProcessID)
+	assert.Equal(t, events.RoleCoordinator, event.Role)
+}
+
+func TestSendToProcessHandler_SendToCoordinatorWhileReady_TriggersDelivery(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	// Create coordinator in Ready status
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewSendToProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, "test message")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify result indicates not queued (will be delivered)
+	sendResult := result.Data.(*handler.SendToProcessResult)
+	assert.False(t, sendResult.Queued)
+
+	// Verify follow-up command to deliver
+	require.Len(t, result.FollowUp, 1)
+	followUp := result.FollowUp[0].(*command.DeliverProcessQueuedCommand)
+	assert.Equal(t, repository.CoordinatorID, followUp.ProcessID)
+}
+
+func TestSendToProcessHandler_SendToWorkerWhileWorking_QueuesMessage(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	// Create worker in Working status
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewSendToProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewSendToProcessCommand(command.SourceMCPTool, "worker-1", "task instructions")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify message was queued
+	queue := queueRepo.GetOrCreate("worker-1")
+	assert.Equal(t, 1, queue.Size())
+
+	// Verify event has correct role
+	event := result.Events[0].(events.ProcessEvent)
+	assert.Equal(t, events.RoleWorker, event.Role)
+}
+
+func TestSendToProcessHandler_SendToWorkerWhileReady_TriggersDelivery(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	// Create worker in Ready status
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewSendToProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewSendToProcessCommand(command.SourceMCPTool, "worker-1", "task instructions")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	require.Len(t, result.FollowUp, 1)
+
+	followUp := result.FollowUp[0].(*command.DeliverProcessQueuedCommand)
+	assert.Equal(t, "worker-1", followUp.ProcessID)
+}
+
+func TestSendToProcessHandler_SendToUnknownProcess_ReturnsError(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	h := handler.NewSendToProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewSendToProcessCommand(command.SourceUser, "unknown-process", "message")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrProcessNotFound)
+}
+
+func TestSendToProcessHandler_SendToRetiredProcess_ReturnsError(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	// Create retired worker
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusRetired,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewSendToProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewSendToProcessCommand(command.SourceMCPTool, "worker-1", "message")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrProcessRetired)
+}
+
+// ===========================================================================
+// DeliverProcessQueuedHandler Tests
+// ===========================================================================
+
+func TestDeliverProcessQueuedHandler_DeliverToCoordinator_DequeuesAndResumes(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	// Create coordinator in Ready status
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	// Queue a message
+	queue := queueRepo.GetOrCreate(repository.CoordinatorID)
+	_ = queue.Enqueue("queued message", repository.SenderUser)
+
+	h := handler.NewDeliverProcessQueuedHandler(processRepo, queueRepo, registry)
+
+	cmd := command.NewDeliverProcessQueuedCommand(command.SourceInternal, repository.CoordinatorID)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify queue was drained
+	assert.True(t, queue.IsEmpty())
+
+	// Verify status updated to Working
+	updatedCoord, _ := processRepo.Get(repository.CoordinatorID)
+	assert.Equal(t, repository.StatusWorking, updatedCoord.Status)
+
+	// Verify result
+	deliverResult := result.Data.(*handler.DeliverProcessQueuedResult)
+	assert.True(t, deliverResult.Delivered)
+	assert.Equal(t, "queued message", deliverResult.Content)
+}
+
+func TestDeliverProcessQueuedHandler_DeliverToWorker_DequeuesAndResumes(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	// Create worker in Ready status
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+		TaskID: "task-123",
+	}
+	processRepo.AddProcess(worker)
+
+	// Queue a message
+	queue := queueRepo.GetOrCreate("worker-1")
+	_ = queue.Enqueue("worker instructions", repository.SenderUser)
+
+	h := handler.NewDeliverProcessQueuedHandler(processRepo, queueRepo, registry)
+
+	cmd := command.NewDeliverProcessQueuedCommand(command.SourceInternal, "worker-1")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify status updated
+	updatedWorker, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusWorking, updatedWorker.Status)
+}
+
+func TestDeliverProcessQueuedHandler_UpdatesStatusToWorking(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(worker)
+
+	queue := queueRepo.GetOrCreate("worker-1")
+	_ = queue.Enqueue("message", repository.SenderUser)
+
+	h := handler.NewDeliverProcessQueuedHandler(processRepo, queueRepo, registry)
+
+	cmd := command.NewDeliverProcessQueuedCommand(command.SourceInternal, "worker-1")
+	_, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusWorking, updated.Status)
+}
+
+func TestDeliverProcessQueuedHandler_EmitsProcessWorkingEvent(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(worker)
+
+	queue := queueRepo.GetOrCreate("worker-1")
+	_ = queue.Enqueue("message", repository.SenderUser)
+
+	h := handler.NewDeliverProcessQueuedHandler(processRepo, queueRepo, registry)
+
+	cmd := command.NewDeliverProcessQueuedCommand(command.SourceInternal, "worker-1")
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	// Find ProcessWorking event
+	var foundWorking bool
+	for _, evt := range result.Events {
+		if pe, ok := evt.(events.ProcessEvent); ok && pe.Type == events.ProcessWorking {
+			foundWorking = true
+			assert.Equal(t, "worker-1", pe.ProcessID)
+			assert.Equal(t, events.RoleWorker, pe.Role)
+		}
+	}
+	assert.True(t, foundWorking, "ProcessWorking event not found")
+}
+
+func TestDeliverProcessQueuedHandler_EmitsProcessIncomingEvent(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(worker)
+
+	queue := queueRepo.GetOrCreate("worker-1")
+	_ = queue.Enqueue("the message content", repository.SenderUser)
+
+	h := handler.NewDeliverProcessQueuedHandler(processRepo, queueRepo, registry)
+
+	cmd := command.NewDeliverProcessQueuedCommand(command.SourceInternal, "worker-1")
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	// Find ProcessIncoming event
+	var foundIncoming bool
+	for _, evt := range result.Events {
+		if pe, ok := evt.(events.ProcessEvent); ok && pe.Type == events.ProcessIncoming {
+			foundIncoming = true
+			assert.Equal(t, "the message content", pe.Message)
+		}
+	}
+	assert.True(t, foundIncoming, "ProcessIncoming event not found")
+}
+
+func TestDeliverProcessQueuedHandler_EmptyQueue_ReturnsError(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(worker)
+
+	// Don't add any messages to queue
+
+	h := handler.NewDeliverProcessQueuedHandler(processRepo, queueRepo, registry)
+
+	cmd := command.NewDeliverProcessQueuedCommand(command.SourceInternal, "worker-1")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrQueueEmpty)
+}
+
+// ===========================================================================
+// ProcessTurnCompleteHandler Tests
+// ===========================================================================
+
+func TestProcessTurnCompleteHandler_CoordinatorUpdatesStatusToReady(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	cmd := command.NewProcessTurnCompleteCommand(repository.CoordinatorID, true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	updated, _ := processRepo.Get(repository.CoordinatorID)
+	assert.Equal(t, repository.StatusReady, updated.Status)
+}
+
+func TestProcessTurnCompleteHandler_WorkerUpdatesStatusToReady(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusReady, updated.Status)
+}
+
+func TestProcessTurnCompleteHandler_UpdatesLastActivityAt(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	before := time.Now().Add(-time.Hour)
+	worker := &repository.Process{
+		ID:             "worker-1",
+		Role:           repository.RoleWorker,
+		Status:         repository.StatusWorking,
+		LastActivityAt: before,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", true, nil, nil)
+	_, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	updated, _ := processRepo.Get("worker-1")
+	assert.True(t, updated.LastActivityAt.After(before))
+}
+
+func TestProcessTurnCompleteHandler_UpdatesMetricsWhenProvided(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	m := &metrics.TokenMetrics{
+		InputTokens:  1000,
+		OutputTokens: 500,
+	}
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", true, m, nil)
+	_, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	updated, _ := processRepo.Get("worker-1")
+	assert.NotNil(t, updated.Metrics)
+	assert.Equal(t, 1000, updated.Metrics.InputTokens)
+	assert.Equal(t, 500, updated.Metrics.OutputTokens)
+}
+
+func TestProcessTurnCompleteHandler_EmitsProcessReadyEvent(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	var foundReady bool
+	for _, evt := range result.Events {
+		if pe, ok := evt.(events.ProcessEvent); ok && pe.Type == events.ProcessReady {
+			foundReady = true
+			assert.Equal(t, "worker-1", pe.ProcessID)
+			assert.Equal(t, events.ProcessStatusReady, pe.Status)
+		}
+	}
+	assert.True(t, foundReady)
+}
+
+func TestProcessTurnCompleteHandler_EmitsProcessTokenUsageWhenMetricsProvided(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	m := &metrics.TokenMetrics{InputTokens: 100}
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", true, m, nil)
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	var foundTokenUsage bool
+	for _, evt := range result.Events {
+		if pe, ok := evt.(events.ProcessEvent); ok && pe.Type == events.ProcessTokenUsage {
+			foundTokenUsage = true
+			assert.Equal(t, 100, pe.Metrics.InputTokens)
+		}
+	}
+	assert.True(t, foundTokenUsage)
+}
+
+func TestProcessTurnCompleteHandler_ReturnsDeliverProcessQueuedCommandIfQueueNotEmpty(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(worker)
+
+	// Add message to queue
+	queue := queueRepo.GetOrCreate("worker-1")
+	_ = queue.Enqueue("pending message", repository.SenderUser)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	require.Len(t, result.FollowUp, 1)
+	deliverCmd := result.FollowUp[0].(*command.DeliverProcessQueuedCommand)
+	assert.Equal(t, "worker-1", deliverCmd.ProcessID)
+}
+
+func TestProcessTurnCompleteHandler_SucceededFalseStillTransitionsToReady(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	// succeeded=false
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", false, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Still Ready (not Retired automatically)
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusReady, updated.Status)
+}
+
+// ===========================================================================
+// RetireProcessHandler Tests
+// ===========================================================================
+
+func TestRetireProcessHandler_UpdatesStatusToRetired(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewRetireProcessHandler(processRepo, registry)
+
+	cmd := command.NewRetireProcessCommand(command.SourceMCPTool, "worker-1", "context full")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusRetired, updated.Status)
+}
+
+func TestRetireProcessHandler_SetsRetiredAtTimestamp(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	before := time.Now()
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewRetireProcessHandler(processRepo, registry)
+
+	cmd := command.NewRetireProcessCommand(command.SourceMCPTool, "worker-1", "")
+	_, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	updated, _ := processRepo.Get("worker-1")
+	assert.False(t, updated.RetiredAt.IsZero())
+	assert.True(t, updated.RetiredAt.After(before) || updated.RetiredAt.Equal(before))
+}
+
+func TestRetireProcessHandler_EmitsProcessStatusChangeEvent(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewRetireProcessHandler(processRepo, registry)
+
+	cmd := command.NewRetireProcessCommand(command.SourceMCPTool, "worker-1", "")
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	require.Len(t, result.Events, 1)
+	event := result.Events[0].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessStatusChange, event.Type)
+	assert.Equal(t, "worker-1", event.ProcessID)
+	assert.Equal(t, events.ProcessStatusRetired, event.Status)
+}
+
+func TestRetireProcessHandler_UnknownProcess_ReturnsError(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	h := handler.NewRetireProcessHandler(processRepo, registry)
+
+	cmd := command.NewRetireProcessCommand(command.SourceMCPTool, "unknown", "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrProcessNotFound)
+}
+
+func TestRetireProcessHandler_AlreadyRetired_ReturnsSuccessNoOp(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusRetired,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewRetireProcessHandler(processRepo, registry)
+
+	cmd := command.NewRetireProcessCommand(command.SourceMCPTool, "worker-1", "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	retireResult := result.Data.(*handler.RetireProcessResult)
+	assert.True(t, retireResult.WasNoOp)
+}
+
+// ===========================================================================
+// SpawnProcessHandler Tests
+// ===========================================================================
+
+func TestSpawnProcessHandler_SpawnCoordinator_CreatesWithRoleCoordinator(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	h := handler.NewSpawnProcessHandler(processRepo, registry)
+
+	cmd := command.NewSpawnProcessCommand(command.SourceInternal, repository.RoleCoordinator)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	spawnResult := result.Data.(*handler.SpawnProcessResult)
+	assert.Equal(t, repository.CoordinatorID, spawnResult.ProcessID)
+	assert.Equal(t, repository.RoleCoordinator, spawnResult.Role)
+}
+
+func TestSpawnProcessHandler_SpawnCoordinator_UsesCoordinatorID(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	h := handler.NewSpawnProcessHandler(processRepo, registry)
+
+	cmd := command.NewSpawnProcessCommand(command.SourceInternal, repository.RoleCoordinator)
+	_, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	coord, err := processRepo.GetCoordinator()
+	require.NoError(t, err)
+	assert.Equal(t, repository.CoordinatorID, coord.ID)
+}
+
+func TestSpawnProcessHandler_SpawnCoordinator_FailsIfCoordinatorExists(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	// Pre-create coordinator
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewSpawnProcessHandler(processRepo, registry)
+
+	cmd := command.NewSpawnProcessCommand(command.SourceInternal, repository.RoleCoordinator)
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrCoordinatorExists)
+}
+
+func TestSpawnProcessHandler_SpawnWorker_CreatesWithRoleWorker(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	h := handler.NewSpawnProcessHandler(processRepo, registry)
+
+	cmd := command.NewSpawnProcessCommand(command.SourceInternal, repository.RoleWorker)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	spawnResult := result.Data.(*handler.SpawnProcessResult)
+	assert.Equal(t, repository.RoleWorker, spawnResult.Role)
+}
+
+func TestSpawnProcessHandler_SpawnWorker_GeneratesUniqueID(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	h := handler.NewSpawnProcessHandler(processRepo, registry)
+
+	// Spawn first worker
+	cmd1 := command.NewSpawnProcessCommand(command.SourceInternal, repository.RoleWorker)
+	result1, err := h.Handle(context.Background(), cmd1)
+	require.NoError(t, err)
+	id1 := result1.Data.(*handler.SpawnProcessResult).ProcessID
+
+	// Spawn second worker
+	cmd2 := command.NewSpawnProcessCommand(command.SourceInternal, repository.RoleWorker)
+	result2, err := h.Handle(context.Background(), cmd2)
+	require.NoError(t, err)
+	id2 := result2.Data.(*handler.SpawnProcessResult).ProcessID
+
+	assert.NotEqual(t, id1, id2)
+	assert.Contains(t, id1, "worker-")
+	assert.Contains(t, id2, "worker-")
+}
+
+func TestSpawnProcessHandler_SpawnWorker_FailsIfMaxWorkersReached(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	// Set max workers to 2
+	h := handler.NewSpawnProcessHandler(processRepo, registry, handler.WithSpawnMaxWorkers(2))
+
+	// Create 2 workers in registry to simulate active count
+	w1 := &repository.Process{ID: "worker-1", Role: repository.RoleWorker, Status: repository.StatusReady}
+	w2 := &repository.Process{ID: "worker-2", Role: repository.RoleWorker, Status: repository.StatusReady}
+	processRepo.AddProcess(w1)
+	processRepo.AddProcess(w2)
+
+	// Register them to bump ActiveCount
+	mockProc1 := &process.Process{ID: "worker-1", Role: repository.RoleWorker}
+	mockProc2 := &process.Process{ID: "worker-2", Role: repository.RoleWorker}
+	registry.Register(mockProc1)
+	registry.Register(mockProc2)
+
+	// Try to spawn third worker
+	cmd := command.NewSpawnProcessCommand(command.SourceInternal, repository.RoleWorker)
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrMaxProcessesReached)
+}
+
+func TestSpawnProcessHandler_SavesProcessToRepository(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	h := handler.NewSpawnProcessHandler(processRepo, registry)
+
+	cmd := command.NewSpawnProcessCommand(command.SourceInternal, repository.RoleWorker)
+	_, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	workers := processRepo.Workers()
+	assert.Len(t, workers, 1)
+}
+
+func TestSpawnProcessHandler_EmitsProcessSpawnedEvent(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	h := handler.NewSpawnProcessHandler(processRepo, registry)
+
+	cmd := command.NewSpawnProcessCommand(command.SourceInternal, repository.RoleWorker)
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	require.Len(t, result.Events, 1)
+	event := result.Events[0].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessSpawned, event.Type)
+	assert.Equal(t, events.RoleWorker, event.Role)
+}
+
+// ===========================================================================
+// ReplaceProcessHandler Tests
+// ===========================================================================
+
+func TestReplaceProcessHandler_ReplaceCoordinator_CreatesHandoffPrompt(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewReplaceProcessHandler(processRepo, registry)
+
+	cmd := command.NewReplaceProcessCommand(command.SourceMCPTool, repository.CoordinatorID, "context window full")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	replaceResult := result.Data.(*handler.ReplaceProcessResult)
+	assert.Equal(t, repository.CoordinatorID, replaceResult.OldProcessID)
+	assert.Equal(t, repository.CoordinatorID, replaceResult.NewProcessID)
+	assert.Equal(t, repository.RoleCoordinator, replaceResult.Role)
+}
+
+func TestReplaceProcessHandler_ReplaceWorker_RetiresAndSpawnsNew(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewReplaceProcessHandler(processRepo, registry)
+
+	cmd := command.NewReplaceProcessCommand(command.SourceMCPTool, "worker-1", "context full")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	replaceResult := result.Data.(*handler.ReplaceProcessResult)
+	assert.Equal(t, "worker-1", replaceResult.OldProcessID)
+	assert.NotEqual(t, "worker-1", replaceResult.NewProcessID) // New ID
+	assert.Equal(t, repository.RoleWorker, replaceResult.Role)
+
+	// Old worker should be retired
+	oldWorker, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusRetired, oldWorker.Status)
+}
+
+func TestReplaceProcessHandler_UnknownProcess_ReturnsError(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	h := handler.NewReplaceProcessHandler(processRepo, registry)
+
+	cmd := command.NewReplaceProcessCommand(command.SourceMCPTool, "unknown", "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrProcessNotFound)
+}
+
+func TestReplaceProcessHandler_EmitsRetiredAndSpawnedEvents(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewReplaceProcessHandler(processRepo, registry)
+
+	cmd := command.NewReplaceProcessCommand(command.SourceMCPTool, "worker-1", "")
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	// Should have 2 events: retired and spawned
+	require.Len(t, result.Events, 2)
+
+	// First event: status change to retired
+	retiredEvent := result.Events[0].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessStatusChange, retiredEvent.Type)
+	assert.Equal(t, events.ProcessStatusRetired, retiredEvent.Status)
+
+	// Second event: new process spawned
+	spawnedEvent := result.Events[1].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessSpawned, spawnedEvent.Type)
+}
+
+// ===========================================================================
+// PauseProcessHandler Tests
+// ===========================================================================
+
+func TestPauseProcessHandler_PauseFromReady_TransitionsToPaused(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewPauseProcessHandler(processRepo)
+
+	cmd := command.NewPauseProcessCommand(command.SourceUser, repository.CoordinatorID, "user requested pause")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify status updated to Paused
+	updated, _ := processRepo.Get(repository.CoordinatorID)
+	assert.Equal(t, repository.StatusPaused, updated.Status)
+
+	// Verify result
+	pauseResult := result.Data.(*handler.PauseProcessResult)
+	assert.Equal(t, repository.CoordinatorID, pauseResult.ProcessID)
+	assert.False(t, pauseResult.WasNoOp)
+}
+
+func TestPauseProcessHandler_PauseFromWorking_TransitionsToPaused(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewPauseProcessHandler(processRepo)
+
+	cmd := command.NewPauseProcessCommand(command.SourceUser, repository.CoordinatorID, "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	updated, _ := processRepo.Get(repository.CoordinatorID)
+	assert.Equal(t, repository.StatusPaused, updated.Status)
+}
+
+func TestPauseProcessHandler_PauseWorkerFromReady_TransitionsToPaused(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+		TaskID: "task-123",
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewPauseProcessHandler(processRepo)
+
+	cmd := command.NewPauseProcessCommand(command.SourceUser, "worker-1", "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusPaused, updated.Status)
+}
+
+func TestPauseProcessHandler_AlreadyPaused_ReturnsSuccessNoOp(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusPaused,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewPauseProcessHandler(processRepo)
+
+	cmd := command.NewPauseProcessCommand(command.SourceUser, repository.CoordinatorID, "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	pauseResult := result.Data.(*handler.PauseProcessResult)
+	assert.True(t, pauseResult.WasNoOp)
+}
+
+func TestPauseProcessHandler_EmitsProcessStatusChangeEvent(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewPauseProcessHandler(processRepo)
+
+	cmd := command.NewPauseProcessCommand(command.SourceUser, repository.CoordinatorID, "")
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	require.Len(t, result.Events, 1)
+	event := result.Events[0].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessStatusChange, event.Type)
+	assert.Equal(t, repository.CoordinatorID, event.ProcessID)
+	assert.Equal(t, events.ProcessStatusPaused, event.Status)
+	assert.Equal(t, events.RoleCoordinator, event.Role)
+}
+
+func TestPauseProcessHandler_UnknownProcess_ReturnsError(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	h := handler.NewPauseProcessHandler(processRepo)
+
+	cmd := command.NewPauseProcessCommand(command.SourceUser, "unknown", "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrProcessNotFound)
+}
+
+func TestPauseProcessHandler_RetiredProcess_ReturnsError(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusRetired,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewPauseProcessHandler(processRepo)
+
+	cmd := command.NewPauseProcessCommand(command.SourceUser, "worker-1", "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrProcessRetired)
+}
+
+// ===========================================================================
+// ResumeProcessHandler Tests
+// ===========================================================================
+
+func TestResumeProcessHandler_ResumeFromPaused_TransitionsToReady(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusPaused,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, repository.CoordinatorID)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify status updated to Ready
+	updated, _ := processRepo.Get(repository.CoordinatorID)
+	assert.Equal(t, repository.StatusReady, updated.Status)
+
+	// Verify result
+	resumeResult := result.Data.(*handler.ResumeProcessResult)
+	assert.Equal(t, repository.CoordinatorID, resumeResult.ProcessID)
+	assert.False(t, resumeResult.WasNoOp)
+}
+
+func TestResumeProcessHandler_ResumeWorker_TransitionsToReady(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusPaused,
+		TaskID: "task-123",
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, "worker-1")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusReady, updated.Status)
+}
+
+func TestResumeProcessHandler_ResumeFromStopped_TransitionsToReady(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusStopped,
+		TaskID: "task-123",
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, "worker-1")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusReady, updated.Status)
+
+	resumeResult := result.Data.(*handler.ResumeProcessResult)
+	assert.False(t, resumeResult.WasNoOp)
+}
+
+func TestResumeProcessHandler_AlreadyReady_ReturnsSuccessNoOp(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, repository.CoordinatorID)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	resumeResult := result.Data.(*handler.ResumeProcessResult)
+	assert.True(t, resumeResult.WasNoOp)
+}
+
+func TestResumeProcessHandler_AlreadyWorking_ReturnsSuccessNoOp(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, repository.CoordinatorID)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	resumeResult := result.Data.(*handler.ResumeProcessResult)
+	assert.True(t, resumeResult.WasNoOp)
+}
+
+func TestResumeProcessHandler_EmitsProcessStatusChangeEvent(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusPaused,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, repository.CoordinatorID)
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	require.Len(t, result.Events, 1)
+	event := result.Events[0].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessStatusChange, event.Type)
+	assert.Equal(t, repository.CoordinatorID, event.ProcessID)
+	assert.Equal(t, events.ProcessStatusReady, event.Status)
+	assert.Equal(t, events.RoleCoordinator, event.Role)
+}
+
+func TestResumeProcessHandler_TriggersQueueDrainWhenMessagesPending(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusPaused,
+	}
+	processRepo.AddProcess(coord)
+
+	// Queue a message while paused
+	queue := queueRepo.GetOrCreate(repository.CoordinatorID)
+	_ = queue.Enqueue("pending message", repository.SenderUser)
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, repository.CoordinatorID)
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	// Verify follow-up command to deliver queued messages
+	require.Len(t, result.FollowUp, 1)
+	deliverCmd := result.FollowUp[0].(*command.DeliverProcessQueuedCommand)
+	assert.Equal(t, repository.CoordinatorID, deliverCmd.ProcessID)
+
+	// Verify result indicates queued delivery
+	resumeResult := result.Data.(*handler.ResumeProcessResult)
+	assert.True(t, resumeResult.QueuedDelivery)
+}
+
+func TestResumeProcessHandler_NoQueueDrainWhenQueueEmpty(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusPaused,
+	}
+	processRepo.AddProcess(coord)
+
+	// No messages in queue
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, repository.CoordinatorID)
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	// No follow-up commands
+	assert.Empty(t, result.FollowUp)
+
+	resumeResult := result.Data.(*handler.ResumeProcessResult)
+	assert.False(t, resumeResult.QueuedDelivery)
+}
+
+func TestResumeProcessHandler_UnknownProcess_ReturnsError(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, "unknown")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrProcessNotFound)
+}
+
+func TestResumeProcessHandler_RetiredProcess_ReturnsError(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusRetired,
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, "worker-1")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrProcessRetired)
+}
+
+func TestResumeProcessHandler_UpdatesLastActivityAt(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+
+	before := time.Now().Add(-time.Hour)
+	coord := &repository.Process{
+		ID:             repository.CoordinatorID,
+		Role:           repository.RoleCoordinator,
+		Status:         repository.StatusPaused,
+		LastActivityAt: before,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewResumeProcessHandler(processRepo, queueRepo)
+
+	cmd := command.NewResumeProcessCommand(command.SourceUser, repository.CoordinatorID)
+	_, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	updated, _ := processRepo.Get(repository.CoordinatorID)
+	assert.True(t, updated.LastActivityAt.After(before))
+}
+
+// ===========================================================================
+// ReplaceCoordinatorHandler Tests
+// ===========================================================================
+
+// mockMessagePoster is a test implementation of MessagePoster.
+type mockMessagePoster struct {
+	handoffMessages []string
+	postErr         error
+}
+
+func (m *mockMessagePoster) PostHandoff(content string) error {
+	if m.postErr != nil {
+		return m.postErr
+	}
+	m.handoffMessages = append(m.handoffMessages, content)
+	return nil
+}
+
+// mockCoordinatorSpawnerWithPrompt is a test implementation of CoordinatorSpawnerWithPrompt.
+type mockCoordinatorSpawnerWithPrompt struct {
+	spawnCalls []coordinatorSpawnCall
+	spawnErr   error
+}
+
+type coordinatorSpawnCall struct {
+	Prompt string
+}
+
+func (m *mockCoordinatorSpawnerWithPrompt) SpawnCoordinatorWithPrompt(ctx context.Context, prompt string) (*process.Process, error) {
+	m.spawnCalls = append(m.spawnCalls, coordinatorSpawnCall{Prompt: prompt})
+	if m.spawnErr != nil {
+		return nil, m.spawnErr
+	}
+	return nil, nil
+}
+
+func TestReplaceCoordinatorHandler_PostsHandoffMessage(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	poster := &mockMessagePoster{}
+
+	// Create coordinator in Ready status
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewReplaceCoordinatorHandler(processRepo, nil,
+		handler.WithMessagePoster(poster))
+
+	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "context window limit")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify handoff message was posted
+	require.Len(t, poster.handoffMessages, 1)
+	assert.Contains(t, poster.handoffMessages[0], "SYSTEM HANDOFF")
+	assert.Contains(t, poster.handoffMessages[0], "context window limit")
+}
+
+func TestReplaceCoordinatorHandler_SpawnsNewCoordinatorWithReplacePrompt(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	spawner := &mockCoordinatorSpawnerWithPrompt{}
+
+	// Create coordinator in Ready status
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewReplaceCoordinatorHandler(processRepo, nil,
+		handler.WithCoordinatorSpawnerWithPrompt(spawner))
+
+	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify new coordinator was spawned with replace prompt
+	require.Len(t, spawner.spawnCalls, 1)
+	assert.Contains(t, spawner.spawnCalls[0].Prompt, "CONTEXT REFRESH - NEW SESSION")
+	assert.Contains(t, spawner.spawnCalls[0].Prompt, "READ THE HANDOFF FIRST")
+}
+
+func TestReplaceCoordinatorHandler_RetiresOldCoordinator(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	// Create coordinator in Working status
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusWorking,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewReplaceCoordinatorHandler(processRepo, nil)
+
+	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// The process should exist and be in Working status now (new coordinator)
+	// because the handler creates a new coordinator entity after retiring the old one
+	updated, err := processRepo.Get(repository.CoordinatorID)
+	require.NoError(t, err)
+	assert.Equal(t, repository.StatusWorking, updated.Status)
+}
+
+func TestReplaceCoordinatorHandler_EmitsCorrectEvents(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewReplaceCoordinatorHandler(processRepo, nil)
+
+	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	require.Len(t, result.Events, 3)
+
+	// Event 1: Old coordinator retired
+	retiredEvent := result.Events[0].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessStatusChange, retiredEvent.Type)
+	assert.Equal(t, events.ProcessStatusRetired, retiredEvent.Status)
+	assert.Equal(t, events.RoleCoordinator, retiredEvent.Role)
+
+	// Event 2: Output notification
+	outputEvent := result.Events[1].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessOutput, outputEvent.Type)
+	assert.Contains(t, outputEvent.Output, "replaced with fresh context window")
+
+	// Event 3: New coordinator working
+	workingEvent := result.Events[2].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessWorking, workingEvent.Type)
+	assert.Equal(t, events.ProcessStatusWorking, workingEvent.Status)
+}
+
+func TestReplaceCoordinatorHandler_UnknownCoordinator_ReturnsError(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	// No coordinator added
+
+	h := handler.NewReplaceCoordinatorHandler(processRepo, nil)
+
+	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrProcessNotFound)
+}
+
+func TestReplaceCoordinatorHandler_RetiredCoordinator_ReturnsError(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusRetired,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewReplaceCoordinatorHandler(processRepo, nil)
+
+	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, handler.ErrProcessRetired)
+}
+
+func TestReplaceCoordinatorHandler_ResultContainsReplacePrompt(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewReplaceCoordinatorHandler(processRepo, nil)
+
+	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+
+	replaceResult := result.Data.(*handler.ReplaceCoordinatorResult)
+	assert.Equal(t, repository.CoordinatorID, replaceResult.OldProcessID)
+	assert.Equal(t, repository.CoordinatorID, replaceResult.NewProcessID)
+	assert.Contains(t, replaceResult.ReplacePrompt, "CONTEXT REFRESH")
+	assert.Contains(t, replaceResult.ReplacePrompt, "READ THE HANDOFF FIRST")
+}
+
+// ===========================================================================
+// BuildReplacePrompt Tests (v2 version)
+// ===========================================================================
+
+func TestBuildReplacePrompt_ContainsHandoffInstructions(t *testing.T) {
+	p := prompt.BuildReplacePrompt()
+
+	// Should mention reading the handoff message
+	assert.Contains(t, p, "READ THE HANDOFF FIRST")
+	assert.Contains(t, p, "handoff message")
+	assert.Contains(t, p, "previous coordinator")
+	assert.Contains(t, p, "read_message_log")
+}
+
+func TestBuildReplacePrompt_WaitsForUser(t *testing.T) {
+	p := prompt.BuildReplacePrompt()
+
+	// Should instruct waiting for user direction
+	assert.Contains(t, p, "Wait for the user to provide direction")
+	assert.Contains(t, p, "Do NOT assign tasks")
+	assert.Contains(t, p, "Do NOT")
+	assert.Contains(t, p, "until the user tells you what to do")
+}
+
+func TestBuildReplacePrompt_NoImmediateActions(t *testing.T) {
+	p := prompt.BuildReplacePrompt()
+
+	// Should NOT contain the old "IMMEDIATE ACTIONS REQUIRED" section
+	assert.NotContains(t, p, "IMMEDIATE ACTIONS REQUIRED")
+
+	// Should still be a valid prompt with header
+	assert.Contains(t, p, "[CONTEXT REFRESH - NEW SESSION]")
+	assert.Contains(t, p, "WHAT TO DO NOW")
+}

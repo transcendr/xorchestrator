@@ -45,17 +45,18 @@ func (l Level) String() string {
 type Category string
 
 const (
-	CatBQL     Category = "bql"     // BQL parsing and execution
-	CatDB      Category = "db"      // Database operations
-	CatConfig  Category = "config"  // Configuration loading/saving
-	CatWatcher Category = "watcher" // File watcher events
-	CatUI      Category = "ui"      // UI component updates
-	CatMode    Category = "mode"    // Mode controller events
-	CatBeads   Category = "beads"   // Beads CLI interactions
-	CatOrch    Category = "orch"    // Orchestration: coordinator, pool, amp, claude processes
-	CatMCP     Category = "mcp"     // MCP server and protocol communication
-	CatTree    Category = "tree"    // Tree view operations
-	CatCache   Category = "cache"   // cache operations
+	CatBQL      Category = "bql"               // BQL parsing and execution
+	CatDB       Category = "db"                // Database operations
+	CatConfig   Category = "config"            // Configuration loading/saving
+	CatWatcher  Category = "watcher"           // File watcher events
+	CatUI       Category = "ui"                // UI component updates
+	CatMode     Category = "mode"              // Mode controller events
+	CatBeads    Category = "beads"             // Beads CLI interactions
+	CatOrch     Category = "orch"              // Orchestration: coordinator, pool, amp, claude processes
+	CatCommands Category = "command-processor" //
+	CatMCP      Category = "mcp"               // MCP server and protocol communication
+	CatTree     Category = "tree"              // Tree view operations
+	CatCache    Category = "cache"             // cache operations
 )
 
 // Logger provides structured logging.

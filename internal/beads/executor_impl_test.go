@@ -100,8 +100,9 @@ func TestRealExecutor_DelegationMethods(t *testing.T) {
 	})
 
 	t.Run("DeleteIssues", func(t *testing.T) {
+		// bd delete --force returns success even for nonexistent issues (deleted_count: 0)
 		err := executor.DeleteIssues([]string{"nonexistent-xyz"})
-		require.Error(t, err, "expected error for nonexistent issue")
+		require.NoError(t, err, "bd delete --force should succeed for nonexistent issues")
 	})
 
 	t.Run("SetLabels", func(t *testing.T) {

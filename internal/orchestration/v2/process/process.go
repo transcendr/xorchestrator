@@ -1,0 +1,496 @@
+package process
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/zjrosen/perles/internal/orchestration/claude"
+	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/orchestration/metrics"
+	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/perles/internal/pubsub"
+)
+
+// DefaultOutputBufferCapacity is the default number of lines to keep in output buffer.
+const DefaultOutputBufferCapacity = 100
+
+// CommandSubmitter abstracts command submission to the FIFO processor.
+// Process uses this to submit commands on state transitions (e.g., turn complete).
+type CommandSubmitter interface {
+	// Submit enqueues a command for processing.
+	Submit(cmd command.Command)
+}
+
+// Process manages a single AI process and its event loop.
+// It works identically for both coordinator and worker roles - the event loop,
+// output buffering, metrics tracking, and turn completion are the same.
+// Role-specific behavior is handled by the handlers, not by this struct.
+type Process struct {
+	// ID is the unique identifier (e.g., "coordinator", "worker-1").
+	ID string
+	// Role identifies whether this is coordinator or worker.
+	Role repository.ProcessRole
+
+	proc         client.HeadlessProcess
+	output       *OutputBuffer
+	cmdSubmitter CommandSubmitter
+	eventBus     *pubsub.Broker[any]
+
+	ctx       context.Context
+	cancel    context.CancelFunc
+	eventDone chan struct{} // Closed when eventLoop completes
+
+	mu                sync.RWMutex
+	sessionID         string
+	metrics           *metrics.TokenMetrics
+	cumulativeCostUSD float64 // Running total cost across all turns
+	taskID            string  // Worker-specific: current task ID
+	isRetired         bool    // Whether this process has been retired
+}
+
+// New creates a Process. Call Start() to begin the event loop.
+//
+// Parameters:
+//   - id: unique process identifier (e.g., "coordinator", "worker-1")
+//   - role: RoleCoordinator or RoleWorker
+//   - proc: the AI process to manage
+//   - submitter: for submitting commands on state transitions
+//   - eventBus: for publishing process events to subscribers
+func New(id string, role repository.ProcessRole, proc client.HeadlessProcess, submitter CommandSubmitter, eventBus *pubsub.Broker[any]) *Process {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Process{
+		ID:           id,
+		Role:         role,
+		proc:         proc,
+		output:       NewOutputBuffer(DefaultOutputBufferCapacity),
+		cmdSubmitter: submitter,
+		eventBus:     eventBus,
+		ctx:          ctx,
+		cancel:       cancel,
+		eventDone:    make(chan struct{}),
+		metrics:      &metrics.TokenMetrics{},
+	}
+}
+
+// Start launches the event loop goroutine.
+// The goroutine processes AI events and submits a ProcessTurnCompleteCommand when done.
+func (p *Process) Start() {
+	go p.eventLoop()
+}
+
+// Stop cancels the event loop context and waits for it to finish.
+// This is useful for graceful shutdown. Safe to call multiple times.
+func (p *Process) Stop() {
+	p.cancel()
+	<-p.eventDone
+}
+
+// Resume attaches a new AI process and restarts the event loop.
+// Called when delivering a queued message to a Ready process.
+// Note: Status change to Working is handled by DeliverQueuedHandler BEFORE
+// calling Resume, so Process doesn't need to emit that event.
+func (p *Process) Resume(proc client.HeadlessProcess) {
+	p.mu.Lock()
+	// Cancel previous event loop if still running
+	p.cancel()
+	p.mu.Unlock()
+
+	// Wait for previous event loop to complete
+	<-p.eventDone
+
+	p.mu.Lock()
+	p.proc = proc
+	// Create fresh context and done channel for the new event loop
+	p.ctx, p.cancel = context.WithCancel(context.Background())
+	p.eventDone = make(chan struct{})
+	p.mu.Unlock()
+
+	// Start new event loop goroutine
+	go p.eventLoop()
+}
+
+// eventLoop processes AI events and publishes them to the event bus.
+// This is identical for coordinator and workers - both follow the same pattern:
+//   - Process output events and buffer them
+//   - Extract session ID and metrics
+//   - Submit ProcessTurnCompleteCommand when the AI turn finishes
+func (p *Process) eventLoop() {
+	defer close(p.eventDone)
+
+	p.mu.RLock()
+	proc := p.proc
+	p.mu.RUnlock()
+
+	if proc == nil {
+		return
+	}
+
+	procEvents := proc.Events()
+	procErrors := proc.Errors()
+
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+
+		case event, ok := <-procEvents:
+			if !ok {
+				// Events channel closed, process complete
+				p.handleProcessComplete()
+				return
+			}
+			p.handleOutputEvent(&event)
+
+		case err, ok := <-procErrors:
+			if !ok {
+				continue
+			}
+			p.handleError(err)
+		}
+	}
+}
+
+// handleOutputEvent processes a single output event from the AI process.
+func (p *Process) handleOutputEvent(event *client.OutputEvent) {
+	// Extract session ID from init event
+	if event.IsInit() && event.SessionID != "" {
+		p.setSessionID(event.SessionID)
+	}
+
+	// Handle result events - may include errors (e.g., "Prompt is too long")
+	if event.IsResult() {
+		// Check for error results first (e.g., context window exceeded)
+		if event.IsErrorResult {
+			errMsg := event.GetErrorMessage()
+			// Write error to output buffer so it appears in process pane
+			p.output.Append("⚠️ Error: " + errMsg)
+			// Also emit as error event for tracking
+			p.handleError(fmt.Errorf("process error: %s", errMsg))
+			return
+		}
+
+		// Extract token usage from successful result events
+		if event.Usage != nil {
+			// Build comprehensive TokenMetrics from event usage
+			m := &metrics.TokenMetrics{
+				InputTokens:              event.Usage.InputTokens,
+				OutputTokens:             event.Usage.OutputTokens,
+				CacheReadInputTokens:     event.Usage.CacheReadInputTokens,
+				CacheCreationInputTokens: event.Usage.CacheCreationInputTokens,
+				ContextTokens:            event.GetContextTokens(),
+				ContextWindow:            p.getContextWindow(event),
+				TurnCostUSD:              event.TotalCostUSD,
+				LastUpdatedAt:            time.Now(),
+			}
+
+			// Update metrics
+			p.setMetrics(m)
+
+			// Emit token usage event
+			if m.ContextTokens > 0 {
+				p.publishTokenUsageEvent(m)
+			}
+		}
+	}
+
+	// Store text output in buffer and emit as output event
+	if event.IsAssistant() && event.Message != nil {
+		text := event.Message.GetText()
+		if text != "" {
+			p.output.Append(text)
+			p.publishOutputEvent(text, event.Raw)
+		}
+
+		// Also emit tool calls for visibility
+		for i := range event.Message.Content {
+			block := &event.Message.Content[i]
+			if block.Type == "tool_use" && block.Name != "" {
+				toolMsg := claude.FormatToolDisplay(block)
+				p.publishOutputEvent(toolMsg, nil)
+			}
+		}
+	}
+
+	// Store tool results in buffer
+	if event.IsToolResult() && event.Tool != nil {
+		output := event.Tool.GetOutput()
+		if output != "" {
+			// Truncate very long tool outputs
+			if len(output) > 500 {
+				output = output[:500] + "..."
+			}
+			p.output.Append("[" + event.Tool.Name + "] " + output)
+		}
+	}
+}
+
+// handleError processes an error from the AI process.
+func (p *Process) handleError(err error) {
+	p.publishErrorEvent(err)
+}
+
+// handleProcessComplete is called when the AI process finishes a turn.
+// It submits a ProcessTurnCompleteCommand for the handler to update repository.
+func (p *Process) handleProcessComplete() {
+	p.mu.RLock()
+	proc := p.proc
+	m := p.metrics
+	p.mu.RUnlock()
+
+	if proc == nil {
+		return
+	}
+
+	// Wait for process to fully complete
+	_ = proc.Wait()
+
+	// Determine outcome based on process status
+	var succeeded bool
+	switch proc.Status() {
+	case client.StatusCompleted:
+		succeeded = true
+	default:
+		succeeded = false
+	}
+
+	// Submit unified command - handler routes based on process ID
+	if p.cmdSubmitter != nil {
+		p.cmdSubmitter.Submit(command.NewProcessTurnCompleteCommand(
+			p.ID, succeeded, m, nil,
+		))
+	}
+}
+
+// publishOutputEvent publishes an output event to the event bus.
+func (p *Process) publishOutputEvent(text string, rawJSON []byte) {
+	if p.eventBus == nil {
+		return
+	}
+
+	// Use unified ProcessEvent for both coordinator and workers
+	// Subscribers filter by Role field
+	p.eventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessOutput,
+		ProcessID: p.ID,
+		Role:      p.Role,
+		Output:    text,
+		TaskID:    p.GetTaskID(),
+		RawJSON:   rawJSON,
+	})
+}
+
+// publishTokenUsageEvent publishes a token usage event.
+func (p *Process) publishTokenUsageEvent(m *metrics.TokenMetrics) {
+	if p.eventBus == nil {
+		return
+	}
+
+	p.eventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessTokenUsage,
+		ProcessID: p.ID,
+		Role:      p.Role,
+		TaskID:    p.GetTaskID(),
+		Metrics:   m,
+	})
+}
+
+// publishErrorEvent publishes an error event.
+func (p *Process) publishErrorEvent(err error) {
+	if p.eventBus == nil {
+		return
+	}
+
+	p.eventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessError,
+		ProcessID: p.ID,
+		Role:      p.Role,
+		TaskID:    p.GetTaskID(),
+		Error:     err,
+	})
+}
+
+// getContextWindow returns the context window size from the event or a default.
+func (p *Process) getContextWindow(event *client.OutputEvent) int {
+	// Try to get from ModelUsage first (has ContextWindow field)
+	for _, usage := range event.ModelUsage {
+		if usage.ContextWindow > 0 {
+			return usage.ContextWindow
+		}
+	}
+	// Default context window for AI models
+	return 200000
+}
+
+// setSessionID updates the session ID thread-safely.
+func (p *Process) setSessionID(id string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.sessionID = id
+}
+
+// SessionID returns the session ID thread-safely.
+func (p *Process) SessionID() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.sessionID
+}
+
+// setMetrics updates the metrics thread-safely and accumulates cumulative cost.
+func (p *Process) setMetrics(m *metrics.TokenMetrics) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	// Accumulate turn cost into cumulative total
+	p.cumulativeCostUSD += m.TurnCostUSD
+	// Update metrics with cumulative totals
+	m.CumulativeCostUSD = p.cumulativeCostUSD
+	m.TotalCostUSD = p.cumulativeCostUSD
+	p.metrics = m
+}
+
+// Metrics returns the current metrics snapshot thread-safely.
+func (p *Process) Metrics() *metrics.TokenMetrics {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.metrics
+}
+
+// GetTaskID returns the current task ID thread-safely (worker-specific).
+func (p *Process) GetTaskID() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.taskID
+}
+
+// SetTaskID updates the task ID thread-safely (worker-specific).
+func (p *Process) SetTaskID(taskID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.taskID = taskID
+}
+
+// Output returns the output buffer.
+func (p *Process) Output() *OutputBuffer {
+	return p.output
+}
+
+// IsRunning returns true if the underlying process is running.
+func (p *Process) IsRunning() bool {
+	p.mu.RLock()
+	proc := p.proc
+	p.mu.RUnlock()
+
+	if proc == nil {
+		return false
+	}
+	return proc.IsRunning()
+}
+
+// WorkDir returns the working directory of the process.
+func (p *Process) WorkDir() string {
+	p.mu.RLock()
+	proc := p.proc
+	p.mu.RUnlock()
+
+	if proc == nil {
+		return ""
+	}
+	return proc.WorkDir()
+}
+
+// Cancel stops the underlying AI process.
+func (p *Process) Cancel() error {
+	p.mu.RLock()
+	proc := p.proc
+	p.mu.RUnlock()
+
+	if proc != nil {
+		return proc.Cancel()
+	}
+	return nil
+}
+
+// Wait blocks until the underlying process completes.
+func (p *Process) Wait() error {
+	p.mu.RLock()
+	proc := p.proc
+	p.mu.RUnlock()
+
+	if proc != nil {
+		return proc.Wait()
+	}
+	return nil
+}
+
+// SetRetired marks this process as retired.
+func (p *Process) SetRetired(retired bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.isRetired = retired
+}
+
+// IsRetired returns true if this process has been retired.
+func (p *Process) IsRetired() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.isRetired
+}
+
+// Events returns the underlying process's events channel for direct access.
+// Use with caution - prefer using Process methods.
+func (p *Process) Events() <-chan client.OutputEvent {
+	p.mu.RLock()
+	proc := p.proc
+	p.mu.RUnlock()
+
+	if proc == nil {
+		// Return a closed channel
+		ch := make(chan client.OutputEvent)
+		close(ch)
+		return ch
+	}
+	return proc.Events()
+}
+
+// Errors returns the underlying process's errors channel for direct access.
+func (p *Process) Errors() <-chan error {
+	p.mu.RLock()
+	proc := p.proc
+	p.mu.RUnlock()
+
+	if proc == nil {
+		// Return a closed channel
+		ch := make(chan error)
+		close(ch)
+		return ch
+	}
+	return proc.Errors()
+}
+
+// Status returns the underlying process status.
+func (p *Process) Status() client.ProcessStatus {
+	p.mu.RLock()
+	proc := p.proc
+	p.mu.RUnlock()
+
+	if proc == nil {
+		return client.StatusPending
+	}
+	return proc.Status()
+}
+
+// PID returns the OS process ID of the underlying AI process.
+// Returns 0 if the process is not running or not available.
+func (p *Process) PID() int {
+	p.mu.RLock()
+	proc := p.proc
+	p.mu.RUnlock()
+
+	if proc == nil {
+		return 0
+	}
+	return proc.PID()
+}

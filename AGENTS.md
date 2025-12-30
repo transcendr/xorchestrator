@@ -489,17 +489,22 @@ Two event types are used in orchestration:
 - `CoordinatorReady` - Coordinator ready for input
 - `CoordinatorWorking` - Coordinator processing
 
-**WorkerEvent** (`internal/orchestration/events/worker.go`):
-- `WorkerSpawned` - New worker created
-- `WorkerOutput` - Worker produced output
-- `WorkerStatusChange` - Worker status changed
-- `WorkerTokenUsage` - Worker token usage update
-- `WorkerIncoming` - Message sent to worker
-- `WorkerError` - Worker error occurred
+**ProcessEvent** (`internal/orchestration/events/process.go`) - Unified event type for both coordinator and worker processes:
+- `ProcessSpawned` - New process created
+- `ProcessOutput` - Process produced output
+- `ProcessStatusChange` - Process status changed
+- `ProcessTokenUsage` - Process token usage update
+- `ProcessIncoming` - Message sent to process
+- `ProcessError` - Process error occurred
+- `ProcessQueueChanged` - Process message queue changed
+- `ProcessReady` - Process ready for input
+- `ProcessWorking` - Process processing
+
+Filter by `Role` field: `events.RoleCoordinator` or `events.RoleWorker`
 
 ### Subscribing to Events
 
-Events are delivered via the pub/sub broker. Subscribe with a context for automatic cleanup:
+Events are delivered via pub/sub brokers. Subscribe with a context for automatic cleanup:
 
 ```go
 import (
@@ -512,10 +517,13 @@ import (
 ctx, cancel := context.WithCancel(context.Background())
 defer cancel()
 
-coordCh := coordinator.Subscribe(ctx)
-workerCh := coordinator.Workers().Subscribe(ctx)
+// Coordinator events come from coordinator.Broker()
+coordCh := coordinator.Broker().Subscribe(ctx)
 
-// Receive events
+// Worker events flow through v2EventBus (unified event stream)
+// Subscribe via the v2EventBus broker instead
+
+// Receive coordinator events
 for event := range coordCh {
     switch event.Payload.Type {
     case events.CoordinatorChat:
@@ -539,20 +547,20 @@ import (
 )
 
 type Model struct {
-    coordListener  *pubsub.ContinuousListener[events.CoordinatorEvent]
-    workerListener *pubsub.ContinuousListener[events.WorkerEvent]
-    ctx            context.Context
-    cancel         context.CancelFunc
+    coordListener *pubsub.ContinuousListener[events.CoordinatorEvent]
+    v2Listener    *pubsub.ContinuousListener[any]  // Unified event bus for worker events
+    ctx           context.Context
+    cancel        context.CancelFunc
 }
 
 // Initialize listeners after coordinator starts
-func (m Model) initListeners(coord *coordinator.Coordinator) (Model, tea.Cmd) {
-    m.coordListener = pubsub.NewContinuousListener(m.ctx, coord.Broker)
-    m.workerListener = pubsub.NewContinuousListener(m.ctx, coord.Workers())
+func (m Model) initListeners(coord *coordinator.Coordinator, v2EventBus *pubsub.Broker[any]) (Model, tea.Cmd) {
+    m.coordListener = pubsub.NewContinuousListener(m.ctx, coord.Broker())
+    m.v2Listener = pubsub.NewContinuousListener(m.ctx, v2EventBus)
 
     return m, tea.Batch(
         m.coordListener.Listen(),
-        m.workerListener.Listen(),
+        m.v2Listener.Listen(),
     )
 }
 
@@ -570,14 +578,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
         // Continue listening (always!)
         return m, m.coordListener.Listen()
 
-    case pubsub.Event[events.WorkerEvent]:
-        // Handle worker event
-        switch msg.Payload.Type {
-        case events.WorkerOutput:
-            m = m.addWorkerOutput(msg.Payload.WorkerID, msg.Payload.Output)
+    case pubsub.Event[any]:
+        // Handle v2 events (worker events, command results, etc.)
+        if processEvent, ok := msg.Payload.(events.ProcessEvent); ok && processEvent.IsWorker() {
+            switch processEvent.Type {
+            case events.ProcessOutput:
+                m = m.addWorkerOutput(processEvent.ProcessID, processEvent.Output)
+            }
         }
         // Continue listening (always!)
-        return m, m.workerListener.Listen()
+        return m, m.v2Listener.Listen()
     }
     return m, nil
 }

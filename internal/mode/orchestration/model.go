@@ -20,21 +20,20 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/coordinator"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/orchestration/pool"
 	"github.com/zjrosen/perles/internal/orchestration/session"
+	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/orchestration/v2/process"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
+	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 	"github.com/zjrosen/perles/internal/ui/styles"
-
-	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // viewportKey is the map key for single-viewport panes (coordinator, message).
@@ -78,6 +77,12 @@ type InitTimeoutMsg struct{}
 // SpinnerTickMsg advances the spinner frame.
 type SpinnerTickMsg struct{}
 
+// ProcessEventMsg wraps a ProcessEvent for the Bubble Tea message loop.
+// This is the unified event type for both coordinator and worker processes.
+type ProcessEventMsg struct {
+	Event events.ProcessEvent
+}
+
 // Model holds the orchestration mode state.
 type Model struct {
 	// Pane components
@@ -105,18 +110,19 @@ type Model struct {
 	// Spinner animation frame (view-only, advanced by SpinnerTickMsg)
 	spinnerFrame int
 
-	// Backend integration (the actual coordinator and worker pool)
-	coord              *coordinator.Coordinator
-	pool               *pool.WorkerPool
-	messageLog         *message.Issue
-	mcpServer          *http.Server           // HTTP MCP server for in-process tool handling
-	mcpPort            int                    // Dynamic port for MCP server
-	mcpCoordServer     *mcp.CoordinatorServer // MCP coordinator server for direct worker messaging
+	// Backend integration (v2 process repository for coordinator/worker state)
+	processRepo        repository.ProcessRepository // V2 process repository for status queries
+	coordinatorStatus  events.ProcessStatus         // Current coordinator status from v2 events
+	messageRepo        repository.MessageRepository // Message repository for inter-agent messaging
+	mcpServer          *http.Server                 // HTTP MCP server for in-process tool handling
+	mcpPort            int                          // Dynamic port for MCP server
+	mcpCoordServer     *mcp.CoordinatorServer       // MCP coordinator server for direct worker messaging
 	workDir            string
 	services           mode.Services
-	coordinatorMetrics *metrics.TokenMetrics // Token usage and cost data for coordinator
-	coordinatorWorking bool                  // True when coordinator is processing, false when waiting for input
-	session            *session.Session      // Session tracking for this orchestration run
+	coordinatorMetrics *metrics.TokenMetrics    // Token usage and cost data for coordinator
+	coordinatorWorking bool                     // True when coordinator is processing, false when waiting for input
+	session            *session.Session         // Session tracking for this orchestration run
+	cmdSubmitter       process.CommandSubmitter // V2 command submitter for direct v2 command submission
 
 	// AI client configuration
 	clientType  string // "claude" (default) or "amp"
@@ -124,16 +130,13 @@ type Model struct {
 	ampModel    string // Amp model: opus, sonnet
 	ampMode     string // Amp mode: free, rush, smart
 
-	// Phased initialization state (used during startup)
-	aiClient           client.HeadlessClient // Created during InitCreatingClient phase
-	aiClientExtensions map[string]any        // Provider-specific extensions
-
 	// Pub/sub subscriptions (initialized when coordinator starts)
-	coordListener   *pubsub.ContinuousListener[events.CoordinatorEvent] // Coordinator events listener
-	workerListener  *pubsub.ContinuousListener[events.WorkerEvent]      // Worker events listener
-	messageListener *pubsub.ContinuousListener[message.Event]           // Message events listener
-	ctx             context.Context                                     // Context for subscription lifetime
-	cancel          context.CancelFunc                                  // Cancel function for subscriptions
+	// Note: Worker events flow through v2EventBus, not a separate workerListener
+	// Note: Coordinator events also flow through v2EventBus via ProcessEvent
+	messageListener *pubsub.ContinuousListener[message.Event] // Message events listener
+	v2Listener      *pubsub.ContinuousListener[any]           // V2 orchestration events listener (includes all process events)
+	ctx             context.Context                           // Context for subscription lifetime
+	cancel          context.CancelFunc                        // Cancel function for subscriptions
 
 	// Nudge batching (debounces coordinator nudges when multiple workers send messages)
 	nudgeBatcher *NudgeBatcher
@@ -180,7 +183,9 @@ type MessagePane struct {
 type WorkerPane struct {
 	workerIndex       int      // Currently displayed worker
 	workerIDs         []string // Worker IDs in display order (active workers only)
-	workerStatus      map[string]events.WorkerStatus
+	workerStatus      map[string]events.ProcessStatus
+	workerTaskIDs     map[string]string                // Current task ID per worker
+	workerPhases      map[string]events.ProcessPhase   // Current workflow phase per worker
 	workerMessages    map[string][]ChatMessage         // Structured messages per worker (like coordinator)
 	workerMetrics     map[string]*metrics.TokenMetrics // Token usage and cost per worker
 	workerQueueCounts map[string]int                   // Queue count per worker (for UI display)
@@ -259,7 +264,9 @@ func newMessagePane() MessagePane {
 func newWorkerPane() WorkerPane {
 	return WorkerPane{
 		workerIDs:         make([]string, 0),
-		workerStatus:      make(map[string]events.WorkerStatus),
+		workerStatus:      make(map[string]events.ProcessStatus),
+		workerTaskIDs:     make(map[string]string),
+		workerPhases:      make(map[string]events.ProcessPhase),
 		workerMessages:    make(map[string][]ChatMessage),
 		workerMetrics:     make(map[string]*metrics.TokenMetrics),
 		workerQueueCounts: make(map[string]int),
@@ -434,17 +441,17 @@ func (m Model) AppendMessageEntry(entry message.Entry) Model {
 }
 
 // UpdateWorker updates the status for a worker.
-// If the status is WorkerRetired, the worker is removed from the active display list
-// but its viewport data is retained for cleanup based on retirement order.
-func (m Model) UpdateWorker(workerID string, status events.WorkerStatus) Model {
-	if status == events.WorkerRetired {
+// If the status is ProcessStatusRetired or ProcessStatusFailed, the worker is removed from
+// the active display list but its viewport data is retained for cleanup based on retirement order.
+func (m Model) UpdateWorker(workerID string, status events.ProcessStatus) Model {
+	if status == events.ProcessStatusRetired || status == events.ProcessStatusFailed {
 		// Check if this worker is currently fullscreen and exit fullscreen if so
 		if m.fullscreenPaneType == PaneWorker && m.fullscreenWorkerIndex >= 0 {
 			// Build active workers list to find the retiring worker's index
 			var activeWorkerIDs []string
 			for _, wID := range m.workerPane.workerIDs {
 				wStatus := m.workerPane.workerStatus[wID]
-				if wStatus != events.WorkerRetired {
+				if wStatus != events.ProcessStatusRetired {
 					activeWorkerIDs = append(activeWorkerIDs, wID)
 				}
 			}
@@ -529,6 +536,14 @@ func (m Model) SetQueueCount(workerID string, count int) Model {
 	return m
 }
 
+// SetWorkerTask updates the task ID and phase for a worker.
+// Used by events and tests to set worker context for display.
+func (m Model) SetWorkerTask(workerID, taskID string, phase events.ProcessPhase) Model {
+	m.workerPane.workerTaskIDs[workerID] = taskID
+	m.workerPane.workerPhases[workerID] = phase
+	return m
+}
+
 // CycleWorker moves to the next or previous worker in the list.
 func (m Model) CycleWorker(forward bool) Model {
 	if len(m.workerPane.workerIDs) == 0 {
@@ -567,7 +582,7 @@ func (m Model) WorkerCount() (total, active int) {
 func (m Model) ActiveWorkerIDs() []string {
 	var active []string
 	for _, workerID := range m.workerPane.workerIDs {
-		if m.workerPane.workerStatus[workerID] != pool.WorkerRetired {
+		if m.workerPane.workerStatus[workerID] != events.ProcessStatusRetired {
 			active = append(active, workerID)
 		}
 	}
@@ -639,14 +654,19 @@ func (m Model) showQuitConfirmation() Model {
 	return m
 }
 
-// Coordinator returns the coordinator instance, if any.
-func (m Model) Coordinator() *coordinator.Coordinator {
-	return m.coord
-}
-
-// Pool returns the worker pool instance, if any.
-func (m Model) Pool() *pool.WorkerPool {
-	return m.pool
+// Coordinator returns nil - coordinator state is now managed via ProcessRepository.
+// This method is retained for API compatibility but callers should use
+// ProcessRepository.GetCoordinator() for status queries and CmdRetireProcess for cleanup.
+// Deprecated: Use m.processRepo.GetCoordinator() for status or CmdRetireProcess for cleanup.
+func (m Model) Coordinator() *repository.Process {
+	if m.processRepo == nil {
+		return nil
+	}
+	proc, err := m.processRepo.GetCoordinator()
+	if err != nil {
+		return nil
+	}
+	return proc
 }
 
 // MCPServer returns the HTTP MCP server instance, if any.
@@ -732,26 +752,21 @@ func (m *Model) cleanup() {
 		m.mcpServer = nil
 	}
 
-	// Stop coordinator if running
-	if m.coord != nil {
-		_ = m.coord.Cancel()
-		m.coord = nil
+	// Stop coordinator if running via v2 command
+	if m.processRepo != nil && m.cmdSubmitter != nil {
+		if _, err := m.processRepo.GetCoordinator(); err == nil {
+			cmd := command.NewRetireProcessCommand(command.SourceInternal, repository.CoordinatorID, "cleanup")
+			m.cmdSubmitter.Submit(cmd)
+		}
 	}
+	m.processRepo = nil
 
-	// Clear pool
-	m.pool = nil
-
-	// Clear message log
-	m.messageLog = nil
-
-	// Clear AI client
-	m.aiClient = nil
-	m.aiClientExtensions = nil
+	// Clear message repository
+	m.messageRepo = nil
 
 	// Reset listeners
-	m.coordListener = nil
-	m.workerListener = nil
 	m.messageListener = nil
+	m.v2Listener = nil
 	m.ctx = nil
 	m.cancel = nil
 	m.nudgeBatcher = nil

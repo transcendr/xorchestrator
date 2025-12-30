@@ -18,6 +18,11 @@ import (
 	"github.com/zjrosen/perles/internal/pubsub"
 )
 
+// phasePtr is a helper to create *ProcessPhase from ProcessPhase constants.
+func phasePtr(p events.ProcessPhase) *events.ProcessPhase {
+	return &p
+}
+
 func TestStatus_String(t *testing.T) {
 	tests := []struct {
 		status   Status
@@ -1195,28 +1200,25 @@ func TestSession_AttachToBrokers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Create brokers
-	coordBroker := pubsub.NewBroker[events.CoordinatorEvent]()
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
+	// Create brokers (coordinator events flow through v2EventBus as ProcessEvent)
+	processBroker := pubsub.NewBroker[events.ProcessEvent]()
 	msgBroker := pubsub.NewBroker[message.Event]()
 	mcpBroker := pubsub.NewBroker[events.MCPEvent]()
 
 	// Attach to all brokers
-	session.AttachToBrokers(ctx, coordBroker, workerBroker, msgBroker, mcpBroker)
+	session.AttachToBrokers(ctx, processBroker, msgBroker, mcpBroker)
 
 	// Give goroutines time to start
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify subscribers are attached (broker subscriber count should be 1 for each)
-	require.Equal(t, 1, coordBroker.SubscriberCount())
-	require.Equal(t, 1, workerBroker.SubscriberCount())
+	require.Equal(t, 1, processBroker.SubscriberCount())
 	require.Equal(t, 1, msgBroker.SubscriberCount())
 	require.Equal(t, 1, mcpBroker.SubscriberCount())
 
 	// Cleanup
 	cancel()
-	coordBroker.Close()
-	workerBroker.Close()
+	processBroker.Close()
 	msgBroker.Close()
 	mcpBroker.Close()
 	_ = session.Close(StatusCompleted)
@@ -1234,7 +1236,7 @@ func TestSession_AttachToBrokers_NilBrokers(t *testing.T) {
 	defer cancel()
 
 	// Should not panic with nil brokers
-	session.AttachToBrokers(ctx, nil, nil, nil, nil)
+	session.AttachToBrokers(ctx, nil, nil, nil)
 
 	// Give time for any potential goroutines
 	time.Sleep(10 * time.Millisecond)
@@ -1253,25 +1255,27 @@ func TestSession_CoordinatorSubscriber(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	coordBroker := pubsub.NewBroker[events.CoordinatorEvent]()
-	defer coordBroker.Close()
+	// Coordinator events flow through v2EventBus as ProcessEvent with Role=RoleCoordinator
+	v2EventBus := pubsub.NewBroker[any]()
+	defer v2EventBus.Close()
 
-	session.AttachCoordinatorBroker(ctx, coordBroker)
+	session.AttachV2EventBus(ctx, v2EventBus)
 
 	// Give goroutine time to start
 	time.Sleep(10 * time.Millisecond)
 
-	// Publish a chat event
-	coordBroker.Publish(pubsub.UpdatedEvent, events.CoordinatorEvent{
-		Type:    events.CoordinatorChat,
-		Role:    "coordinator",
-		Content: "Starting orchestration session...",
+	// Publish a coordinator output event (equivalent to CoordinatorChat)
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:    events.ProcessOutput,
+		Role:    events.RoleCoordinator,
+		Output:  "Starting orchestration session...",
 		RawJSON: []byte(`{"type":"chat","content":"Starting orchestration session..."}`),
 	})
 
 	// Publish a token usage event
-	coordBroker.Publish(pubsub.UpdatedEvent, events.CoordinatorEvent{
-		Type: events.CoordinatorTokenUsage,
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type: events.ProcessTokenUsage,
+		Role: events.RoleCoordinator,
 		Metrics: &metrics.TokenMetrics{
 			InputTokens:  100,
 			OutputTokens: 50,
@@ -1286,7 +1290,7 @@ func TestSession_CoordinatorSubscriber(t *testing.T) {
 	err = session.Close(StatusCompleted)
 	require.NoError(t, err)
 
-	// Verify coordinator output.log has the chat event
+	// Verify coordinator output.log has the output event
 	logPath := filepath.Join(sessionDir, "coordinator", "output.log")
 	data, err := os.ReadFile(logPath)
 	require.NoError(t, err)
@@ -1318,34 +1322,37 @@ func TestSession_WorkerSubscriber(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
-	defer workerBroker.Close()
+	processBroker := pubsub.NewBroker[events.ProcessEvent]()
+	defer processBroker.Close()
 
-	session.AttachToBrokers(ctx, nil, workerBroker, nil, nil)
+	session.AttachToBrokers(ctx, processBroker, nil, nil)
 
 	// Give goroutine time to start
 	time.Sleep(10 * time.Millisecond)
 
 	// Publish worker spawned event
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerSpawned,
-		WorkerID: "worker-1",
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessSpawned,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-1",
 	})
 
 	// Publish worker output event
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerOutput,
-		WorkerID: "worker-1",
-		Output:   "Starting implementation...",
-		RawJSON:  []byte(`{"type":"output","content":"Starting implementation..."}`),
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessOutput,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-1",
+		Output:    "Starting implementation...",
+		RawJSON:   []byte(`{"type":"output","content":"Starting implementation..."}`),
 	})
 
 	// Publish worker status change (retired)
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerStatusChange,
-		WorkerID: "worker-1",
-		Status:   events.WorkerRetired,
-		Phase:    events.PhaseIdle,
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessStatusChange,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-1",
+		Status:    events.ProcessStatusRetired,
+		Phase:     phasePtr(events.ProcessPhaseIdle),
 	})
 
 	// Give time for events to be processed
@@ -1393,7 +1400,7 @@ func TestSession_MessageSubscriber(t *testing.T) {
 	msgBroker := pubsub.NewBroker[message.Event]()
 	defer msgBroker.Close()
 
-	session.AttachToBrokers(ctx, nil, nil, msgBroker, nil)
+	session.AttachToBrokers(ctx, nil, msgBroker, nil)
 
 	// Give goroutine time to start
 	time.Sleep(10 * time.Millisecond)
@@ -1450,7 +1457,7 @@ func TestSession_MCPSubscriber(t *testing.T) {
 	mcpBroker := pubsub.NewBroker[events.MCPEvent]()
 	defer mcpBroker.Close()
 
-	session.AttachToBrokers(ctx, nil, nil, nil, mcpBroker)
+	session.AttachToBrokers(ctx, nil, nil, mcpBroker)
 
 	// Give goroutine time to start
 	time.Sleep(10 * time.Millisecond)
@@ -1518,21 +1525,19 @@ func TestSession_ContextCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Create brokers
-	coordBroker := pubsub.NewBroker[events.CoordinatorEvent]()
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
+	// Create brokers (coordinator events flow through v2EventBus)
+	processBroker := pubsub.NewBroker[events.ProcessEvent]()
 	msgBroker := pubsub.NewBroker[message.Event]()
 	mcpBroker := pubsub.NewBroker[events.MCPEvent]()
 
 	// Attach to all brokers
-	session.AttachToBrokers(ctx, coordBroker, workerBroker, msgBroker, mcpBroker)
+	session.AttachToBrokers(ctx, processBroker, msgBroker, mcpBroker)
 
 	// Give goroutines time to start
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify subscribers are attached
-	require.Equal(t, 1, coordBroker.SubscriberCount())
-	require.Equal(t, 1, workerBroker.SubscriberCount())
+	require.Equal(t, 1, processBroker.SubscriberCount())
 	require.Equal(t, 1, msgBroker.SubscriberCount())
 	require.Equal(t, 1, mcpBroker.SubscriberCount())
 
@@ -1543,14 +1548,12 @@ func TestSession_ContextCancellation(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Verify subscribers are cleaned up
-	require.Equal(t, 0, coordBroker.SubscriberCount())
-	require.Equal(t, 0, workerBroker.SubscriberCount())
+	require.Equal(t, 0, processBroker.SubscriberCount())
 	require.Equal(t, 0, msgBroker.SubscriberCount())
 	require.Equal(t, 0, mcpBroker.SubscriberCount())
 
 	// Cleanup
-	coordBroker.Close()
-	workerBroker.Close()
+	processBroker.Close()
 	msgBroker.Close()
 	mcpBroker.Close()
 	_ = session.Close(StatusCompleted)
@@ -1572,10 +1575,10 @@ func TestSession_HighThroughput(t *testing.T) {
 	defer cancel()
 
 	// Create brokers with larger buffer for high throughput
-	workerBroker := pubsub.NewBrokerWithBuffer[events.WorkerEvent](256)
-	defer workerBroker.Close()
+	processBroker := pubsub.NewBrokerWithBuffer[events.ProcessEvent](256)
+	defer processBroker.Close()
 
-	session.AttachToBrokers(ctx, nil, workerBroker, nil, nil)
+	session.AttachToBrokers(ctx, processBroker, nil, nil)
 
 	// Give goroutine time to start
 	time.Sleep(10 * time.Millisecond)
@@ -1584,10 +1587,11 @@ func TestSession_HighThroughput(t *testing.T) {
 	// This tests that under normal operation (< 100 events/sec) no events are dropped
 	const eventCount = 100
 	for i := 0; i < eventCount; i++ {
-		workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-			Type:     events.WorkerOutput,
-			WorkerID: "worker-1",
-			Output:   fmt.Sprintf("Event %d", i),
+		processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+			Type:      events.ProcessOutput,
+			Role:      events.RoleWorker,
+			ProcessID: "worker-1",
+			Output:    fmt.Sprintf("Event %d", i),
 		})
 		// Small delay to allow subscriber to process (simulates realistic event rate)
 		if i%10 == 0 {
@@ -1623,19 +1627,19 @@ func TestSession_TokenUsageAggregation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	coordBroker := pubsub.NewBroker[events.CoordinatorEvent]()
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
-	defer coordBroker.Close()
-	defer workerBroker.Close()
+	// Use v2EventBus for both coordinator and worker events
+	v2EventBus := pubsub.NewBroker[any]()
+	defer v2EventBus.Close()
 
-	session.AttachToBrokers(ctx, coordBroker, workerBroker, nil, nil)
+	session.AttachV2EventBus(ctx, v2EventBus)
 
 	// Give goroutines time to start
 	time.Sleep(10 * time.Millisecond)
 
 	// Publish multiple token usage events from coordinator and workers
-	coordBroker.Publish(pubsub.UpdatedEvent, events.CoordinatorEvent{
-		Type: events.CoordinatorTokenUsage,
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type: events.ProcessTokenUsage,
+		Role: events.RoleCoordinator,
 		Metrics: &metrics.TokenMetrics{
 			InputTokens:  100,
 			OutputTokens: 50,
@@ -1643,9 +1647,10 @@ func TestSession_TokenUsageAggregation(t *testing.T) {
 		},
 	})
 
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerTokenUsage,
-		WorkerID: "worker-1",
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessTokenUsage,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-1",
 		Metrics: &metrics.TokenMetrics{
 			InputTokens:  200,
 			OutputTokens: 75,
@@ -1653,9 +1658,10 @@ func TestSession_TokenUsageAggregation(t *testing.T) {
 		},
 	})
 
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerTokenUsage,
-		WorkerID: "worker-2",
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessTokenUsage,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-2",
 		Metrics: &metrics.TokenMetrics{
 			InputTokens:  300,
 			OutputTokens: 100,
@@ -1689,48 +1695,54 @@ func TestSession_WorkerMetadataUpdates(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
-	defer workerBroker.Close()
+	processBroker := pubsub.NewBroker[events.ProcessEvent]()
+	defer processBroker.Close()
 
-	session.AttachToBrokers(ctx, nil, workerBroker, nil, nil)
+	session.AttachToBrokers(ctx, processBroker, nil, nil)
 
 	// Give goroutine time to start
 	time.Sleep(10 * time.Millisecond)
 
 	// Spawn multiple workers
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerSpawned,
-		WorkerID: "worker-1",
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessSpawned,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-1",
 	})
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerSpawned,
-		WorkerID: "worker-2",
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessSpawned,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-2",
 	})
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerSpawned,
-		WorkerID: "worker-3",
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessSpawned,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-3",
 	})
 
 	// Status changes
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerStatusChange,
-		WorkerID: "worker-1",
-		Status:   events.WorkerWorking,
-		Phase:    events.PhaseImplementing,
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessStatusChange,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-1",
+		Status:    events.ProcessStatusWorking,
+		Phase:     phasePtr(events.ProcessPhaseImplementing),
 	})
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerStatusChange,
-		WorkerID: "worker-2",
-		Status:   events.WorkerWorking,
-		Phase:    events.PhaseReviewing,
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessStatusChange,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-2",
+		Status:    events.ProcessStatusWorking,
+		Phase:     phasePtr(events.ProcessPhaseReviewing),
 	})
 
 	// Retire one worker
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerStatusChange,
-		WorkerID: "worker-1",
-		Status:   events.WorkerRetired,
-		Phase:    events.PhaseIdle,
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessStatusChange,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-1",
+		Status:    events.ProcessStatusRetired,
+		Phase:     phasePtr(events.ProcessPhaseIdle),
 	})
 
 	// Give time for events to be processed
@@ -1766,11 +1778,10 @@ func TestSession_WorkerMetadataUpdates(t *testing.T) {
 // Tests for late broker attachment (simulating real initialization flow)
 
 func TestSession_LateCoordinatorAttach(t *testing.T) {
-	// This test verifies that the coordinator broker can be attached separately
-	// after the session is created, simulating the real flow where:
-	// 1. Session is created in createWorkspace()
-	// 2. Pool and message brokers are attached immediately
-	// 3. Coordinator broker is attached later after spawnCoordinator()
+	// This test verifies that the v2EventBus can be attached separately
+	// after the session is created, and handles both coordinator and worker events.
+	// In the new architecture, coordinator events flow through v2EventBus as
+	// ProcessEvent with Role=RoleCoordinator.
 
 	baseDir := t.TempDir()
 	sessionID := "test-late-coord-attach"
@@ -1782,44 +1793,45 @@ func TestSession_LateCoordinatorAttach(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Step 1: First attach pool and message brokers (with nil for coordinator)
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
+	// Step 1: First attach pool and message brokers
+	processBroker := pubsub.NewBroker[events.ProcessEvent]()
 	msgBroker := pubsub.NewBroker[message.Event]()
-	defer workerBroker.Close()
+	defer processBroker.Close()
 	defer msgBroker.Close()
 
-	session.AttachToBrokers(ctx, nil, workerBroker, msgBroker, nil)
+	session.AttachToBrokers(ctx, processBroker, msgBroker, nil)
 
 	// Give goroutines time to start
 	time.Sleep(10 * time.Millisecond)
 
-	// Verify pool and message brokers are attached
-	require.Equal(t, 1, workerBroker.SubscriberCount())
+	// Verify process and message brokers are attached
+	require.Equal(t, 1, processBroker.SubscriberCount())
 	require.Equal(t, 1, msgBroker.SubscriberCount())
 
-	// Publish some worker events before coordinator is attached
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerSpawned,
-		WorkerID: "worker-1",
+	// Publish some worker events before v2EventBus is attached
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessSpawned,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-1",
 	})
 
-	// Step 2: Later, attach coordinator broker (simulates after spawnCoordinator)
-	coordBroker := pubsub.NewBroker[events.CoordinatorEvent]()
-	defer coordBroker.Close()
+	// Step 2: Later, attach v2EventBus (handles both coordinator and worker events)
+	v2EventBus := pubsub.NewBroker[any]()
+	defer v2EventBus.Close()
 
-	session.AttachCoordinatorBroker(ctx, coordBroker)
+	session.AttachV2EventBus(ctx, v2EventBus)
 
 	// Give goroutine time to start
 	time.Sleep(10 * time.Millisecond)
 
-	// Verify coordinator broker is now attached
-	require.Equal(t, 1, coordBroker.SubscriberCount())
+	// Verify v2EventBus is now attached
+	require.Equal(t, 1, v2EventBus.SubscriberCount())
 
-	// Publish coordinator events after attachment
-	coordBroker.Publish(pubsub.UpdatedEvent, events.CoordinatorEvent{
-		Type:    events.CoordinatorChat,
-		Role:    "coordinator",
-		Content: "First coordinator message",
+	// Publish coordinator events after attachment (via ProcessEvent with RoleCoordinator)
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:   events.ProcessOutput,
+		Role:   events.RoleCoordinator,
+		Output: "First coordinator message",
 	})
 
 	// Give time for events to be processed
@@ -1829,7 +1841,7 @@ func TestSession_LateCoordinatorAttach(t *testing.T) {
 	err = session.Close(StatusCompleted)
 	require.NoError(t, err)
 
-	// Verify worker events were captured (from before coordinator attached)
+	// Verify worker events were captured (from before v2EventBus attached)
 	worker1Log := filepath.Join(sessionDir, "workers", "worker-1", "output.log")
 	workerData, err := os.ReadFile(worker1Log)
 	require.NoError(t, err)
@@ -1858,12 +1870,12 @@ func TestSession_MCPBrokerAttach(t *testing.T) {
 	defer cancel()
 
 	// Step 1: First attach pool and message brokers (with nil for MCP)
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
+	processBroker := pubsub.NewBroker[events.ProcessEvent]()
 	msgBroker := pubsub.NewBroker[message.Event]()
-	defer workerBroker.Close()
+	defer processBroker.Close()
 	defer msgBroker.Close()
 
-	session.AttachToBrokers(ctx, nil, workerBroker, msgBroker, nil)
+	session.AttachToBrokers(ctx, processBroker, msgBroker, nil)
 
 	// Give goroutines time to start
 	time.Sleep(10 * time.Millisecond)
@@ -1929,8 +1941,9 @@ func TestSession_MCPBrokerAttach(t *testing.T) {
 }
 
 func TestSession_AllFourBrokersFromAllBrokers(t *testing.T) {
-	// Integration test: Events from all 4 brokers captured in session files
+	// Integration test: Events from all broker types captured in session files
 	// This simulates the full initialization flow with staggered broker attachment
+	// In v2 architecture, coordinator events flow through v2EventBus as ProcessEvent
 
 	baseDir := t.TempDir()
 	sessionID := "test-all-four-brokers"
@@ -1942,48 +1955,49 @@ func TestSession_AllFourBrokersFromAllBrokers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Create all brokers
-	coordBroker := pubsub.NewBroker[events.CoordinatorEvent]()
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
+	// Create all brokers (coordinator events flow through v2EventBus)
+	v2EventBus := pubsub.NewBroker[any]()
+	processBroker := pubsub.NewBroker[events.ProcessEvent]()
 	msgBroker := pubsub.NewBroker[message.Event]()
 	mcpBroker := pubsub.NewBroker[events.MCPEvent]()
-	defer coordBroker.Close()
-	defer workerBroker.Close()
+	defer v2EventBus.Close()
+	defer processBroker.Close()
 	defer msgBroker.Close()
 	defer mcpBroker.Close()
 
-	// Phase 1: Attach pool and message brokers first (simulating createWorkspace)
-	session.AttachToBrokers(ctx, nil, workerBroker, msgBroker, nil)
+	// Phase 1: Attach process and message brokers first (simulating createWorkspace)
+	session.AttachToBrokers(ctx, processBroker, msgBroker, nil)
 	time.Sleep(10 * time.Millisecond)
 
 	// Phase 2: Attach MCP broker (simulating after MCP server creation)
 	session.AttachMCPBroker(ctx, mcpBroker)
 	time.Sleep(10 * time.Millisecond)
 
-	// Phase 3: Attach coordinator broker (simulating after spawnCoordinator)
-	session.AttachCoordinatorBroker(ctx, coordBroker)
+	// Phase 3: Attach v2EventBus (handles both coordinator and worker events)
+	session.AttachV2EventBus(ctx, v2EventBus)
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify all brokers are attached
-	require.Equal(t, 1, coordBroker.SubscriberCount(), "coordinator broker should have 1 subscriber")
-	require.Equal(t, 1, workerBroker.SubscriberCount(), "worker broker should have 1 subscriber")
+	require.Equal(t, 1, v2EventBus.SubscriberCount(), "v2EventBus should have 1 subscriber")
+	require.Equal(t, 1, processBroker.SubscriberCount(), "worker broker should have 1 subscriber")
 	require.Equal(t, 1, msgBroker.SubscriberCount(), "message broker should have 1 subscriber")
 	require.Equal(t, 1, mcpBroker.SubscriberCount(), "MCP broker should have 1 subscriber")
 
-	// Publish events from all 4 brokers
+	// Publish events from all sources
 	timestamp := time.Now()
 
-	// Coordinator event
-	coordBroker.Publish(pubsub.UpdatedEvent, events.CoordinatorEvent{
-		Type:    events.CoordinatorChat,
-		Role:    "coordinator",
-		Content: "Orchestration started",
+	// Coordinator event (via v2EventBus as ProcessEvent)
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:   events.ProcessOutput,
+		Role:   events.RoleCoordinator,
+		Output: "Orchestration started",
 	})
 
 	// Worker event
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{
-		Type:     events.WorkerSpawned,
-		WorkerID: "worker-1",
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessSpawned,
+		Role:      events.RoleWorker,
+		ProcessID: "worker-1",
 	})
 
 	// Message event

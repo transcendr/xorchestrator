@@ -13,17 +13,63 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 )
+
+// ptr returns a pointer to the given ProcessPhase value.
+func ptr(p events.ProcessPhase) *events.ProcessPhase {
+	return &p
+}
+
+// messageLogResponse is used for test JSON unmarshaling of read_message_log responses.
+type messageLogResponse struct {
+	TotalCount    int               `json:"total_count"`
+	ReturnedCount int               `json:"returned_count"`
+	Messages      []messageLogEntry `json:"messages"`
+}
+
+// messageLogEntry is a single message in the log response.
+type messageLogEntry struct {
+	Timestamp string `json:"timestamp"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Content   string `json:"content"`
+}
+
+// newCoordinatorServerWithV2 creates a CoordinatorServer with a properly configured v2Adapter for testing.
+func newCoordinatorServerWithV2(t *testing.T, msgRepo repository.MessageRepository) *CoordinatorServer {
+	t.Helper()
+	cs := NewCoordinatorServer(claude.NewClient(), msgRepo, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	proc := processor.NewCommandProcessor()
+	v2Adapter := adapter.NewV2Adapter(proc, adapter.WithMessageRepository(msgRepo))
+	cs.SetV2Adapter(v2Adapter)
+	return cs
+}
+
+// workerStateInfo is used for test JSON unmarshaling of query_worker_state responses.
+type workerStateInfo struct {
+	WorkerID     string `json:"worker_id"`
+	Status       string `json:"status"`
+	Phase        string `json:"phase"`
+	TaskID       string `json:"task_id,omitempty"`
+	ContextUsage string `json:"context_usage,omitempty"`
+	StartedAt    string `json:"started_at"`
+}
+
+// workerStateResponse is used for test JSON unmarshaling of query_worker_state responses.
+type workerStateResponse struct {
+	Workers      []workerStateInfo `json:"workers"`
+	ReadyWorkers []string          `json:"ready_workers"`
+}
 
 // TestNewCoordinatorServer_ProvidedBeadsExecutorIsUsed verifies mock injection works.
 func TestNewCoordinatorServer_ProvidedBeadsExecutorIsUsed(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
 	mockExec := mocks.NewMockBeadsExecutor(t)
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mockExec)
 
 	// beadsExecutor should be the mock we provided
 	require.NotNil(t, cs.beadsExecutor, "beadsExecutor should not be nil")
@@ -32,15 +78,13 @@ func TestNewCoordinatorServer_ProvidedBeadsExecutorIsUsed(t *testing.T) {
 
 // TestCoordinatorServer_RegistersAllTools verifies all coordinator tools are registered.
 func TestCoordinatorServer_RegistersAllTools(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	expectedTools := []string{
 		"spawn_worker",
 		"assign_task",
 		"replace_worker",
+		"retire_worker",
 		"send_to_worker",
 		"post_message",
 		"get_task_status",
@@ -53,6 +97,7 @@ func TestCoordinatorServer_RegistersAllTools(t *testing.T) {
 		"assign_task_review",
 		"assign_review_feedback",
 		"approve_commit",
+		"stop_worker",
 	}
 
 	for _, toolName := range expectedTools {
@@ -67,10 +112,7 @@ func TestCoordinatorServer_RegistersAllTools(t *testing.T) {
 
 // TestCoordinatorServer_ToolSchemas verifies tool schemas are valid.
 func TestCoordinatorServer_ToolSchemas(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	for name, tool := range cs.tools {
 		t.Run(name, func(t *testing.T) {
@@ -85,26 +127,32 @@ func TestCoordinatorServer_ToolSchemas(t *testing.T) {
 }
 
 // TestCoordinatorServer_SpawnWorker tests spawn_worker (takes no args).
-// Note: Actual spawning will fail in unit tests without Claude, but we can test it doesn't error on empty args.
+// Note: With v2 routing, spawn_worker routes to v2 adapter.
 func TestCoordinatorServer_SpawnWorker(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Inject v2 adapter for test
+	v2handler, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
+	// Configure v2 handler to return success
+	v2handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Worker spawned successfully",
+	})
+
 	handler := cs.handlers["spawn_worker"]
 
-	// spawn_worker takes no args, so empty args should be accepted (but will fail to actually spawn)
-	_, err := handler(context.Background(), json.RawMessage(`{}`))
-	// Expect error because we can't actually spawn Claude in a unit test
-	require.Error(t, err, "Expected error when spawning worker (no Claude available)")
+	// spawn_worker takes no args - v2 adapter returns success
+	result, err := handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, result.Content[0].Text, "spawned")
 }
 
 // TestCoordinatorServer_AssignTaskValidation tests input validation for assign_task.
 func TestCoordinatorServer_AssignTaskValidation(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["assign_task"]
 
 	tests := []struct {
@@ -148,13 +196,18 @@ func TestCoordinatorServer_AssignTaskValidation(t *testing.T) {
 }
 
 // TestCoordinatorServer_ReplaceWorkerValidation tests input validation for replace_worker.
+// Note: With v2 routing, validation happens in v2 adapter.
 func TestCoordinatorServer_ReplaceWorkerValidation(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Inject v2 adapter for test
+	_, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
 	handler := cs.handlers["replace_worker"]
 
+	// Test only input validation errors (missing/empty fields)
+	// Business logic errors (worker not found) are handled in v2 handler tests
 	tests := []struct {
 		name    string
 		args    string
@@ -170,11 +223,6 @@ func TestCoordinatorServer_ReplaceWorkerValidation(t *testing.T) {
 			args:    `{"worker_id": ""}`,
 			wantErr: true,
 		},
-		{
-			name:    "worker not found",
-			args:    `{"worker_id": "nonexistent"}`,
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {
@@ -186,13 +234,18 @@ func TestCoordinatorServer_ReplaceWorkerValidation(t *testing.T) {
 }
 
 // TestCoordinatorServer_SendToWorkerValidation tests input validation for send_to_worker.
+// Note: With v2 routing, validation happens in v2 adapter.
 func TestCoordinatorServer_SendToWorkerValidation(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Inject v2 adapter for test
+	_, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
 	handler := cs.handlers["send_to_worker"]
 
+	// Test only input validation errors (missing/empty fields)
+	// Business logic errors (worker not found) are handled in v2 handler tests
 	tests := []struct {
 		name    string
 		args    string
@@ -208,11 +261,6 @@ func TestCoordinatorServer_SendToWorkerValidation(t *testing.T) {
 			args:    `{"worker_id": "worker-1"}`,
 			wantErr: true,
 		},
-		{
-			name:    "worker not found",
-			args:    `{"worker_id": "nonexistent", "message": "hello"}`,
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {
@@ -224,14 +272,19 @@ func TestCoordinatorServer_SendToWorkerValidation(t *testing.T) {
 }
 
 // TestCoordinatorServer_PostMessageValidation tests input validation for post_message.
+// Note: With v2 routing, validation happens in v2 adapter.
 func TestCoordinatorServer_PostMessageValidation(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
 	// No message issue available
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	// Inject v2 adapter for test
+	_, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
 	handler := cs.handlers["post_message"]
 
+	// Test only input validation errors (missing/empty fields)
+	// Business logic errors (message issue not available) are handled in v2 handler tests
 	tests := []struct {
 		name    string
 		args    string
@@ -247,11 +300,6 @@ func TestCoordinatorServer_PostMessageValidation(t *testing.T) {
 			args:    `{"to": "ALL"}`,
 			wantErr: true,
 		},
-		{
-			name:    "message issue not available",
-			args:    `{"to": "ALL", "content": "hello"}`,
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {
@@ -264,10 +312,7 @@ func TestCoordinatorServer_PostMessageValidation(t *testing.T) {
 
 // TestCoordinatorServer_GetTaskStatusValidation tests input validation for get_task_status.
 func TestCoordinatorServer_GetTaskStatusValidation(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["get_task_status"]
 
 	tests := []struct {
@@ -297,10 +342,7 @@ func TestCoordinatorServer_GetTaskStatusValidation(t *testing.T) {
 
 // TestCoordinatorServer_MarkTaskCompleteValidation tests input validation for mark_task_complete.
 func TestCoordinatorServer_MarkTaskCompleteValidation(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["mark_task_complete"]
 
 	tests := []struct {
@@ -330,10 +372,7 @@ func TestCoordinatorServer_MarkTaskCompleteValidation(t *testing.T) {
 
 // TestCoordinatorServer_MarkTaskFailedValidation tests input validation for mark_task_failed.
 func TestCoordinatorServer_MarkTaskFailedValidation(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["mark_task_failed"]
 
 	tests := []struct {
@@ -373,42 +412,23 @@ func TestCoordinatorServer_MarkTaskFailedValidation(t *testing.T) {
 
 // TestCoordinatorServer_ReadMessageLogNoIssue tests read_message_log when no issue is available.
 func TestCoordinatorServer_ReadMessageLogNoIssue(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["read_message_log"]
 
 	_, err := handler(context.Background(), json.RawMessage(`{}`))
 	require.Error(t, err, "Expected error when message issue is nil")
 }
 
-// TestCoordinatorServer_GetPool tests the pool accessor.
-func TestCoordinatorServer_GetPool(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+// TestCoordinatorServer_GetMessageRepository tests the message repository accessor.
+func TestCoordinatorServer_GetMessageRepository(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	require.Equal(t, workerPool, cs.pool, "GetPool() did not return the expected pool")
-}
-
-// TestCoordinatorServer_GetMessageIssue tests the message issue accessor.
-func TestCoordinatorServer_GetMessageIssue(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	require.Nil(t, cs.msgIssue, "GetMessageIssue() should return nil when no issue is set")
+	require.Nil(t, cs.msgRepo, "msgRepo should return nil when no repository is set")
 }
 
 // TestCoordinatorServer_Instructions tests that instructions are set correctly.
 func TestCoordinatorServer_Instructions(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	require.NotEmpty(t, cs.instructions, "Instructions should be set")
 	require.Equal(t, "perles-orchestrator", cs.info.Name, "Server name mismatch")
@@ -457,39 +477,45 @@ func TestIsValidTaskID(t *testing.T) {
 	}
 }
 
-// TestCoordinatorServer_AssignTaskInvalidTaskID tests assign_task rejects invalid task IDs.
-func TestCoordinatorServer_AssignTaskInvalidTaskID(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+// TestCoordinatorServer_AssignTaskRouting tests assign_task routes to v2 adapter.
+// Note: Task ID format validation is now in v2 handler, not coordinator.
+// Security validation tests should be in v2 handler tests.
+func TestCoordinatorServer_AssignTaskRouting(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Inject v2 adapter for test
+	v2handler, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
+	// Configure v2 handler to return success
+	v2handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Task assigned",
+	})
+
 	handler := cs.handlers["assign_task"]
 
-	tests := []struct {
-		name   string
-		taskID string
-	}{
-		{"shell injection", "perles-abc; rm -rf /"},
-		{"path traversal", "../etc/passwd"},
-		{"flag injection", "--help"},
-	}
+	// Verify handler routes to v2 adapter
+	args := `{"worker_id": "worker-1", "task_id": "perles-abc.1"}`
+	result, err := handler(context.Background(), json.RawMessage(args))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, result.Content[0].Text, "assigned")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			args := `{"worker_id": "worker-1", "task_id": "` + tt.taskID + `"}`
-			_, err := handler(context.Background(), json.RawMessage(args))
-			require.Error(t, err, "Expected error for invalid task_id %q", tt.taskID)
-		})
-	}
+	// Verify command was routed to v2
+	cmds := v2handler.GetCommands()
+	require.Len(t, cmds, 1, "Expected one command")
+	require.Equal(t, command.CmdAssignTask, cmds[0].Type())
 }
 
 // TestCoordinatorServer_ListWorkers_NoWorkers verifies list_workers returns appropriate message when no workers exist.
+// This test uses the v2 adapter since handleListWorkers delegates to it.
 func TestCoordinatorServer_ListWorkers_NoWorkers(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-	handler := cs.handlers["list_workers"]
+	handler := tcs.handlers["list_workers"]
 
 	result, err := handler(context.Background(), nil)
 	require.NoError(t, err, "Unexpected error")
@@ -498,30 +524,34 @@ func TestCoordinatorServer_ListWorkers_NoWorkers(t *testing.T) {
 }
 
 // TestCoordinatorServer_ListWorkers_WithWorkers verifies list_workers returns worker info JSON.
+// This test uses the v2 adapter since handleListWorkers delegates to it.
 func TestCoordinatorServer_ListWorkers_WithWorkers(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Add a worker to the v2 repository
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:        "worker-1",
+		Role:      repository.RoleWorker,
+		Status:    repository.StatusReady,
+		Phase:     ptr(events.ProcessPhaseIdle),
+		SessionID: "session-1",
+	})
 
-	// Note: We cannot easily spawn real workers in a unit test without full Claude integration.
-	// This test verifies the handler executes without error when the pool is empty.
-	// Integration tests should verify the tool works with actual workers.
-	handler := cs.handlers["list_workers"]
+	handler := tcs.handlers["list_workers"]
 
 	result, err := handler(context.Background(), nil)
 	require.NoError(t, err, "Unexpected error")
 
 	require.NotEmpty(t, result.Content[0].Text, "Expected non-empty result")
+	require.NotEqual(t, "No active workers.", result.Content[0].Text, "Expected worker list, not empty message")
 }
 
 // TestPrepareHandoff_PostsMessage verifies tool posts message with correct type and content.
 func TestPrepareHandoff_PostsMessage(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	msgIssue := repository.NewMemoryMessageRepository()
+	cs := NewCoordinatorServer(claude.NewClient(), msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["prepare_handoff"]
 
 	summary := "Worker 1 is processing task perles-abc. Task is 50% complete."
@@ -546,11 +576,8 @@ func TestPrepareHandoff_PostsMessage(t *testing.T) {
 
 // TestPrepareHandoff_EmptySummary verifies error returned when summary is empty.
 func TestPrepareHandoff_EmptySummary(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	msgIssue := repository.NewMemoryMessageRepository()
+	cs := NewCoordinatorServer(claude.NewClient(), msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["prepare_handoff"]
 
 	tests := []struct {
@@ -577,11 +604,8 @@ func TestPrepareHandoff_EmptySummary(t *testing.T) {
 
 // TestPrepareHandoff_NoMessageIssue verifies error when message issue is nil.
 func TestPrepareHandoff_NoMessageIssue(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
 	// No message issue
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["prepare_handoff"]
 
 	args := `{"summary": "Test summary"}`
@@ -589,491 +613,14 @@ func TestPrepareHandoff_NoMessageIssue(t *testing.T) {
 	require.Error(t, err, "Expected error when message issue is nil")
 }
 
-// TestWorkerRole_Values verifies WorkerRole constant values.
-func TestWorkerRole_Values(t *testing.T) {
-	tests := []struct {
-		role     WorkerRole
-		expected string
-	}{
-		{RoleImplementer, "implementer"},
-		{RoleReviewer, "reviewer"},
-	}
-
-	for _, tt := range tests {
-		t.Run(string(tt.role), func(t *testing.T) {
-			require.Equal(t, tt.expected, string(tt.role), "WorkerRole mismatch")
-		})
-	}
-}
-
-// TestTaskWorkflowStatus_Values verifies TaskWorkflowStatus constant values.
-func TestTaskWorkflowStatus_Values(t *testing.T) {
-	tests := []struct {
-		status   TaskWorkflowStatus
-		expected string
-	}{
-		{TaskImplementing, "implementing"},
-		{TaskInReview, "in_review"},
-		{TaskApproved, "approved"},
-		{TaskDenied, "denied"},
-		{TaskCommitting, "committing"},
-		{TaskCompleted, "completed"},
-	}
-
-	for _, tt := range tests {
-		t.Run(string(tt.status), func(t *testing.T) {
-			require.Equal(t, tt.expected, string(tt.status), "TaskWorkflowStatus mismatch")
-		})
-	}
-}
-
-// TestWorkerAssignment_Fields verifies WorkerAssignment struct can be created and fields are accessible.
-func TestWorkerAssignment_Fields(t *testing.T) {
-	now := time.Now()
-	wa := WorkerAssignment{
-		TaskID:        "perles-abc.1",
-		Role:          RoleImplementer,
-		Phase:         events.PhaseImplementing,
-		AssignedAt:    now,
-		ImplementerID: "",
-		ReviewerID:    "",
-	}
-
-	require.Equal(t, "perles-abc.1", wa.TaskID, "TaskID mismatch")
-	require.Equal(t, RoleImplementer, wa.Role, "Role mismatch")
-	require.Equal(t, events.PhaseImplementing, wa.Phase, "Phase mismatch")
-	require.True(t, wa.AssignedAt.Equal(now), "AssignedAt mismatch")
-}
-
-// TestWorkerAssignment_ReviewerFields verifies reviewer-specific fields.
-func TestWorkerAssignment_ReviewerFields(t *testing.T) {
-	now := time.Now()
-	wa := WorkerAssignment{
-		TaskID:        "perles-abc.1",
-		Role:          RoleReviewer,
-		Phase:         events.PhaseReviewing,
-		AssignedAt:    now,
-		ImplementerID: "worker-1",
-		ReviewerID:    "",
-	}
-
-	require.Equal(t, RoleReviewer, wa.Role, "Role mismatch")
-	require.Equal(t, "worker-1", wa.ImplementerID, "ImplementerID mismatch")
-}
-
-// TestTaskAssignment_Fields verifies TaskAssignment struct can be created and fields are accessible.
-func TestTaskAssignment_Fields(t *testing.T) {
-	startTime := time.Now()
-	reviewTime := startTime.Add(30 * time.Minute)
-	ta := TaskAssignment{
-		TaskID:          "perles-abc.1",
-		Implementer:     "worker-1",
-		Reviewer:        "worker-2",
-		Status:          TaskInReview,
-		StartedAt:       startTime,
-		ReviewStartedAt: reviewTime,
-	}
-
-	require.Equal(t, "perles-abc.1", ta.TaskID, "TaskID mismatch")
-	require.Equal(t, "worker-1", ta.Implementer, "Implementer mismatch")
-	require.Equal(t, "worker-2", ta.Reviewer, "Reviewer mismatch")
-	require.Equal(t, TaskInReview, ta.Status, "Status mismatch")
-	require.True(t, ta.StartedAt.Equal(startTime), "StartedAt mismatch")
-	require.True(t, ta.ReviewStartedAt.Equal(reviewTime), "ReviewStartedAt mismatch")
-}
-
-// TestCoordinatorServer_MapsInitialized verifies workerAssignments and taskAssignments maps are initialized.
-func TestCoordinatorServer_MapsInitialized(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	require.NotNil(t, cs.workerAssignments, "workerAssignments map is nil, should be initialized")
-	require.NotNil(t, cs.taskAssignments, "taskAssignments map is nil, should be initialized")
-
-	// Verify maps are empty but usable
-	require.Empty(t, cs.workerAssignments, "workerAssignments should be empty")
-	require.Empty(t, cs.taskAssignments, "taskAssignments should be empty")
-
-	// Verify we can write to and read from the maps
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{TaskID: "test-task"}
-	require.Equal(t, "test-task", cs.workerAssignments["worker-1"].TaskID, "Failed to write/read workerAssignments")
-
-	cs.taskAssignments["test-task"] = &TaskAssignment{Implementer: "worker-1"}
-	require.Equal(t, "worker-1", cs.taskAssignments["test-task"].Implementer, "Failed to write/read taskAssignments")
-}
-
-// TestValidateTaskAssignment_TaskAlreadyAssigned verifies error when task already has an implementer.
-func TestValidateTaskAssignment_TaskAlreadyAssigned(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Pre-assign task to a different worker
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Status:      TaskImplementing,
-	}
-
-	err := cs.validateTaskAssignment("worker-2", "perles-abc.1")
-	require.Error(t, err, "Expected error when task already assigned")
-	require.Equal(t, "task perles-abc.1 already assigned to worker-1", err.Error(), "Unexpected error message")
-}
-
-// TestValidateTaskAssignment_WorkerAlreadyHasTask verifies error when worker already has an assignment.
-func TestValidateTaskAssignment_WorkerAlreadyHasTask(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Pre-assign worker to a different task
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID: "perles-xyz.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseImplementing,
-	}
-
-	err := cs.validateTaskAssignment("worker-1", "perles-abc.1")
-	require.Error(t, err, "Expected error when worker already has task")
-	require.Equal(t, "worker worker-1 already assigned to task perles-xyz.1", err.Error(), "Unexpected error message")
-}
-
-// TestValidateTaskAssignment_WorkerNotFound verifies error when worker doesn't exist.
-func TestValidateTaskAssignment_WorkerNotFound(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	err := cs.validateTaskAssignment("nonexistent-worker", "perles-abc.1")
-	require.Error(t, err, "Expected error when worker not found")
-	require.Equal(t, "worker nonexistent-worker not found", err.Error(), "Unexpected error message")
-}
-
-// TestValidateTaskAssignment_WorkerNotReady verifies error when worker is not in Ready status.
-func TestValidateTaskAssignment_WorkerNotReady(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Create a worker that is Working (not Ready)
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
-
-	err := cs.validateTaskAssignment("worker-1", "perles-abc.1")
-	require.Error(t, err, "Expected error when worker not ready")
-	expectedMsg := "worker worker-1 is not ready (status: working)"
-	require.Equal(t, expectedMsg, err.Error(), "Error message mismatch")
-}
-
-// TestValidateTaskAssignment_Success verifies no error when all conditions are met.
-func TestValidateTaskAssignment_Success(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Create a worker that is Ready
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
-
-	err := cs.validateTaskAssignment("worker-1", "perles-abc.1")
-	require.NoError(t, err, "Expected no error")
-}
-
-// TestValidateReviewAssignment_SameAsImplementer verifies error when reviewer == implementer.
-func TestValidateReviewAssignment_SameAsImplementer(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	err := cs.validateReviewAssignment("worker-1", "perles-abc.1", "worker-1")
-	require.Error(t, err, "Expected error when reviewer is same as implementer")
-	require.Equal(t, "reviewer cannot be the same as implementer", err.Error(), "Unexpected error message")
-}
-
-// TestValidateReviewAssignment_TaskNotFound verifies error when task doesn't exist.
-func TestValidateReviewAssignment_TaskNotFound(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	err := cs.validateReviewAssignment("worker-2", "perles-abc.1", "worker-1")
-	require.Error(t, err, "Expected error when task not found")
-	require.Equal(t, "task perles-abc.1 not found or implementer mismatch", err.Error(), "Unexpected error message")
-}
-
-// TestValidateReviewAssignment_ImplementerMismatch verifies error when implementer doesn't match.
-func TestValidateReviewAssignment_ImplementerMismatch(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Task exists but with different implementer
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-3", // Different from passed implementer
-	}
-
-	err := cs.validateReviewAssignment("worker-2", "perles-abc.1", "worker-1")
-	require.Error(t, err, "Expected error when implementer mismatch")
-	require.Equal(t, "task perles-abc.1 not found or implementer mismatch", err.Error(), "Unexpected error message")
-}
-
-// TestValidateReviewAssignment_NotAwaitingReview verifies error when implementer not in AwaitingReview phase.
-func TestValidateReviewAssignment_NotAwaitingReview(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Setup task with correct implementer
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-	}
-
-	// Implementer is still in Implementing phase (not awaiting review)
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID: "perles-abc.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseImplementing, // Should be PhaseAwaitingReview
-	}
-
-	err := cs.validateReviewAssignment("worker-2", "perles-abc.1", "worker-1")
-	require.Error(t, err, "Expected error when implementer not awaiting review")
-	expectedMsg := "implementer worker-1 is not awaiting review (phase: implementing)"
-	require.Equal(t, expectedMsg, err.Error(), "Error message mismatch")
-}
-
-// TestValidateReviewAssignment_AlreadyHasReviewer verifies error when task already has a reviewer.
-func TestValidateReviewAssignment_AlreadyHasReviewer(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Setup task with implementer and existing reviewer
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Reviewer:    "worker-3", // Already has a reviewer
-	}
-
-	// Implementer is awaiting review
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID: "perles-abc.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseAwaitingReview,
-	}
-
-	err := cs.validateReviewAssignment("worker-2", "perles-abc.1", "worker-1")
-	require.Error(t, err, "Expected error when task already has reviewer")
-	require.Equal(t, "task perles-abc.1 already has reviewer worker-3", err.Error(), "Unexpected error message")
-}
-
-// TestValidateReviewAssignment_ReviewerNotReady verifies error when reviewer is not Ready.
-func TestValidateReviewAssignment_ReviewerNotReady(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Setup task and implementer correctly
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-	}
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID: "perles-abc.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseAwaitingReview,
-	}
-
-	// Reviewer doesn't exist in pool
-	err := cs.validateReviewAssignment("worker-2", "perles-abc.1", "worker-1")
-	require.Error(t, err, "Expected error when reviewer not found")
-	require.Equal(t, "reviewer worker-2 is not ready", err.Error(), "Unexpected error message")
-}
-
-// TestValidateReviewAssignment_Success verifies no error when all conditions are met.
-func TestValidateReviewAssignment_Success(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Setup task and implementer correctly
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-	}
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID: "perles-abc.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseAwaitingReview,
-	}
-
-	// Create ready reviewer in pool
-	_ = workerPool.AddTestWorker("worker-2", pool.WorkerReady)
-
-	err := cs.validateReviewAssignment("worker-2", "perles-abc.1", "worker-1")
-	require.NoError(t, err, "Expected no error")
-}
-
-// TestDetectOrphanedTasks_NoOrphans verifies empty result when no orphans.
-func TestDetectOrphanedTasks_NoOrphans(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Create active workers
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
-	_ = workerPool.AddTestWorker("worker-2", pool.WorkerWorking)
-
-	// Setup task with active workers
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Reviewer:    "worker-2",
-	}
-
-	orphans := cs.detectOrphanedTasks()
-	require.Empty(t, orphans, "Expected no orphans")
-}
-
-// TestDetectOrphanedTasks_RetiredImplementer verifies orphan detected when implementer is retired.
-func TestDetectOrphanedTasks_RetiredImplementer(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Create a retired worker
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerRetired)
-
-	// Setup task with retired implementer
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-	}
-
-	orphans := cs.detectOrphanedTasks()
-	require.Len(t, orphans, 1, "Expected 1 orphan")
-	require.Equal(t, "perles-abc.1", orphans[0], "Expected orphan perles-abc.1")
-}
-
-// TestDetectOrphanedTasks_MissingImplementer verifies orphan detected when implementer is missing from pool.
-func TestDetectOrphanedTasks_MissingImplementer(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Setup task with non-existent implementer
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "nonexistent-worker",
-	}
-
-	orphans := cs.detectOrphanedTasks()
-	require.Len(t, orphans, 1, "Expected 1 orphan")
-}
-
-// TestDetectOrphanedTasks_RetiredReviewer verifies orphan detected when reviewer is retired.
-func TestDetectOrphanedTasks_RetiredReviewer(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Create active implementer and retired reviewer
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
-	_ = workerPool.AddTestWorker("worker-2", pool.WorkerRetired)
-
-	// Setup task with retired reviewer
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Reviewer:    "worker-2",
-	}
-
-	orphans := cs.detectOrphanedTasks()
-	require.Len(t, orphans, 1, "Expected 1 orphan")
-}
-
-// TestCheckStuckWorkers_NoStuck verifies empty result when no stuck workers.
-func TestCheckStuckWorkers_NoStuck(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Worker assigned recently (within MaxTaskDuration)
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID:     "perles-abc.1",
-		AssignedAt: time.Now(), // Just assigned
-	}
-
-	stuck := cs.checkStuckWorkers()
-	require.Empty(t, stuck, "Expected no stuck workers")
-}
-
-// TestCheckStuckWorkers_ExceededDuration verifies stuck worker detected when exceeding MaxTaskDuration.
-func TestCheckStuckWorkers_ExceededDuration(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Worker assigned more than MaxTaskDuration ago
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID:     "perles-abc.1",
-		AssignedAt: time.Now().Add(-MaxTaskDuration - time.Minute), // Exceeded
-	}
-
-	stuck := cs.checkStuckWorkers()
-	require.Len(t, stuck, 1, "Expected 1 stuck worker")
-	require.Equal(t, "worker-1", stuck[0], "Expected stuck worker worker-1")
-}
-
-// TestCheckStuckWorkers_NoTask verifies workers without tasks are not considered stuck.
-func TestCheckStuckWorkers_NoTask(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Worker with empty TaskID (idle) shouldn't be considered stuck
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID:     "",                                             // No active task
-		AssignedAt: time.Now().Add(-MaxTaskDuration - time.Minute), // Old assignment
-	}
-
-	stuck := cs.checkStuckWorkers()
-	require.Empty(t, stuck, "Expected no stuck workers (idle worker)")
-}
-
-// TestMaxTaskDuration verifies the constant value.
-func TestMaxTaskDuration(t *testing.T) {
-	expected := 30 * time.Minute
-	require.Equal(t, expected, MaxTaskDuration, "MaxTaskDuration mismatch")
-}
-
 // TestQueryWorkerState_NoWorkers verifies query_worker_state returns empty when no workers exist.
+// This test uses the v2 adapter since handleQueryWorkerState delegates to it.
 func TestQueryWorkerState_NoWorkers(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-	handler := cs.handlers["query_worker_state"]
+	handler := tcs.handlers["query_worker_state"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
 	require.NoError(t, err, "Unexpected error")
@@ -1084,33 +631,26 @@ func TestQueryWorkerState_NoWorkers(t *testing.T) {
 	require.NoError(t, err, "Failed to parse response")
 
 	require.Empty(t, response.Workers, "Expected 0 workers")
-	require.Empty(t, response.TaskAssignments, "Expected 0 task assignments")
 	require.Empty(t, response.ReadyWorkers, "Expected 0 ready workers")
 }
 
-// TestQueryWorkerState_WithWorkerAndAssignment verifies query_worker_state returns worker with phase and role.
-func TestQueryWorkerState_WithWorkerAndAssignment(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+// TestQueryWorkerState_WithWorkerAndPhase verifies query_worker_state returns worker with phase.
+// This test uses the v2 adapter since handleQueryWorkerState delegates to it.
+func TestQueryWorkerState_WithWorkerAndPhase(t *testing.T) {
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Add a worker
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
-
-	// Add assignment
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
+	// Add a worker to the v2 repository
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+		Phase:  ptr(events.ProcessPhaseImplementing),
 		TaskID: "perles-abc.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseImplementing,
-	}
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Status:      TaskImplementing,
-	}
+	})
 
-	handler := cs.handlers["query_worker_state"]
+	handler := tcs.handlers["query_worker_state"]
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
 	require.NoError(t, err, "Unexpected error")
 
@@ -1124,27 +664,31 @@ func TestQueryWorkerState_WithWorkerAndAssignment(t *testing.T) {
 	worker := response.Workers[0]
 	require.Equal(t, "worker-1", worker.WorkerID, "WorkerID mismatch")
 	require.Equal(t, "implementing", worker.Phase, "Phase mismatch")
-	require.Equal(t, "implementer", worker.Role, "Role mismatch")
 	require.Equal(t, "perles-abc.1", worker.TaskID, "TaskID mismatch")
-
-	// Check task assignments
-	require.Len(t, response.TaskAssignments, 1, "Expected 1 task assignment")
-	ta := response.TaskAssignments["perles-abc.1"]
-	require.Equal(t, "worker-1", ta.Implementer, "TaskAssignment.Implementer mismatch")
 }
 
 // TestQueryWorkerState_FilterByWorkerID verifies query_worker_state filters by worker_id.
+// This test uses the v2 adapter since handleQueryWorkerState delegates to it.
 func TestQueryWorkerState_FilterByWorkerID(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Add multiple workers to the v2 repository
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+		Phase:  ptr(events.ProcessPhaseImplementing),
+	})
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:     "worker-2",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+		Phase:  ptr(events.ProcessPhaseIdle),
+	})
 
-	// Add multiple workers
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
-	_ = workerPool.AddTestWorker("worker-2", pool.WorkerReady)
-
-	handler := cs.handlers["query_worker_state"]
+	handler := tcs.handlers["query_worker_state"]
 	result, err := handler(context.Background(), json.RawMessage(`{"worker_id": "worker-1"}`))
 	require.NoError(t, err, "Unexpected error")
 
@@ -1160,28 +704,29 @@ func TestQueryWorkerState_FilterByWorkerID(t *testing.T) {
 }
 
 // TestQueryWorkerState_FilterByTaskID verifies query_worker_state filters by task_id.
+// This test uses the v2 adapter since handleQueryWorkerState delegates to it.
 func TestQueryWorkerState_FilterByTaskID(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Add workers with different tasks
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
-	_ = workerPool.AddTestWorker("worker-2", pool.WorkerWorking)
-
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
+	// Add workers with different tasks to the v2 repository
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+		Phase:  ptr(events.ProcessPhaseImplementing),
 		TaskID: "perles-abc.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseImplementing,
-	}
-	cs.workerAssignments["worker-2"] = &WorkerAssignment{
+	})
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:     "worker-2",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusWorking,
+		Phase:  ptr(events.ProcessPhaseImplementing),
 		TaskID: "perles-xyz.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseImplementing,
-	}
+	})
 
-	handler := cs.handlers["query_worker_state"]
+	handler := tcs.handlers["query_worker_state"]
 	result, err := handler(context.Background(), json.RawMessage(`{"task_id": "perles-abc.1"}`))
 	require.NoError(t, err, "Unexpected error")
 
@@ -1197,16 +742,21 @@ func TestQueryWorkerState_FilterByTaskID(t *testing.T) {
 }
 
 // TestQueryWorkerState_ReturnsReadyWorkers verifies ready_workers list is populated.
+// This test uses the v2 adapter since handleQueryWorkerState delegates to it.
 func TestQueryWorkerState_ReturnsReadyWorkers(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Add a ready worker to the v2 repository
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:     "worker-1",
+		Role:   repository.RoleWorker,
+		Status: repository.StatusReady,
+		Phase:  ptr(events.ProcessPhaseIdle),
+	})
 
-	// Add a ready worker
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
-
-	handler := cs.handlers["query_worker_state"]
+	handler := tcs.handlers["query_worker_state"]
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
 	require.NoError(t, err, "Unexpected error")
 
@@ -1221,63 +771,55 @@ func TestQueryWorkerState_ReturnsReadyWorkers(t *testing.T) {
 	}
 }
 
-// TestAssignTaskReview_SelfReviewRejected verifies assign_task_review rejects self-review.
-func TestAssignTaskReview_SelfReviewRejected(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+// TestAssignTaskReview_Routing verifies assign_task_review routes to v2 adapter.
+// Note: Self-review rejection is now a v2 handler responsibility, tested in v2 handler tests.
+func TestAssignTaskReview_Routing(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-	handler := cs.handlers["assign_task_review"]
+	// Inject v2 adapter for test
+	v2handler, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
 
-	args := `{"reviewer_id": "worker-1", "task_id": "perles-abc.1", "implementer_id": "worker-1", "summary": "test"}`
-	_, err := handler(context.Background(), json.RawMessage(args))
-	require.Error(t, err, "Expected error for self-review")
-	require.Contains(t, err.Error(), "reviewer cannot be the same as implementer", "Unexpected error message")
-}
-
-// TestAssignTaskReview_TaskNotAwaitingReview verifies assign_task_review rejects if task not awaiting review.
-func TestAssignTaskReview_TaskNotAwaitingReview(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Setup task and implementer in wrong phase
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Status:      TaskImplementing,
-	}
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID: "perles-abc.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseImplementing, // Not awaiting review
-	}
-	_ = workerPool.AddTestWorker("worker-2", pool.WorkerReady)
+	// Configure v2 handler to return success
+	v2handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Review assigned",
+	})
 
 	handler := cs.handlers["assign_task_review"]
-	args := `{"reviewer_id": "worker-2", "task_id": "perles-abc.1", "implementer_id": "worker-1", "summary": "test"}`
-	_, err := handler(context.Background(), json.RawMessage(args))
-	require.Error(t, err, "Expected error when task not awaiting review")
+
+	// Verify handler routes to v2 adapter
+	args := `{"reviewer_id": "worker-2", "task_id": "perles-abc.1", "implementer_id": "worker-1"}`
+	result, err := handler(context.Background(), json.RawMessage(args))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, result.Content[0].Text, "assigned")
+
+	// Verify command was routed to v2
+	cmds := v2handler.GetCommands()
+	require.Len(t, cmds, 1, "Expected one command")
+	require.Equal(t, command.CmdAssignReview, cmds[0].Type())
 }
 
 // TestAssignTaskReview_ValidationRequired verifies required field validation.
+// Note: Business logic validation (task not awaiting review, self-review, invalid task_id) is now in v2 handler tests.
 func TestAssignTaskReview_ValidationRequired(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Inject v2 adapter for test
+	_, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
 	handler := cs.handlers["assign_task_review"]
 
+	// Test only input validation errors (missing required fields)
 	tests := []struct {
 		name string
 		args string
 	}{
-		{"missing reviewer_id", `{"task_id": "perles-abc.1", "implementer_id": "worker-1", "summary": "test"}`},
-		{"missing task_id", `{"reviewer_id": "worker-2", "implementer_id": "worker-1", "summary": "test"}`},
-		{"missing implementer_id", `{"reviewer_id": "worker-2", "task_id": "perles-abc.1", "summary": "test"}`},
-		{"missing summary", `{"reviewer_id": "worker-2", "task_id": "perles-abc.1", "implementer_id": "worker-1"}`},
-		{"invalid task_id", `{"reviewer_id": "worker-2", "task_id": "invalid", "implementer_id": "worker-1", "summary": "test"}`},
+		{"missing reviewer_id", `{"task_id": "perles-abc.1", "implementer_id": "worker-1"}`},
+		{"missing task_id", `{"reviewer_id": "worker-2", "implementer_id": "worker-1"}`},
+		{"missing implementer_id", `{"reviewer_id": "worker-2", "task_id": "perles-abc.1"}`},
 	}
 
 	for _, tt := range tests {
@@ -1288,41 +830,18 @@ func TestAssignTaskReview_ValidationRequired(t *testing.T) {
 	}
 }
 
-// TestAssignReviewFeedback_TaskNotDenied verifies assign_review_feedback rejects if task not denied.
-func TestAssignReviewFeedback_TaskNotDenied(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Setup task in approved state (not denied)
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Status:      TaskApproved, // Not denied
-	}
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID: "perles-abc.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseAwaitingReview,
-	}
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
-
-	handler := cs.handlers["assign_review_feedback"]
-	args := `{"implementer_id": "worker-1", "task_id": "perles-abc.1", "feedback": "fix bugs"}`
-	_, err := handler(context.Background(), json.RawMessage(args))
-	require.Error(t, err, "Expected error when task not denied")
-	require.Contains(t, err.Error(), "not in denied status", "Unexpected error message")
-}
-
 // TestAssignReviewFeedback_ValidationRequired verifies required field validation.
+// Note: Business logic tests (task not denied, etc.) are now in v2 handler tests.
 func TestAssignReviewFeedback_ValidationRequired(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Inject v2 adapter for test
+	_, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
 	handler := cs.handlers["assign_review_feedback"]
 
+	// Test only input validation errors (missing required fields)
 	tests := []struct {
 		name string
 		args string
@@ -1330,8 +849,6 @@ func TestAssignReviewFeedback_ValidationRequired(t *testing.T) {
 		{"missing implementer_id", `{"task_id": "perles-abc.1", "feedback": "fix"}`},
 		{"missing task_id", `{"implementer_id": "worker-1", "feedback": "fix"}`},
 		{"missing feedback", `{"implementer_id": "worker-1", "task_id": "perles-abc.1"}`},
-		{"empty feedback", `{"implementer_id": "worker-1", "task_id": "perles-abc.1", "feedback": ""}`},
-		{"invalid task_id", `{"implementer_id": "worker-1", "task_id": "invalid", "feedback": "fix"}`},
 	}
 
 	for _, tt := range tests {
@@ -1342,35 +859,18 @@ func TestAssignReviewFeedback_ValidationRequired(t *testing.T) {
 	}
 }
 
-// TestApproveCommit_TaskNotApproved verifies approve_commit rejects if task not approved.
-func TestApproveCommit_TaskNotApproved(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Setup task in denied state (not approved)
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Status:      TaskDenied, // Not approved
-	}
-
-	handler := cs.handlers["approve_commit"]
-	args := `{"implementer_id": "worker-1", "task_id": "perles-abc.1"}`
-	_, err := handler(context.Background(), json.RawMessage(args))
-	require.Error(t, err, "Expected error when task not approved")
-	require.Contains(t, err.Error(), "not in approved status", "Unexpected error message")
-}
-
 // TestApproveCommit_ValidationRequired verifies required field validation.
+// Note: Business logic tests (task not approved, implementer mismatch) are now in v2 handler tests.
 func TestApproveCommit_ValidationRequired(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Inject v2 adapter for test
+	_, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
 	handler := cs.handlers["approve_commit"]
 
+	// Test only input validation errors (missing/empty required fields)
 	tests := []struct {
 		name string
 		args string
@@ -1379,7 +879,6 @@ func TestApproveCommit_ValidationRequired(t *testing.T) {
 		{"missing task_id", `{"implementer_id": "worker-1"}`},
 		{"empty implementer_id", `{"implementer_id": "", "task_id": "perles-abc.1"}`},
 		{"empty task_id", `{"implementer_id": "worker-1", "task_id": ""}`},
-		{"invalid task_id", `{"implementer_id": "worker-1", "task_id": "invalid"}`},
 	}
 
 	for _, tt := range tests {
@@ -1388,27 +887,6 @@ func TestApproveCommit_ValidationRequired(t *testing.T) {
 			require.Error(t, err, "Expected error for %s", tt.name)
 		})
 	}
-}
-
-// TestApproveCommit_ImplementerMismatch verifies approve_commit rejects wrong implementer.
-func TestApproveCommit_ImplementerMismatch(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Setup task with different implementer
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1", // Actual implementer
-		Status:      TaskApproved,
-	}
-
-	handler := cs.handlers["approve_commit"]
-	args := `{"implementer_id": "worker-2", "task_id": "perles-abc.1"}` // Wrong implementer
-	_, err := handler(context.Background(), json.RawMessage(args))
-	require.Error(t, err, "Expected error for wrong implementer")
-	require.Contains(t, err.Error(), "not the implementer", "Unexpected error message")
 }
 
 // Helper function
@@ -1427,85 +905,27 @@ func containsInternal(s, substr string) bool {
 
 // ============================================================================
 // Phase 5 Tests: Updated assign_task and list_workers with state tracking
+// Note: Business logic tests for assign_task (validates assignment, rejects duplicate,
+// rejects worker busy) are now in v2 handler tests since validation moved to v2.
 // ============================================================================
 
-// TestAssignTask_ValidatesAssignment verifies assign_task calls validateTaskAssignment.
-func TestAssignTask_ValidatesAssignment(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+// TestListWorkers_IncludesPhase verifies list_workers returns phase from v2 repository.
+// This test uses the v2 adapter since handleListWorkers delegates to it.
+func TestListWorkers_IncludesPhase(t *testing.T) {
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-	handler := cs.handlers["assign_task"]
+	// Add a worker with phase to the v2 repository
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:        "worker-1",
+		Role:      repository.RoleWorker,
+		Status:    repository.StatusWorking,
+		Phase:     ptr(events.ProcessPhaseImplementing),
+		SessionID: "session-1",
+	})
 
-	// No worker exists - should fail validation
-	args := `{"worker_id": "worker-1", "task_id": "perles-abc.1"}`
-	_, err := handler(context.Background(), json.RawMessage(args))
-	require.Error(t, err, "Expected error when worker not found (validation)")
-	require.Contains(t, err.Error(), "validation failed", "Expected validation error")
-}
-
-// TestAssignTask_RejectsWhenTaskAlreadyAssigned verifies assign_task rejects duplicate task assignment.
-func TestAssignTask_RejectsWhenTaskAlreadyAssigned(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Create a ready worker
-	_ = workerPool.AddTestWorker("worker-2", pool.WorkerReady)
-
-	// Pre-assign the task to another worker
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Status:      TaskImplementing,
-	}
-
-	handler := cs.handlers["assign_task"]
-	args := `{"worker_id": "worker-2", "task_id": "perles-abc.1"}`
-	_, err := handler(context.Background(), json.RawMessage(args))
-	require.Error(t, err, "Expected error when task already assigned")
-	require.Contains(t, err.Error(), "already assigned", "Expected 'already assigned' error")
-}
-
-// TestAssignTask_RejectsWhenWorkerAlreadyHasTask verifies assign_task rejects if worker busy.
-func TestAssignTask_RejectsWhenWorkerAlreadyHasTask(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Create a worker that has an assignment
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID: "perles-xyz.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseImplementing,
-	}
-
-	handler := cs.handlers["assign_task"]
-	args := `{"worker_id": "worker-1", "task_id": "perles-abc.1"}`
-	_, err := handler(context.Background(), json.RawMessage(args))
-	require.Error(t, err, "Expected error when worker already has task")
-	require.Contains(t, err.Error(), "already assigned", "Expected 'already assigned' error")
-}
-
-// TestListWorkers_IncludesPhaseAndRole verifies list_workers returns phase and role.
-func TestListWorkers_IncludesPhaseAndRole(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
-
-	// Add a worker with an assignment
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID: "perles-abc.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseImplementing,
-	}
-
-	handler := cs.handlers["list_workers"]
+	handler := tcs.handlers["list_workers"]
 	result, err := handler(context.Background(), nil)
 	require.NoError(t, err, "Unexpected error")
 
@@ -1513,7 +933,6 @@ func TestListWorkers_IncludesPhaseAndRole(t *testing.T) {
 	type workerInfo struct {
 		WorkerID string `json:"worker_id"`
 		Phase    string `json:"phase"`
-		Role     string `json:"role,omitempty"`
 	}
 	var infos []workerInfo
 	err = json.Unmarshal([]byte(result.Content[0].Text), &infos)
@@ -1523,20 +942,25 @@ func TestListWorkers_IncludesPhaseAndRole(t *testing.T) {
 
 	info := infos[0]
 	require.Equal(t, "implementing", info.Phase, "Phase mismatch")
-	require.Equal(t, "implementer", info.Role, "Role mismatch")
 }
 
-// TestListWorkers_ShowsIdlePhaseForNoAssignment verifies workers without assignments show idle phase.
-func TestListWorkers_ShowsIdlePhaseForNoAssignment(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+// TestListWorkers_ShowsIdlePhaseForNewWorker verifies new workers show idle phase.
+// This test uses the v2 adapter since handleListWorkers delegates to it.
+func TestListWorkers_ShowsIdlePhaseForNewWorker(t *testing.T) {
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Add a worker with idle phase to the v2 repository
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:        "worker-1",
+		Role:      repository.RoleWorker,
+		Status:    repository.StatusReady,
+		Phase:     ptr(events.ProcessPhaseIdle),
+		SessionID: "session-1",
+	})
 
-	// Add a worker without any assignment
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
-
-	handler := cs.handlers["list_workers"]
+	handler := tcs.handlers["list_workers"]
 	result, err := handler(context.Background(), nil)
 	require.NoError(t, err, "Unexpected error")
 
@@ -1544,7 +968,6 @@ func TestListWorkers_ShowsIdlePhaseForNoAssignment(t *testing.T) {
 	type workerInfo struct {
 		WorkerID string `json:"worker_id"`
 		Phase    string `json:"phase"`
-		Role     string `json:"role,omitempty"`
 	}
 	var infos []workerInfo
 	err = json.Unmarshal([]byte(result.Content[0].Text), &infos)
@@ -1554,26 +977,25 @@ func TestListWorkers_ShowsIdlePhaseForNoAssignment(t *testing.T) {
 
 	info := infos[0]
 	require.Equal(t, "idle", info.Phase, "Phase mismatch")
-	require.Empty(t, info.Role, "Role should be empty for idle worker")
 }
 
-// TestListWorkers_ShowsReviewerRole verifies reviewer workers show correct role.
-func TestListWorkers_ShowsReviewerRole(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+// TestListWorkers_ShowsReviewingPhase verifies reviewing phase is shown correctly.
+// This test uses the v2 adapter since handleListWorkers delegates to it.
+func TestListWorkers_ShowsReviewingPhase(t *testing.T) {
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Add a worker with reviewing phase to the v2 repository
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:        "worker-2",
+		Role:      repository.RoleWorker,
+		Status:    repository.StatusWorking,
+		Phase:     ptr(events.ProcessPhaseReviewing),
+		SessionID: "session-2",
+	})
 
-	// Add a worker as reviewer
-	_ = workerPool.AddTestWorker("worker-2", pool.WorkerWorking)
-	cs.workerAssignments["worker-2"] = &WorkerAssignment{
-		TaskID:        "perles-abc.1",
-		Role:          RoleReviewer,
-		Phase:         events.PhaseReviewing,
-		ImplementerID: "worker-1",
-	}
-
-	handler := cs.handlers["list_workers"]
+	handler := tcs.handlers["list_workers"]
 	result, err := handler(context.Background(), nil)
 	require.NoError(t, err, "Unexpected error")
 
@@ -1581,7 +1003,6 @@ func TestListWorkers_ShowsReviewerRole(t *testing.T) {
 	type workerInfo struct {
 		WorkerID string `json:"worker_id"`
 		Phase    string `json:"phase"`
-		Role     string `json:"role,omitempty"`
 	}
 	var infos []workerInfo
 	err = json.Unmarshal([]byte(result.Content[0].Text), &infos)
@@ -1591,55 +1012,33 @@ func TestListWorkers_ShowsReviewerRole(t *testing.T) {
 
 	info := infos[0]
 	require.Equal(t, "reviewing", info.Phase, "Phase mismatch")
-	require.Equal(t, "reviewer", info.Role, "Role mismatch")
 }
 
-// TestReplaceWorker_CleansUpWorkerAssignments verifies replace_worker removes assignment.
-func TestReplaceWorker_CleansUpWorkerAssignments(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+// TestReplaceWorker_Routing verifies replace_worker routes to v2 adapter.
+// Note: Business logic tests (cleans up assignments) are now in v2 handler tests.
+func TestReplaceWorker_Routing(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Inject v2 adapter for test
+	v2handler, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
 
-	// Add a worker with an assignment
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID: "perles-abc.1",
-		Role:   RoleImplementer,
-		Phase:  events.PhaseImplementing,
-	}
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Status:      TaskImplementing,
-	}
-
-	// Verify assignment exists before replace
-	_, ok := cs.workerAssignments["worker-1"]
-	require.True(t, ok, "Worker assignment should exist before replace")
+	// Configure v2 handler to return success
+	v2handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Worker replaced successfully",
+	})
 
 	handler := cs.handlers["replace_worker"]
-	_, err := handler(context.Background(), json.RawMessage(`{"worker_id": "worker-1"}`))
-	// Note: This will fail to spawn replacement worker (no Claude) but should still cleanup
-	// We're testing the cleanup logic, which happens before the spawn attempt
+	result, err := handler(context.Background(), json.RawMessage(`{"worker_id": "worker-1"}`))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, result.Content[0].Text, "replaced")
 
-	// Even if spawn fails, the assignment should be cleaned up
-	// In this case, the error is expected because we can't spawn without Claude
-	_ = err // We acknowledge the error but verify the cleanup happened
-
-	// Verify assignment was cleaned up
-	cs.assignmentsMu.RLock()
-	_, stillExists := cs.workerAssignments["worker-1"]
-	cs.assignmentsMu.RUnlock()
-
-	require.False(t, stillExists, "Worker assignment should be cleaned up after replace")
-
-	// Task assignment should still exist (for orphan detection)
-	cs.assignmentsMu.RLock()
-	_, taskExists := cs.taskAssignments["perles-abc.1"]
-	cs.assignmentsMu.RUnlock()
-
-	require.True(t, taskExists, "Task assignment should still exist after worker replaced (for orphan detection)")
+	// Verify command was routed to v2
+	cmds := v2handler.GetCommands()
+	require.Len(t, cmds, 1, "Expected one command")
+	require.Equal(t, command.CmdReplaceProcess, cmds[0].Type())
 }
 
 // TestTaskAssignmentPrompt_WithSummary verifies TaskAssignmentPrompt includes summary when provided.
@@ -1680,46 +1079,9 @@ func TestTaskAssignmentPrompt_AllSections(t *testing.T) {
 	}
 }
 
-// TestAssignTaskArgs_SummaryField verifies assignTaskArgs struct includes Summary field.
-func TestAssignTaskArgs_SummaryField(t *testing.T) {
-	args := assignTaskArgs{
-		WorkerID: "worker-1",
-		TaskID:   "perles-abc.1",
-		Summary:  "Key instructions for the worker",
-	}
-
-	require.Equal(t, "Key instructions for the worker", args.Summary, "Summary mismatch")
-}
-
-// TestAssignTaskArgs_SummaryOmitempty verifies summary is optional.
-func TestAssignTaskArgs_SummaryOmitempty(t *testing.T) {
-	// Test that JSON with no summary field unmarshals correctly
-	jsonStr := `{"worker_id": "worker-1", "task_id": "perles-abc.1"}`
-	var args assignTaskArgs
-	err := json.Unmarshal([]byte(jsonStr), &args)
-	require.NoError(t, err, "Failed to unmarshal")
-
-	require.Equal(t, "worker-1", args.WorkerID, "WorkerID mismatch")
-	require.Equal(t, "perles-abc.1", args.TaskID, "TaskID mismatch")
-	require.Empty(t, args.Summary, "Summary should be empty")
-}
-
-// TestAssignTaskArgs_SummaryInJSON verifies summary is included when provided in JSON.
-func TestAssignTaskArgs_SummaryInJSON(t *testing.T) {
-	jsonStr := `{"worker_id": "worker-1", "task_id": "perles-abc.1", "summary": "Focus on the FetchData method"}`
-	var args assignTaskArgs
-	err := json.Unmarshal([]byte(jsonStr), &args)
-	require.NoError(t, err, "Failed to unmarshal")
-
-	require.Equal(t, "Focus on the FetchData method", args.Summary, "Summary mismatch")
-}
-
 // TestCoordinatorServer_AssignTaskSchemaIncludesSummary verifies the tool schema includes summary parameter.
 func TestCoordinatorServer_AssignTaskSchemaIncludesSummary(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	tool, ok := cs.tools["assign_task"]
 	require.True(t, ok, "assign_task tool not registered")
@@ -1739,45 +1101,31 @@ func TestCoordinatorServer_AssignTaskSchemaIncludesSummary(t *testing.T) {
 	}
 }
 
-// TestIntegration_AssignListReplaceFlow tests the full flow maintains consistent state.
-func TestIntegration_AssignListReplaceFlow(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+// TestIntegration_ListAndQueryWorkerState verifies list_workers and query_worker_state return consistent data.
+// Both handlers now delegate to v2 adapter, so they both read from the same v2 repository.
+func TestIntegration_ListAndQueryWorkerState(t *testing.T) {
+	// Use NewTestCoordinatorServer which includes v2 adapter with repositories
+	tcs := NewTestCoordinatorServer(t)
+	defer tcs.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	// Create a worker in the v2 repository (used by both handlers)
+	_ = tcs.ProcessRepo.Save(&repository.Process{
+		ID:        "worker-1",
+		Role:      repository.RoleWorker,
+		Status:    repository.StatusWorking,
+		Phase:     ptr(events.ProcessPhaseImplementing),
+		TaskID:    "perles-abc.1",
+		SessionID: "session-1",
+	})
 
-	// Create a ready worker
-	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
-
-	// Pre-populate assignments to simulate a successful assign_task call
-	// (We can't actually run assign_task without bd/Claude)
-	cs.assignmentsMu.Lock()
-	cs.workerAssignments["worker-1"] = &WorkerAssignment{
-		TaskID:     "perles-abc.1",
-		Role:       RoleImplementer,
-		Phase:      events.PhaseImplementing,
-		AssignedAt: time.Now(),
-	}
-	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
-		TaskID:      "perles-abc.1",
-		Implementer: "worker-1",
-		Status:      TaskImplementing,
-		StartedAt:   time.Now(),
-	}
-	cs.assignmentsMu.Unlock()
-
-	// Change worker status to Working to reflect assignment
-	workerPool.GetWorker("worker-1").AssignTask("perles-abc.1")
-
-	// List workers - should show implementing phase
-	listHandler := cs.handlers["list_workers"]
+	// List workers - should show implementing phase (reads from v2 repo)
+	listHandler := tcs.handlers["list_workers"]
 	result, err := listHandler(context.Background(), nil)
 	require.NoError(t, err, "list_workers error")
 
 	type workerInfo struct {
 		WorkerID string `json:"worker_id"`
 		Phase    string `json:"phase"`
-		Role     string `json:"role,omitempty"`
 	}
 	var infos []workerInfo
 	err = json.Unmarshal([]byte(result.Content[0].Text), &infos)
@@ -1786,8 +1134,8 @@ func TestIntegration_AssignListReplaceFlow(t *testing.T) {
 	require.Len(t, infos, 1, "Expected 1 worker")
 	require.Equal(t, "implementing", infos[0].Phase, "Expected implementing phase")
 
-	// Query worker state - should show same info
-	queryHandler := cs.handlers["query_worker_state"]
+	// Query worker state - should show same info (also reads from v2 repo)
+	queryHandler := tcs.handlers["query_worker_state"]
 	result, err = queryHandler(context.Background(), json.RawMessage(`{}`))
 	require.NoError(t, err, "query_worker_state error")
 
@@ -1798,11 +1146,6 @@ func TestIntegration_AssignListReplaceFlow(t *testing.T) {
 	// Both list_workers and query_worker_state should report same phase
 	require.Len(t, stateResponse.Workers, 1, "Expected 1 worker in state response")
 	require.Equal(t, "implementing", stateResponse.Workers[0].Phase, "query_worker_state phase mismatch")
-
-	// Task assignments should be tracked
-	require.Len(t, stateResponse.TaskAssignments, 1, "Expected 1 task assignment")
-	ta := stateResponse.TaskAssignments["perles-abc.1"]
-	require.Equal(t, "worker-1", ta.Implementer, "TaskAssignment implementer mismatch")
 }
 
 // ============================================================================
@@ -1811,11 +1154,8 @@ func TestIntegration_AssignListReplaceFlow(t *testing.T) {
 
 // TestReadMessageLog_UnreadDefault_Basic tests that sequential read calls return only new messages.
 func TestReadMessageLog_UnreadDefault_Basic(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	msgIssue := repository.NewMemoryMessageRepository()
+	cs := newCoordinatorServerWithV2(t, msgIssue)
 	handler := cs.handlers["read_message_log"]
 
 	// Post 3 initial messages
@@ -1854,16 +1194,13 @@ func TestReadMessageLog_UnreadDefault_Basic(t *testing.T) {
 
 // TestReadMessageLog_UnreadDefault_FirstCall tests that first call with no prior read state returns all messages.
 func TestReadMessageLog_UnreadDefault_FirstCall(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	msgIssue := message.New()
+	msgIssue := repository.NewMemoryMessageRepository()
 
 	// Post messages before creating coordinator (simulates messages existing before coordinator joins)
 	_, _ = msgIssue.Append("WORKER.1", "COORDINATOR", "Hello", message.MessageInfo)
 	_, _ = msgIssue.Append("WORKER.2", "COORDINATOR", "World", message.MessageInfo)
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	cs := newCoordinatorServerWithV2(t, msgIssue)
 	handler := cs.handlers["read_message_log"]
 
 	// First call from coordinator should return all existing messages
@@ -1879,11 +1216,8 @@ func TestReadMessageLog_UnreadDefault_FirstCall(t *testing.T) {
 
 // TestReadMessageLog_UnreadDefault_Empty tests read_message_log on empty log.
 func TestReadMessageLog_UnreadDefault_Empty(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	msgIssue := repository.NewMemoryMessageRepository()
+	cs := newCoordinatorServerWithV2(t, msgIssue)
 	handler := cs.handlers["read_message_log"]
 
 	// Call on empty log
@@ -1900,11 +1234,8 @@ func TestReadMessageLog_UnreadDefault_Empty(t *testing.T) {
 
 // TestReadMessageLog_UnreadDefault_NoNewMessages tests that calling without new messages returns empty.
 func TestReadMessageLog_UnreadDefault_NoNewMessages(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	msgIssue := repository.NewMemoryMessageRepository()
+	cs := newCoordinatorServerWithV2(t, msgIssue)
 	handler := cs.handlers["read_message_log"]
 
 	// Post some messages
@@ -1932,11 +1263,8 @@ func TestReadMessageLog_UnreadDefault_NoNewMessages(t *testing.T) {
 
 // TestReadMessageLog_ReadAll tests that read_all=true returns all messages and doesn't affect readState.
 func TestReadMessageLog_ReadAll(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	msgIssue := repository.NewMemoryMessageRepository()
+	cs := newCoordinatorServerWithV2(t, msgIssue)
 	handler := cs.handlers["read_message_log"]
 
 	// Post 3 messages
@@ -2015,4 +1343,115 @@ func TestCommitApprovalPrompt_WithCommitMessage(t *testing.T) {
 
 	require.Contains(t, prompt, commitMsg, "Prompt should include the suggested commit message")
 	require.Contains(t, prompt, "Suggested commit message", "Prompt should have commit message section")
+}
+
+// ============================================================================
+// Stop Worker MCP Tool Tests
+// ============================================================================
+
+// TestCoordinatorMCP_StopWorkerTool_Registered verifies stop_worker tool is registered.
+func TestCoordinatorMCP_StopWorkerTool_Registered(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	// Verify tool is registered
+	tool, ok := cs.tools["stop_worker"]
+	require.True(t, ok, "stop_worker tool should be registered")
+	require.NotNil(t, tool, "stop_worker tool should not be nil")
+
+	// Verify tool schema
+	require.Equal(t, "stop_worker", tool.Name)
+	require.NotEmpty(t, tool.Description)
+	require.NotNil(t, tool.InputSchema)
+
+	// Verify required properties exist in schema
+	require.NotNil(t, tool.InputSchema.Properties["worker_id"], "worker_id property should exist")
+	require.NotNil(t, tool.InputSchema.Properties["force"], "force property should exist")
+	require.NotNil(t, tool.InputSchema.Properties["reason"], "reason property should exist")
+
+	// Verify worker_id is required
+	require.Contains(t, tool.InputSchema.Required, "worker_id", "worker_id should be required")
+
+	// Verify handler is registered
+	_, ok = cs.handlers["stop_worker"]
+	require.True(t, ok, "Handler for stop_worker should be registered")
+}
+
+// TestCoordinatorMCP_StopWorkerTool_CallsAdapter verifies stop_worker calls adapter.HandleStopProcess.
+func TestCoordinatorMCP_StopWorkerTool_CallsAdapter(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	// Inject v2 adapter for test
+	v2handler, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
+	// Configure v2 handler to return success for stop worker command
+	v2handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Worker stopped",
+	})
+
+	handler := cs.handlers["stop_worker"]
+
+	// Call with valid arguments
+	args := `{"worker_id": "worker-1", "force": true, "reason": "testing"}`
+	result, err := handler(context.Background(), json.RawMessage(args))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, result.Content[0].Text, "Worker stop command submitted")
+
+	// Wait for async command to be processed (HandleStopProcess uses Submit which is fire-and-forget)
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify command was routed to v2 (StopProcessCommand gets submitted to processor)
+	cmds := v2handler.GetCommands()
+	require.Len(t, cmds, 1, "Expected one command")
+	require.Equal(t, command.CmdStopProcess, cmds[0].Type())
+}
+
+// TestCoordinatorMCP_StopWorkerTool_RequiresWorkerID verifies validation error without worker_id.
+func TestCoordinatorMCP_StopWorkerTool_RequiresWorkerID(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	// Inject v2 adapter for test (required even for validation tests)
+	_, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
+	handler := cs.handlers["stop_worker"]
+
+	tests := []struct {
+		name    string
+		args    string
+		wantErr bool
+	}{
+		{
+			name:    "missing worker_id",
+			args:    `{}`,
+			wantErr: true,
+		},
+		{
+			name:    "empty worker_id",
+			args:    `{"worker_id": ""}`,
+			wantErr: true,
+		},
+		{
+			name:    "only force provided",
+			args:    `{"force": true}`,
+			wantErr: true,
+		},
+		{
+			name:    "only reason provided",
+			args:    `{"reason": "test"}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := handler(context.Background(), json.RawMessage(tt.args))
+			require.Equal(t, tt.wantErr, err != nil, "error = %v, wantErr = %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Contains(t, err.Error(), "worker_id is required")
+			}
+		})
+	}
 }

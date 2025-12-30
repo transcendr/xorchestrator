@@ -2,24 +2,162 @@ package orchestration
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/claude"
-	"github.com/zjrosen/perles/internal/orchestration/coordinator"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/metrics"
 	"github.com/zjrosen/perles/internal/orchestration/session"
+	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 )
+
+// mockCommandSubmitter implements process.CommandSubmitter for testing.
+type mockCommandSubmitter struct {
+	mu       sync.Mutex
+	commands []command.Command
+}
+
+func newMockCommandSubmitter() *mockCommandSubmitter {
+	return &mockCommandSubmitter{
+		commands: make([]command.Command, 0),
+	}
+}
+
+func (m *mockCommandSubmitter) Submit(cmd command.Command) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.commands = append(m.commands, cmd)
+}
+
+func (m *mockCommandSubmitter) Commands() []command.Command {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]command.Command{}, m.commands...)
+}
+
+func (m *mockCommandSubmitter) LastCommand() command.Command {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.commands) == 0 {
+		return nil
+	}
+	return m.commands[len(m.commands)-1]
+}
+
+// mockProcessRepository implements repository.ProcessRepository for testing.
+type mockProcessRepository struct {
+	mu          sync.RWMutex
+	processes   map[string]*repository.Process
+	coordinator *repository.Process
+}
+
+func newMockProcessRepository() *mockProcessRepository {
+	return &mockProcessRepository{
+		processes: make(map[string]*repository.Process),
+	}
+}
+
+func (r *mockProcessRepository) Get(processID string) (*repository.Process, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.processes[processID]
+	if !ok {
+		return nil, repository.ErrProcessNotFound
+	}
+	return p, nil
+}
+
+func (r *mockProcessRepository) Save(process *repository.Process) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.processes[process.ID] = process
+	if process.Role == repository.RoleCoordinator {
+		r.coordinator = process
+	}
+	return nil
+}
+
+func (r *mockProcessRepository) List() []*repository.Process {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*repository.Process, 0, len(r.processes))
+	for _, p := range r.processes {
+		result = append(result, p)
+	}
+	return result
+}
+
+func (r *mockProcessRepository) GetCoordinator() (*repository.Process, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.coordinator == nil {
+		return nil, repository.ErrProcessNotFound
+	}
+	return r.coordinator, nil
+}
+
+func (r *mockProcessRepository) Workers() []*repository.Process {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*repository.Process
+	for _, p := range r.processes {
+		if p.Role == repository.RoleWorker {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+func (r *mockProcessRepository) ActiveWorkers() []*repository.Process {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*repository.Process
+	for _, p := range r.processes {
+		if p.Role == repository.RoleWorker && !p.Status.IsTerminal() {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+func (r *mockProcessRepository) ReadyWorkers() []*repository.Process {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*repository.Process
+	for _, p := range r.processes {
+		if p.Role == repository.RoleWorker && p.Status == repository.StatusReady {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// newTestProcessRepo creates a process repository with a coordinator for testing.
+func newTestProcessRepo() *mockProcessRepository {
+	repo := newMockProcessRepository()
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	_ = repo.Save(coord)
+	return repo
+}
 
 func TestUpdate_WindowSize(t *testing.T) {
 	m := New(Config{})
@@ -48,8 +186,8 @@ func TestUpdate_TabCyclesMessageTargets(t *testing.T) {
 	require.Equal(t, "COORDINATOR", m.messageTarget)
 
 	// Add workers and test full cycling
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
 
 	// Tab -> BROADCAST
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -73,8 +211,8 @@ func TestUpdate_CtrlBracketsCycleWorkers(t *testing.T) {
 	m = m.SetSize(120, 40)
 
 	// Add workers
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
 
 	// Initial: worker-1 displayed
 	require.Equal(t, "worker-1", m.CurrentWorkerID())
@@ -476,38 +614,22 @@ func TestHandleReplaceCoordinator_SetsPendingRefresh(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Without coordinator, should show error and not set pendingRefresh
+	// Without cmdSubmitter, should show error and not set pendingRefresh
 	require.False(t, m.pendingRefresh)
 	m, _ = m.handleReplaceCoordinator()
-	require.NotNil(t, m.errorModal, "should set error when no coordinator")
-	require.False(t, m.pendingRefresh, "should not set pendingRefresh without coordinator")
+	require.NotNil(t, m.errorModal, "should set error when no cmdSubmitter")
+	require.False(t, m.pendingRefresh, "should not set pendingRefresh without cmdSubmitter")
 }
 
-func TestHandleReplaceCoordinator_WithCoordinator(t *testing.T) {
-	// Create a model with a coordinator
+func TestHandleReplaceCoordinator_WithCmdSubmitter(t *testing.T) {
+	// Create a model with a cmdSubmitter
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a coordinator - we need to inject one for testing
-	// Create a minimal coordinator using the coordinator package
-	msgIssue := message.New()
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	// Set up a mock command submitter for v2 command submission
+	mockSubmitter := newMockCommandSubmitter()
+	m.cmdSubmitter = mockSubmitter
 
-	coord, err := coordinator.New(coordinator.Config{
-		Client:       claude.NewClient(),
-		WorkDir:      "/tmp",
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	})
-	require.NoError(t, err)
-
-	// Inject the coordinator into the model
-	m.coord = coord
-
-	// Manually set coordinator to running status so SendUserMessage doesn't fail immediately
-	// Note: This uses internal knowledge of coordinator status, but is necessary for testing
-	// the TUI behavior. The actual message send will fail, but we verify pendingRefresh is set.
 	require.False(t, m.pendingRefresh, "pendingRefresh should start false")
 
 	// Call handleReplaceCoordinator
@@ -516,11 +638,19 @@ func TestHandleReplaceCoordinator_WithCoordinator(t *testing.T) {
 	// Verify pendingRefresh is set to true
 	require.True(t, m.pendingRefresh, "pendingRefresh should be set to true")
 
-	// Verify a command is returned (the async function to send message)
-	require.NotNil(t, cmd, "should return a command to send handoff request")
+	// Verify a timeout command is returned
+	require.NotNil(t, cmd, "should return a timeout command")
+
+	// Verify a SendToProcessCommand was submitted
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	sendCmd, ok := commands[0].(*command.SendToProcessCommand)
+	require.True(t, ok, "should be a SendToProcessCommand")
+	require.Equal(t, "coordinator", sendCmd.ProcessID, "should be for coordinator")
+	require.Contains(t, sendCmd.Content, "[CONTEXT REFRESH INITIATED]", "should contain handoff header")
 
 	// Verify no error modal was set
-	require.Nil(t, m.errorModal, "should not set error modal when coordinator exists")
+	require.Nil(t, m.errorModal, "should not set error modal when cmdSubmitter exists")
 }
 
 func TestHandleReplaceCoordinator_MessageContent(t *testing.T) {
@@ -582,20 +712,10 @@ func TestHandleMessageEvent_HandoffTriggersReplace(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a coordinator
-	msgIssue := message.New()
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	coord, err := coordinator.New(coordinator.Config{
-		Client:       claude.NewClient(),
-		WorkDir:      "/tmp",
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	})
-	require.NoError(t, err)
-
-	m.coord = coord
+	// Set up a process repository with coordinator and cmdSubmitter
+	msgIssue := repository.NewMemoryMessageRepository()
+	m.processRepo = newTestProcessRepo()
+	m.cmdSubmitter = newMockCommandSubmitter()
 	m.pendingRefresh = true
 
 	// Set up a message listener so handleMessageEvent doesn't return early
@@ -638,20 +758,10 @@ func TestHandleMessageEvent_IgnoresHandoffWhenNotPending(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a coordinator
-	msgIssue := message.New()
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	coord, err := coordinator.New(coordinator.Config{
-		Client:       claude.NewClient(),
-		WorkDir:      "/tmp",
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	})
-	require.NoError(t, err)
-
-	m.coord = coord
+	// Set up a process repository with coordinator and cmdSubmitter
+	msgIssue := repository.NewMemoryMessageRepository()
+	m.processRepo = newTestProcessRepo()
+	m.cmdSubmitter = newMockCommandSubmitter()
 	m.pendingRefresh = false // Not waiting for refresh
 
 	// Set up a message listener
@@ -690,20 +800,10 @@ func TestHandleMessageEvent_ClearsPendingRefresh(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a coordinator
-	msgIssue := message.New()
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	coord, err := coordinator.New(coordinator.Config{
-		Client:       claude.NewClient(),
-		WorkDir:      "/tmp",
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	})
-	require.NoError(t, err)
-
-	m.coord = coord
+	// Set up a process repository with coordinator and cmdSubmitter
+	msgIssue := repository.NewMemoryMessageRepository()
+	m.processRepo = newTestProcessRepo()
+	m.cmdSubmitter = newMockCommandSubmitter()
 	m.pendingRefresh = true
 
 	// Set up a message listener
@@ -741,20 +841,10 @@ func TestHandleMessageEvent_NonHandoffMessagePreservesPendingRefresh(t *testing.
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a coordinator
-	msgIssue := message.New()
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	coord, err := coordinator.New(coordinator.Config{
-		Client:       claude.NewClient(),
-		WorkDir:      "/tmp",
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	})
-	require.NoError(t, err)
-
-	m.coord = coord
+	// Set up process repository with coordinator and cmdSubmitter
+	msgIssue := repository.NewMemoryMessageRepository()
+	m.processRepo = newTestProcessRepo()
+	m.cmdSubmitter = newMockCommandSubmitter()
 	m.pendingRefresh = true
 
 	// Set up a message listener
@@ -789,25 +879,16 @@ func TestHandleMessageEvent_NonHandoffMessagePreservesPendingRefresh(t *testing.
 }
 
 func TestHandoffTimeout_TriggersReplace(t *testing.T) {
-	// This test verifies that RefreshTimeoutMsg triggers Replace() when pendingRefresh is true
+	// This test verifies that RefreshTimeoutMsg triggers Replace command when pendingRefresh is true
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a coordinator
-	msgIssue := message.New()
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	// Set up mock command submitter
+	mockSubmitter := newMockCommandSubmitter()
+	m.cmdSubmitter = mockSubmitter
 
-	coord, err := coordinator.New(coordinator.Config{
-		Client:       claude.NewClient(),
-		WorkDir:      "/tmp",
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	})
-	require.NoError(t, err)
-
-	m.coord = coord
-	m.messageLog = msgIssue
+	msgRepo := repository.NewMemoryMessageRepository()
+	m.messageRepo = msgRepo
 	m.pendingRefresh = true
 
 	// Verify pendingRefresh is true before timeout
@@ -819,8 +900,18 @@ func TestHandoffTimeout_TriggersReplace(t *testing.T) {
 	// Verify pendingRefresh is cleared
 	require.False(t, m.pendingRefresh, "pendingRefresh should be cleared after timeout")
 
-	// Verify a command is returned (the async function to post message and replace)
+	// Verify a command is returned (the async function to post message and submit replace command)
 	require.NotNil(t, cmd, "should return a command to post fallback and replace")
+
+	// Execute the command to trigger the v2 command submission
+	_ = cmd()
+
+	// Verify a ReplaceProcessCommand was submitted
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	replaceCmd, ok := commands[0].(*command.ReplaceProcessCommand)
+	require.True(t, ok, "should be a ReplaceProcessCommand")
+	require.Equal(t, "coordinator", replaceCmd.ProcessID, "should be for coordinator")
 }
 
 func TestHandoffTimeout_PostsFallbackMessage(t *testing.T) {
@@ -828,21 +919,12 @@ func TestHandoffTimeout_PostsFallbackMessage(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a coordinator with message log
-	msgIssue := message.New()
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
+	// Set up mock command submitter and message repository
+	mockSubmitter := newMockCommandSubmitter()
+	m.cmdSubmitter = mockSubmitter
 
-	coord, err := coordinator.New(coordinator.Config{
-		Client:       claude.NewClient(),
-		WorkDir:      "/tmp",
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	})
-	require.NoError(t, err)
-
-	m.coord = coord
-	m.messageLog = msgIssue
+	msgRepo := repository.NewMemoryMessageRepository()
+	m.messageRepo = msgRepo
 	m.pendingRefresh = true
 
 	// Send RefreshTimeoutMsg
@@ -851,12 +933,11 @@ func TestHandoffTimeout_PostsFallbackMessage(t *testing.T) {
 	// The command should be non-nil
 	require.NotNil(t, cmd, "should return a command")
 
-	// Execute the command (this will post the message and try to replace)
-	// The Replace() call may fail because coordinator isn't running, but message should be posted
+	// Execute the command (this will post the message and submit replace command)
 	_ = cmd()
 
-	// Check that the fallback message was posted to the message log
-	entries := msgIssue.Entries()
+	// Check that the fallback message was posted to the message repository
+	entries := msgRepo.Entries()
 	require.Len(t, entries, 1, "should have posted one fallback message")
 	require.Equal(t, message.MessageHandoff, entries[0].Type, "message should be handoff type")
 	require.Contains(t, entries[0].Content, "coordinator did not respond", "message should indicate timeout")
@@ -867,21 +948,11 @@ func TestHandoffTimeout_IgnoredWhenNotPending(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a coordinator
-	msgIssue := message.New()
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	coord, err := coordinator.New(coordinator.Config{
-		Client:       claude.NewClient(),
-		WorkDir:      "/tmp",
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	})
-	require.NoError(t, err)
-
-	m.coord = coord
-	m.messageLog = msgIssue
+	// Set up process repository with coordinator
+	msgRepo := repository.NewMemoryMessageRepository()
+	m.processRepo = newTestProcessRepo()
+	m.cmdSubmitter = newMockCommandSubmitter()
+	m.messageRepo = msgRepo
 	m.pendingRefresh = false // Handoff already received
 
 	// Send RefreshTimeoutMsg
@@ -894,7 +965,7 @@ func TestHandoffTimeout_IgnoredWhenNotPending(t *testing.T) {
 	require.Nil(t, cmd, "should return nil command when not pending")
 
 	// Verify no fallback message was posted
-	entries := msgIssue.Entries()
+	entries := msgRepo.Entries()
 	require.Len(t, entries, 0, "should not post any message when not pending")
 }
 
@@ -903,20 +974,10 @@ func TestHandleMessageEvent_WorkerReady_AppearsInMessagePane(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up message log and listener
-	msgIssue := message.New()
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	coord, err := coordinator.New(coordinator.Config{
-		Client:       claude.NewClient(),
-		WorkDir:      "/tmp",
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	})
-	require.NoError(t, err)
-
-	m.coord = coord
+	// Set up process repository with coordinator
+	msgIssue := repository.NewMemoryMessageRepository()
+	m.processRepo = newTestProcessRepo()
+	m.cmdSubmitter = newMockCommandSubmitter()
 
 	// Set up a message listener
 	ctx, cancel := context.WithCancel(context.Background())
@@ -953,20 +1014,10 @@ func TestHandleMessageEvent_RegularMessage_UsesDebounce(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up message log and listener
-	msgIssue := message.New()
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	coord, err := coordinator.New(coordinator.Config{
-		Client:       claude.NewClient(),
-		WorkDir:      "/tmp",
-		Pool:         workerPool,
-		MessageIssue: msgIssue,
-	})
-	require.NoError(t, err)
-
-	m.coord = coord
+	// Set up process repository with coordinator
+	msgIssue := repository.NewMemoryMessageRepository()
+	m.processRepo = newTestProcessRepo()
+	m.cmdSubmitter = newMockCommandSubmitter()
 
 	// Set up a message listener
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1294,10 +1345,10 @@ func TestWorkerServerCache_WiresReflectionWriter(t *testing.T) {
 	defer sess.Close(session.StatusCompleted)
 
 	// Create message issue
-	msgIssue := message.New()
+	msgIssue := repository.NewMemoryMessageRepository()
 
-	// Create cache with session as reflection writer
-	cache := newWorkerServerCache(msgIssue, nil, sess)
+	// Create cache with session as reflection writer (nil v2Adapter for this test)
+	cache := newWorkerServerCache(msgIssue, sess, nil)
 
 	// Create a worker server via getOrCreate
 	ws := cache.getOrCreate("worker-1")
@@ -1328,9 +1379,9 @@ func TestWorkerServerCache_WiresReflectionWriter(t *testing.T) {
 // TestWorkerServerCache_NilReflectionWriter verifies graceful handling when
 // ReflectionWriter is nil (e.g., when session is not available).
 func TestWorkerServerCache_NilReflectionWriter(t *testing.T) {
-	msgIssue := message.New()
+	msgIssue := repository.NewMemoryMessageRepository()
 
-	// Create cache without reflection writer
+	// Create cache without reflection writer (nil v2Adapter for this test)
 	cache := newWorkerServerCache(msgIssue, nil, nil)
 
 	// Create a worker server
@@ -1362,8 +1413,8 @@ func TestWorkerServerCache_MultipleWorkers(t *testing.T) {
 	require.NoError(t, err)
 	defer sess.Close(session.StatusCompleted)
 
-	msgIssue := message.New()
-	cache := newWorkerServerCache(msgIssue, nil, sess)
+	msgIssue := repository.NewMemoryMessageRepository()
+	cache := newWorkerServerCache(msgIssue, sess, nil)
 
 	// Create multiple workers
 	ws1 := cache.getOrCreate("worker-1")
@@ -1396,80 +1447,70 @@ func TestWorkerServerCache_MultipleWorkers(t *testing.T) {
 	require.NoError(t, err, "Worker 2 should write reflection")
 }
 
-// mockStateCallback implements mcp.WorkerStateCallback for testing.
-type mockStateCallback struct{}
-
-func (m *mockStateCallback) GetWorkerPhase(_ string) (events.WorkerPhase, error) {
-	return events.PhaseIdle, nil
-}
-
-func (m *mockStateCallback) OnImplementationComplete(_, _ string) error {
-	return nil
-}
-
-func (m *mockStateCallback) OnReviewVerdict(_, _, _ string) error {
-	return nil
-}
-
-// Ensure mockStateCallback implements the interface
-var _ mcp.WorkerStateCallback = (*mockStateCallback)(nil)
-
 // ========================================================================
 // WorkerQueueChanged Event Tests
 // ========================================================================
 
 func TestModel_HandleQueueChangedEvent(t *testing.T) {
-	// Test that WorkerQueueChanged events update workerPane queue count
+	// Test that WorkerQueueChanged events update workerPane queue count via v2EventBus
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
 	// Add a worker to the model
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
 
-	// Create a mock worker listener using a test broker
+	// Create a mock v2 listener using a test broker (worker events flow through v2EventBus)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
-	m.workerListener = pubsub.NewContinuousListener(ctx, workerBroker)
+	v2Broker := pubsub.NewBroker[any]()
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2Broker)
 
 	// Verify initial state - queue count should be 0
 	require.Equal(t, 0, m.workerPane.workerQueueCounts["worker-1"])
 
-	// Create and handle a WorkerQueueChanged event
-	event := pubsub.Event[events.WorkerEvent]{
-		Payload: events.WorkerEvent{
-			Type:       events.WorkerQueueChanged,
-			WorkerID:   "worker-1",
+	// Create and handle a WorkerQueueChanged event via v2EventBus
+	event := pubsub.Event[any]{
+		Payload: events.ProcessEvent{
+			Type:       events.ProcessQueueChanged,
+			ProcessID:  "worker-1",
 			QueueCount: 5,
 		},
 	}
 
-	m, _ = m.handleWorkerEvent(event)
+	m, _ = m.handleV2Event(event)
 
 	// Verify queue count was updated
 	require.Equal(t, 5, m.workerPane.workerQueueCounts["worker-1"])
 
 	// Test updating to a different count
-	event.Payload.QueueCount = 2
-	m, _ = m.handleWorkerEvent(event)
+	event.Payload = events.ProcessEvent{
+		Type:       events.ProcessQueueChanged,
+		ProcessID:  "worker-1",
+		QueueCount: 2,
+	}
+	m, _ = m.handleV2Event(event)
 	require.Equal(t, 2, m.workerPane.workerQueueCounts["worker-1"])
 
 	// Test setting count to 0
-	event.Payload.QueueCount = 0
-	m, _ = m.handleWorkerEvent(event)
+	event.Payload = events.ProcessEvent{
+		Type:       events.ProcessQueueChanged,
+		ProcessID:  "worker-1",
+		QueueCount: 0,
+	}
+	m, _ = m.handleV2Event(event)
 	require.Equal(t, 0, m.workerPane.workerQueueCounts["worker-1"])
 }
 
 func TestModel_HandleQueueChangedEvent_NilListener(t *testing.T) {
-	// Test that handleWorkerEvent with nil listener doesn't crash
+	// Test that handleV2Event with nil listener doesn't crash
 	m := New(Config{})
 	m = m.SetSize(120, 40)
-	m.workerListener = nil
+	m.v2Listener = nil
 
-	event := pubsub.Event[events.WorkerEvent]{
-		Payload: events.WorkerEvent{
-			Type:       events.WorkerQueueChanged,
-			WorkerID:   "worker-1",
+	event := pubsub.Event[any]{
+		Payload: events.ProcessEvent{
+			Type:       events.ProcessQueueChanged,
+			ProcessID:  "worker-1",
 			QueueCount: 5,
 		},
 	}
@@ -1477,7 +1518,1390 @@ func TestModel_HandleQueueChangedEvent_NilListener(t *testing.T) {
 	// Should not panic and should return nil command
 	var cmd tea.Cmd
 	require.NotPanics(t, func() {
-		m, cmd = m.handleWorkerEvent(event)
+		m, cmd = m.handleV2Event(event)
 	})
 	require.Nil(t, cmd)
+}
+
+// ===========================================================================
+// V2 Adapter Injection Tests
+// ===========================================================================
+
+// TestWorkerServerCache_WiresV2Adapter verifies that the workerServerCache
+// correctly wires the V2Adapter to all WorkerServer instances.
+func TestWorkerServerCache_WiresV2Adapter(t *testing.T) {
+	msgIssue := repository.NewMemoryMessageRepository()
+
+	// Create a real V2Adapter with minimal processor
+	cmdProcessor := processor.NewCommandProcessor()
+	v2Adapter := adapter.NewV2Adapter(cmdProcessor)
+
+	// Create cache with v2Adapter
+	cache := newWorkerServerCache(msgIssue, nil, v2Adapter)
+
+	// Verify v2Adapter is stored in cache
+	require.NotNil(t, cache.v2Adapter, "v2Adapter should be stored in cache")
+	require.Equal(t, v2Adapter, cache.v2Adapter, "cache should hold the same adapter instance")
+
+	// Create a worker server via getOrCreate
+	ws := cache.getOrCreate("worker-1")
+	require.NotNil(t, ws, "WorkerServer should be created")
+
+	// Verify the adapter was injected by checking that signal_ready handler exists
+	// (the handler would be registered if the adapter is set)
+	_, ok := ws.GetHandler("signal_ready")
+	require.True(t, ok, "signal_ready handler should be registered")
+}
+
+// TestWorkerServerCache_MultipleWorkers_AllGetV2Adapter verifies that multiple
+// workers all receive the same V2Adapter instance.
+func TestWorkerServerCache_MultipleWorkers_AllGetV2Adapter(t *testing.T) {
+	msgIssue := repository.NewMemoryMessageRepository()
+
+	// Create a V2Adapter
+	cmdProcessor := processor.NewCommandProcessor()
+	v2Adapter := adapter.NewV2Adapter(cmdProcessor)
+
+	cache := newWorkerServerCache(msgIssue, nil, v2Adapter)
+
+	// Create multiple worker servers
+	ws1 := cache.getOrCreate("worker-1")
+	ws2 := cache.getOrCreate("worker-2")
+	ws3 := cache.getOrCreate("worker-3")
+
+	require.NotNil(t, ws1)
+	require.NotNil(t, ws2)
+	require.NotNil(t, ws3)
+
+	// All should have their handlers registered (implying v2Adapter was set)
+	for _, ws := range []*mcp.WorkerServer{ws1, ws2, ws3} {
+		_, ok := ws.GetHandler("signal_ready")
+		require.True(t, ok, "All workers should have signal_ready handler")
+	}
+}
+
+// TestWorkerServerCache_NilV2Adapter verifies graceful handling when
+// V2Adapter is nil (backward compatibility).
+func TestWorkerServerCache_NilV2Adapter(t *testing.T) {
+	msgIssue := repository.NewMemoryMessageRepository()
+
+	// Create cache without v2Adapter (backward compatibility)
+	cache := newWorkerServerCache(msgIssue, nil, nil)
+
+	require.Nil(t, cache.v2Adapter, "v2Adapter should be nil")
+
+	// Create a worker server
+	ws := cache.getOrCreate("worker-1")
+	require.NotNil(t, ws, "WorkerServer should still be created")
+
+	// The server should still work, just using v1 handlers
+	_, ok := ws.GetHandler("signal_ready")
+	require.True(t, ok, "signal_ready handler should be registered")
+}
+
+// ===========================================================================
+// V2 Event Handler Tests
+// ===========================================================================
+
+// TestHandleV2Event_WorkerStatusChange verifies WorkerEvent with WorkerStatusChange
+// updates worker state correctly via handleV2Event().
+func TestHandleV2Event_WorkerStatusChange(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Add a worker to the model (starts as working)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	require.Equal(t, events.ProcessStatusWorking, m.workerPane.workerStatus["worker-1"])
+
+	// Create a v2 listener using a test broker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2Broker := pubsub.NewBroker[any]()
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2Broker)
+
+	// Create a WorkerStatusChange event (changing to ready)
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessStatusChange,
+			ProcessID: "worker-1",
+			Status:    events.ProcessStatusReady,
+		},
+	}
+
+	// Handle the event
+	m, cmd := m.handleV2Event(event)
+
+	// Verify worker status was updated
+	require.Equal(t, events.ProcessStatusReady, m.workerPane.workerStatus["worker-1"],
+		"worker status should be updated to ready")
+
+	// Verify Listen() command is returned to continue receiving events
+	require.NotNil(t, cmd, "should return Listen() command to continue receiving events")
+}
+
+// TestHandleV2Event_WorkerSpawned verifies WorkerEvent with WorkerSpawned
+// updates worker state correctly via handleV2Event().
+func TestHandleV2Event_WorkerSpawned(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Create a v2 listener using a test broker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2Broker := pubsub.NewBroker[any]()
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2Broker)
+
+	// Verify worker doesn't exist yet
+	_, exists := m.workerPane.workerStatus["worker-new"]
+	require.False(t, exists, "worker should not exist initially")
+
+	// Create a WorkerSpawned event
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessSpawned,
+			ProcessID: "worker-new",
+			TaskID:    "task-123",
+			Status:    events.ProcessStatusReady,
+		},
+	}
+
+	// Handle the event
+	m, cmd := m.handleV2Event(event)
+
+	// Verify worker was added with correct status
+	status, exists := m.workerPane.workerStatus["worker-new"]
+	require.True(t, exists, "worker should exist after spawn event")
+	require.Equal(t, events.ProcessStatusReady, status, "spawned worker should have ready status")
+
+	// Verify Listen() command is returned
+	require.NotNil(t, cmd, "should return Listen() command to continue receiving events")
+}
+
+// TestHandleV2Event_UnknownEventType verifies unknown payload types don't panic
+// and return Listen() command to continue receiving events.
+func TestHandleV2Event_UnknownEventType(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Create a v2 listener using a test broker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2Broker := pubsub.NewBroker[any]()
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2Broker)
+
+	// Create an event with an unknown payload type (a simple string)
+	event := pubsub.Event[any]{
+		Type:    pubsub.UpdatedEvent,
+		Payload: "unknown event type - should not panic",
+	}
+
+	// Handle the event - should not panic
+	var cmd tea.Cmd
+	require.NotPanics(t, func() {
+		m, cmd = m.handleV2Event(event)
+	}, "handleV2Event should not panic on unknown event types")
+
+	// Verify Listen() command is returned (event loop continues)
+	require.NotNil(t, cmd, "should return Listen() command even for unknown event types")
+
+	// Test with a struct type that's not a known event
+	type unknownStruct struct {
+		Field string
+	}
+	event2 := pubsub.Event[any]{
+		Type:    pubsub.UpdatedEvent,
+		Payload: unknownStruct{Field: "test"},
+	}
+
+	require.NotPanics(t, func() {
+		m, cmd = m.handleV2Event(event2)
+	}, "handleV2Event should not panic on unknown struct types")
+
+	require.NotNil(t, cmd, "should return Listen() command for unknown struct types")
+}
+
+// TestHandleV2Event_NilListener verifies that nil v2Listener returns (model, nil) gracefully.
+func TestHandleV2Event_NilListener(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Explicitly ensure v2Listener is nil
+	m.v2Listener = nil
+
+	// Create a valid event
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessStatusChange,
+			ProcessID: "worker-1",
+			Status:    events.ProcessStatusReady,
+		},
+	}
+
+	// Handle the event - should not panic
+	var cmd tea.Cmd
+	require.NotPanics(t, func() {
+		m, cmd = m.handleV2Event(event)
+	}, "handleV2Event should not panic with nil listener")
+
+	// Verify nil command is returned (no Listen() since no listener)
+	require.Nil(t, cmd, "should return nil command when v2Listener is nil")
+}
+
+// TestHandleV2Event_CommandErrorEvent verifies command errors are logged
+// and the event loop continues.
+func TestHandleV2Event_CommandErrorEvent(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Create a v2 listener using a test broker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2Broker := pubsub.NewBroker[any]()
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2Broker)
+
+	// Create a CommandErrorEvent
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: processor.CommandErrorEvent{
+			CommandID:   "cmd-123",
+			CommandType: "test_command",
+			Error:       errors.New("test error: command failed"),
+		},
+	}
+
+	// Handle the event - should not panic
+	var cmd tea.Cmd
+	require.NotPanics(t, func() {
+		m, cmd = m.handleV2Event(event)
+	}, "handleV2Event should not panic on CommandErrorEvent")
+
+	// Verify Listen() command is returned (event loop continues)
+	require.NotNil(t, cmd, "should return Listen() command to continue receiving events after error")
+
+	// Note: In Phase 1, errors are only logged (no UI display)
+	// The actual logging is verified by the Debug call in handleV2Event()
+	// We verify the event is handled gracefully and loop continues
+}
+
+// ===========================================================================
+// V2 Event Integration Tests
+// ===========================================================================
+
+// TestTUI_ReceivesV2WorkerStatusEvent is an integration test verifying the full event flow
+// from v2 command processor through eventBus to TUI state update.
+// Flow: v2 command → processor → eventBus → v2Listener → handleV2Event → UpdateWorker
+func TestTUI_ReceivesV2WorkerStatusEvent(t *testing.T) {
+	// Step 1: Create a v2 event bus (simulating what initializer creates)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2EventBus := pubsub.NewBroker[any]()
+
+	// Step 2: Create TUI Model and set up v2Listener
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.ctx = ctx
+	m.cancel = cancel
+
+	// Create v2Listener connected to the event bus
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2EventBus)
+
+	// Step 3: Add a worker to the model (starts as working)
+	workerID := "test-worker-v2"
+	m = m.UpdateWorker(workerID, events.ProcessStatusWorking)
+	require.Equal(t, events.ProcessStatusWorking, m.workerPane.workerStatus[workerID],
+		"worker should start as Working")
+
+	// Step 4: Simulate v2 command processor emitting a WorkerStatusChange event
+	// This mimics what happens when a worker calls signal_ready via MCP
+	phaseIdle := events.ProcessPhaseIdle
+	statusChangeEvent := events.ProcessEvent{
+		Type:      events.ProcessStatusChange,
+		ProcessID: workerID,
+		Status:    events.ProcessStatusReady,
+		Phase:     &phaseIdle,
+	}
+
+	// Publish to event bus (simulating processor.emitEvents())
+	v2EventBus.Publish(pubsub.UpdatedEvent, statusChangeEvent)
+
+	// Step 5: Start listening for the event
+	// In the real TUI, this happens via tea.Cmd returned by v2Listener.Listen()
+	// For testing, we manually call Listen() and handle the received event
+	listenCmd := m.v2Listener.Listen()
+	require.NotNil(t, listenCmd, "Listen() should return a command")
+
+	// Execute the listen command to get the event
+	// This blocks briefly until an event is available
+	var receivedMsg tea.Msg
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		receivedMsg = listenCmd()
+	}()
+
+	// Wait for event with timeout
+	select {
+	case <-done:
+		// Event received
+	case <-time.After(time.Second):
+		require.FailNow(t, "timeout waiting for v2 event")
+	}
+
+	// Step 6: Verify we received the event and it's the correct type
+	require.NotNil(t, receivedMsg, "should receive a message")
+	v2Event, ok := receivedMsg.(pubsub.Event[any])
+	require.True(t, ok, "received message should be pubsub.Event[any], got %T", receivedMsg)
+
+	// Step 7: Handle the event through handleV2Event (simulating Update() dispatch)
+	m, cmd := m.handleV2Event(v2Event)
+
+	// Step 8: Verify worker status was updated in TUI state
+	require.Equal(t, events.ProcessStatusReady, m.workerPane.workerStatus[workerID],
+		"worker status should be updated to Ready after handling v2 event")
+
+	// Step 9: Verify Listen() command is returned to continue the event loop
+	require.NotNil(t, cmd, "should return Listen() command to continue receiving events")
+}
+
+// TestTUI_ReceivesV2WorkerSpawnedEvent verifies that WorkerSpawned events from v2
+// correctly add new workers to TUI state.
+func TestTUI_ReceivesV2WorkerSpawnedEvent(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2EventBus := pubsub.NewBroker[any]()
+
+	// Create TUI Model with v2Listener
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.ctx = ctx
+	m.cancel = cancel
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2EventBus)
+
+	// Verify worker doesn't exist initially
+	newWorkerID := "new-v2-worker"
+	_, exists := m.workerPane.workerStatus[newWorkerID]
+	require.False(t, exists, "worker should not exist initially")
+
+	// Publish WorkerSpawned event
+	spawnPhaseIdle := events.ProcessPhaseIdle
+	spawnEvent := events.ProcessEvent{
+		Type:      events.ProcessSpawned,
+		ProcessID: newWorkerID,
+		TaskID:    "task-123",
+		Status:    events.ProcessStatusReady,
+		Phase:     &spawnPhaseIdle,
+	}
+	v2EventBus.Publish(pubsub.UpdatedEvent, spawnEvent)
+
+	// Get the event via Listen
+	listenCmd := m.v2Listener.Listen()
+	var receivedMsg tea.Msg
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		receivedMsg = listenCmd()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timeout waiting for v2 event")
+	}
+
+	// Handle the event
+	v2Event := receivedMsg.(pubsub.Event[any])
+	m, cmd := m.handleV2Event(v2Event)
+
+	// Verify worker was added with correct status
+	status, exists := m.workerPane.workerStatus[newWorkerID]
+	require.True(t, exists, "worker should exist after spawn event")
+	require.Equal(t, events.ProcessStatusReady, status, "spawned worker should have ready status")
+	require.NotNil(t, cmd, "should return Listen() command")
+}
+
+// TestTUI_V2EventLoopContinuity verifies that the v2 event loop continues
+// processing multiple events in sequence.
+func TestTUI_V2EventLoopContinuity(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2EventBus := pubsub.NewBroker[any]()
+
+	// Create TUI Model with v2Listener
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.ctx = ctx
+	m.cancel = cancel
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2EventBus)
+
+	// Add initial worker
+	workerID := "continuity-test-worker"
+	m = m.UpdateWorker(workerID, events.ProcessStatusWorking)
+
+	// Publish multiple events in sequence
+	events1 := []events.ProcessEvent{
+		{Type: events.ProcessStatusChange, ProcessID: workerID, Status: events.ProcessStatusReady},
+		{Type: events.ProcessStatusChange, ProcessID: workerID, Status: events.ProcessStatusWorking},
+		{Type: events.ProcessStatusChange, ProcessID: workerID, Status: events.ProcessStatusReady},
+	}
+
+	// Process each event and verify the loop continues
+	for i, evt := range events1 {
+		v2EventBus.Publish(pubsub.UpdatedEvent, evt)
+
+		listenCmd := m.v2Listener.Listen()
+		var receivedMsg tea.Msg
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			receivedMsg = listenCmd()
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			require.FailNowf(t, "timeout waiting for v2 event", "event %d", i)
+		}
+
+		v2Event := receivedMsg.(pubsub.Event[any])
+		var cmd tea.Cmd
+		m, cmd = m.handleV2Event(v2Event)
+
+		// Verify event loop continues (Listen() command returned)
+		require.NotNil(t, cmd, "event %d: should return Listen() command to continue loop", i)
+	}
+
+	// Final state should match last event
+	require.Equal(t, events.ProcessStatusReady, m.workerPane.workerStatus[workerID],
+		"final worker status should be Ready")
+}
+
+// ===========================================================================
+// ProcessEvent Unified Event Handling Tests (Phase 6)
+// ===========================================================================
+
+// Test ProcessEvent routing based on Role field
+
+func TestHandleV2Event_ProcessEvent_RoutesToCoordinator(t *testing.T) {
+	// Test that ProcessEvent with RoleCoordinator routes to coordinator handler
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Create a v2 listener
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2Broker := pubsub.NewBroker[any]()
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2Broker)
+
+	// Create a ProcessEvent for coordinator
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessOutput,
+			ProcessID: "coordinator",
+			Role:      events.RoleCoordinator,
+			Output:    "Hello from coordinator",
+		},
+	}
+
+	// Handle the event
+	m, cmd := m.handleV2Event(event)
+
+	// Verify output was added to coordinator pane
+	require.Len(t, m.coordinatorPane.messages, 1, "coordinator should have one message")
+	require.Equal(t, "coordinator", m.coordinatorPane.messages[0].Role)
+	require.Equal(t, "Hello from coordinator", m.coordinatorPane.messages[0].Content)
+
+	// Verify Listen() command is returned
+	require.NotNil(t, cmd, "should return Listen() command")
+}
+
+func TestHandleV2Event_ProcessEvent_RoutesToWorker(t *testing.T) {
+	// Test that ProcessEvent with RoleWorker routes to worker handler
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Add a worker first
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	// Create a v2 listener
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2Broker := pubsub.NewBroker[any]()
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2Broker)
+
+	// Create a ProcessEvent for worker
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessOutput,
+			ProcessID: "worker-1",
+			Role:      events.RoleWorker,
+			Output:    "Hello from worker",
+		},
+	}
+
+	// Handle the event
+	m, cmd := m.handleV2Event(event)
+
+	// Verify output was added to worker pane
+	require.Len(t, m.workerPane.workerMessages["worker-1"], 1, "worker should have one message")
+	require.Equal(t, "worker", m.workerPane.workerMessages["worker-1"][0].Role)
+	require.Equal(t, "Hello from worker", m.workerPane.workerMessages["worker-1"][0].Content)
+
+	// Verify Listen() command is returned
+	require.NotNil(t, cmd, "should return Listen() command")
+}
+
+// Coordinator ProcessEvent tests
+
+func TestHandleCoordinatorProcessEvent_ProcessSpawned(t *testing.T) {
+	// Test ProcessSpawned (coordinator) - initialization is handled elsewhere
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessSpawned,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+	}
+
+	// Should not panic
+	m = m.handleCoordinatorProcessEvent(evt)
+	// No state change expected for spawn (handled by initializer)
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessOutput(t *testing.T) {
+	// Test ProcessOutput (coordinator) appends output to coordinator pane
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessOutput,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Output:    "Test coordinator output",
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.Len(t, m.coordinatorPane.messages, 1)
+	require.Equal(t, "coordinator", m.coordinatorPane.messages[0].Role)
+	require.Equal(t, "Test coordinator output", m.coordinatorPane.messages[0].Content)
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessOutput_Empty(t *testing.T) {
+	// Test empty output is not added
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessOutput,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Output:    "", // Empty output
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.Len(t, m.coordinatorPane.messages, 0, "empty output should not be added")
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessReady(t *testing.T) {
+	// Test ProcessReady (coordinator) sets coordinatorWorking to false
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.coordinatorWorking = true // Start as working
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessReady,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.False(t, m.coordinatorWorking, "coordinator should not be working after ready")
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessWorking(t *testing.T) {
+	// Test ProcessWorking (coordinator) sets coordinatorWorking to true
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.coordinatorWorking = false // Start as not working
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessWorking,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.True(t, m.coordinatorWorking, "coordinator should be working")
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessIncoming(t *testing.T) {
+	// Test ProcessIncoming (coordinator) shows incoming user message
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessIncoming,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Message:   "User message to coordinator",
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.Len(t, m.coordinatorPane.messages, 1)
+	require.Equal(t, "user", m.coordinatorPane.messages[0].Role)
+	require.Equal(t, "User message to coordinator", m.coordinatorPane.messages[0].Content)
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessIncoming_Empty(t *testing.T) {
+	// Test empty message is not added
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessIncoming,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Message:   "", // Empty message
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.Len(t, m.coordinatorPane.messages, 0, "empty message should not be added")
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessTokenUsage(t *testing.T) {
+	// Test ProcessTokenUsage (coordinator) updates metrics display
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	testMetrics := &metrics.TokenMetrics{
+		ContextTokens: 10000,
+		ContextWindow: 200000,
+		TotalCostUSD:  0.5,
+	}
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessTokenUsage,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Metrics:   testMetrics,
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.NotNil(t, m.coordinatorMetrics)
+	require.Equal(t, 10000, m.coordinatorMetrics.ContextTokens)
+	require.Equal(t, 200000, m.coordinatorMetrics.ContextWindow)
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessTokenUsage_NilMetrics(t *testing.T) {
+	// Test nil metrics doesn't crash
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessTokenUsage,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Metrics:   nil, // Nil metrics
+	}
+
+	// Should not panic
+	m = m.handleCoordinatorProcessEvent(evt)
+	require.Nil(t, m.coordinatorMetrics, "nil metrics should not be set")
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessError(t *testing.T) {
+	// Test ProcessError (coordinator) shows error modal
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessError,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Error:     errors.New("coordinator error occurred"),
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.NotNil(t, m.errorModal, "error modal should be shown")
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessError_NilError(t *testing.T) {
+	// Test nil error doesn't show modal
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessError,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Error:     nil, // Nil error
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.Nil(t, m.errorModal, "nil error should not show modal")
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessQueueChanged(t *testing.T) {
+	// Test ProcessQueueChanged (coordinator) updates queue count
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	evt := events.ProcessEvent{
+		Type:       events.ProcessQueueChanged,
+		ProcessID:  "coordinator",
+		Role:       events.RoleCoordinator,
+		QueueCount: 3,
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.Equal(t, 3, m.coordinatorPane.queueCount)
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessStatusChange(t *testing.T) {
+	// Test ProcessStatusChange (coordinator) updates status
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessStatusChange,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Status:    events.ProcessStatusWorking,
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	// Working status should clear paused
+	require.False(t, m.paused)
+}
+
+// Worker ProcessEvent tests
+
+func TestHandleWorkerProcessEvent_ProcessSpawned(t *testing.T) {
+	// Test ProcessSpawned (worker) adds worker pane
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Verify worker doesn't exist
+	_, exists := m.workerPane.workerStatus["worker-1"]
+	require.False(t, exists)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessSpawned,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Status:    events.ProcessStatusReady,
+		TaskID:    "task-123",
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	// Verify worker was added
+	status, exists := m.workerPane.workerStatus["worker-1"]
+	require.True(t, exists)
+	require.Equal(t, events.ProcessStatusReady, status)
+}
+
+func TestHandleWorkerProcessEvent_ProcessOutput(t *testing.T) {
+	// Test ProcessOutput (worker) appends to worker pane
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessOutput,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Output:    "Worker output message",
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	require.Len(t, m.workerPane.workerMessages["worker-1"], 1)
+	require.Equal(t, "worker", m.workerPane.workerMessages["worker-1"][0].Role)
+	require.Equal(t, "Worker output message", m.workerPane.workerMessages["worker-1"][0].Content)
+}
+
+func TestHandleWorkerProcessEvent_ProcessOutput_Empty(t *testing.T) {
+	// Test empty output is not added
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessOutput,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Output:    "", // Empty output
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	require.Len(t, m.workerPane.workerMessages["worker-1"], 0, "empty output should not be added")
+}
+
+func TestHandleWorkerProcessEvent_ProcessReady(t *testing.T) {
+	// Test ProcessReady (worker) updates worker status
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessReady,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	require.Equal(t, events.ProcessStatusReady, m.workerPane.workerStatus["worker-1"])
+}
+
+func TestHandleWorkerProcessEvent_ProcessWorking(t *testing.T) {
+	// Test ProcessWorking (worker) updates worker status
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusReady)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessWorking,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	require.Equal(t, events.ProcessStatusWorking, m.workerPane.workerStatus["worker-1"])
+}
+
+func TestHandleWorkerProcessEvent_ProcessIncoming(t *testing.T) {
+	// Test ProcessIncoming (worker) adds message to pane with correct sender
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessIncoming,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Message:   "Message from user",
+		Sender:    "user",
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	// Message should be added with the sender role
+	require.Len(t, m.workerPane.workerMessages["worker-1"], 1,
+		"ProcessIncoming should add message to worker pane")
+	require.Equal(t, "user", m.workerPane.workerMessages["worker-1"][0].Role)
+	require.Equal(t, "Message from user", m.workerPane.workerMessages["worker-1"][0].Content)
+}
+
+func TestHandleWorkerProcessEvent_ProcessIncoming_Empty(t *testing.T) {
+	// Test empty message is also not added (consistent with non-empty behavior)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessIncoming,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Message:   "", // Empty message
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	require.Len(t, m.workerPane.workerMessages["worker-1"], 0, "empty message should not be added")
+}
+
+func TestHandleWorkerProcessEvent_ProcessTokenUsage(t *testing.T) {
+	// Test ProcessTokenUsage (worker) updates worker token display
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	testMetrics := &metrics.TokenMetrics{
+		ContextTokens: 5000,
+		ContextWindow: 100000,
+		TotalCostUSD:  0.25,
+	}
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessTokenUsage,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Metrics:   testMetrics,
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	require.NotNil(t, m.workerPane.workerMetrics["worker-1"])
+	require.Equal(t, 5000, m.workerPane.workerMetrics["worker-1"].ContextTokens)
+}
+
+func TestHandleWorkerProcessEvent_ProcessTokenUsage_NilMetrics(t *testing.T) {
+	// Test nil metrics doesn't crash
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessTokenUsage,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Metrics:   nil, // Nil metrics
+	}
+
+	// Should not panic
+	m = m.handleWorkerProcessEvent(evt)
+	// Metrics should remain unset
+}
+
+func TestHandleWorkerProcessEvent_ProcessError(t *testing.T) {
+	// Test ProcessError (worker) is logged but doesn't show modal (non-fatal)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessError,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Error:     errors.New("worker error"),
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	// Worker errors should NOT show modal (unlike coordinator errors)
+	require.Nil(t, m.errorModal, "worker errors should not show modal")
+}
+
+func TestHandleWorkerProcessEvent_ProcessQueueChanged(t *testing.T) {
+	// Test ProcessQueueChanged (worker) updates worker queue indicator
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	evt := events.ProcessEvent{
+		Type:       events.ProcessQueueChanged,
+		ProcessID:  "worker-1",
+		Role:       events.RoleWorker,
+		QueueCount: 2,
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	require.Equal(t, 2, m.workerPane.workerQueueCounts["worker-1"])
+}
+
+func TestHandleWorkerProcessEvent_ProcessStatusChange_Retired(t *testing.T) {
+	// Test ProcessStatusChange (worker) handles retired status
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessStatusChange,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Status:    events.ProcessStatusRetired,
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	// Worker should be removed from active list
+	require.NotContains(t, m.workerPane.workerIDs, "worker-1")
+	require.Equal(t, events.ProcessStatusRetired, m.workerPane.workerStatus["worker-1"])
+}
+
+func TestHandleWorkerProcessEvent_ProcessStatusChange_Failed(t *testing.T) {
+	// Test ProcessStatusChange (worker) handles failed status (treated as retired)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessStatusChange,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Status:    events.ProcessStatusFailed,
+	}
+
+	m = m.handleWorkerProcessEvent(evt)
+
+	// Failed workers should be treated as retired in UI (removed from active list)
+	require.NotContains(t, m.workerPane.workerIDs, "worker-1")
+	// Status is preserved as-is in the map (not converted to retired)
+	require.Equal(t, events.ProcessStatusFailed, m.workerPane.workerStatus["worker-1"])
+}
+
+// Edge case tests
+
+func TestHandleV2Event_ProcessEvent_UnknownProcessID(t *testing.T) {
+	// Test ProcessEvent for unknown/non-existent worker is handled gracefully
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2Broker := pubsub.NewBroker[any]()
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2Broker)
+
+	// Send event for non-existent worker
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessOutput,
+			ProcessID: "worker-nonexistent",
+			Role:      events.RoleWorker,
+			Output:    "Output for unknown worker",
+		},
+	}
+
+	// Should not panic
+	var cmd tea.Cmd
+	require.NotPanics(t, func() {
+		m, cmd = m.handleV2Event(event)
+	})
+
+	// Message should still be added (worker pane handles this gracefully)
+	require.Len(t, m.workerPane.workerMessages["worker-nonexistent"], 1)
+	require.NotNil(t, cmd, "should return Listen() command")
+}
+
+func TestHandleV2Event_MultipleRapidProcessEvents(t *testing.T) {
+	// Test multiple rapid ProcessEvents are processed correctly
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2Broker := pubsub.NewBroker[any]()
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2Broker)
+
+	// Send multiple events in rapid succession
+	for i := 0; i < 10; i++ {
+		event := pubsub.Event[any]{
+			Type: pubsub.UpdatedEvent,
+			Payload: events.ProcessEvent{
+				Type:      events.ProcessOutput,
+				ProcessID: "coordinator",
+				Role:      events.RoleCoordinator,
+				Output:    fmt.Sprintf("Message %d", i),
+			},
+		}
+		m, _ = m.handleV2Event(event)
+	}
+
+	// All 10 messages should be added
+	require.Len(t, m.coordinatorPane.messages, 10)
+}
+
+func TestProcessStatusHelpers(t *testing.T) {
+	// Test IsDone() helper
+	doneTests := []struct {
+		input    events.ProcessStatus
+		expected bool
+	}{
+		{events.ProcessStatusReady, false},
+		{events.ProcessStatusWorking, false},
+		{events.ProcessStatusRetired, true},
+		{events.ProcessStatusFailed, true},
+		{events.ProcessStatusPending, false},
+		{events.ProcessStatusStarting, false},
+	}
+
+	for _, tt := range doneTests {
+		t.Run("IsDone_"+string(tt.input), func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.input.IsDone())
+		})
+	}
+
+	// Test IsActive() helper
+	activeTests := []struct {
+		input    events.ProcessStatus
+		expected bool
+	}{
+		{events.ProcessStatusReady, true},
+		{events.ProcessStatusWorking, true},
+		{events.ProcessStatusRetired, false},
+		{events.ProcessStatusFailed, false},
+		{events.ProcessStatusPending, false},
+		{events.ProcessStatusStarting, false},
+	}
+
+	for _, tt := range activeTests {
+		t.Run("IsActive_"+string(tt.input), func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.input.IsActive())
+		})
+	}
+}
+
+// Integration test: ProcessEvent flow from v2EventBus to TUI state
+
+func TestTUI_ReceivesProcessEvent_Coordinator(t *testing.T) {
+	// Integration test: ProcessEvent flow for coordinator
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2EventBus := pubsub.NewBroker[any]()
+
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.ctx = ctx
+	m.cancel = cancel
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2EventBus)
+
+	// Publish ProcessEvent for coordinator
+	processEvent := events.ProcessEvent{
+		Type:      events.ProcessOutput,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Output:    "Coordinator process output",
+	}
+	v2EventBus.Publish(pubsub.UpdatedEvent, processEvent)
+
+	// Get the event via Listen
+	listenCmd := m.v2Listener.Listen()
+	var receivedMsg tea.Msg
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		receivedMsg = listenCmd()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timeout waiting for ProcessEvent")
+	}
+
+	// Handle the event
+	v2Event := receivedMsg.(pubsub.Event[any])
+	m, cmd := m.handleV2Event(v2Event)
+
+	// Verify coordinator pane was updated
+	require.Len(t, m.coordinatorPane.messages, 1)
+	require.Equal(t, "Coordinator process output", m.coordinatorPane.messages[0].Content)
+	require.NotNil(t, cmd)
+}
+
+func TestTUI_ReceivesProcessEvent_Worker(t *testing.T) {
+	// Integration test: ProcessEvent flow for worker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2EventBus := pubsub.NewBroker[any]()
+
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.ctx = ctx
+	m.cancel = cancel
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2EventBus)
+
+	// Add worker first
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+
+	// Publish ProcessEvent for worker
+	processEvent := events.ProcessEvent{
+		Type:      events.ProcessOutput,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Output:    "Worker process output",
+	}
+	v2EventBus.Publish(pubsub.UpdatedEvent, processEvent)
+
+	// Get the event via Listen
+	listenCmd := m.v2Listener.Listen()
+	var receivedMsg tea.Msg
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		receivedMsg = listenCmd()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timeout waiting for ProcessEvent")
+	}
+
+	// Handle the event
+	v2Event := receivedMsg.(pubsub.Event[any])
+	m, cmd := m.handleV2Event(v2Event)
+
+	// Verify worker pane was updated
+	require.Len(t, m.workerPane.workerMessages["worker-1"], 1)
+	require.Equal(t, "Worker process output", m.workerPane.workerMessages["worker-1"][0].Content)
+	require.NotNil(t, cmd)
+}
+
+func TestTUI_ProcessEventAndWorkerEvent_Coexist(t *testing.T) {
+	// Test that ProcessEvent and legacy WorkerEvent can coexist (backward compatibility)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v2EventBus := pubsub.NewBroker[any]()
+
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.ctx = ctx
+	m.cancel = cancel
+	m.v2Listener = pubsub.NewContinuousListener(ctx, v2EventBus)
+
+	// Add workers
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
+
+	// Handle a ProcessEvent
+	processEvent := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessOutput,
+			ProcessID: "worker-1",
+			Role:      events.RoleWorker,
+			Output:    "ProcessEvent output",
+		},
+	}
+	m, _ = m.handleV2Event(processEvent)
+
+	// Handle a legacy WorkerEvent
+	workerEvent := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessOutput,
+			ProcessID: "worker-2",
+			Output:    "WorkerEvent output",
+		},
+	}
+	m, _ = m.handleV2Event(workerEvent)
+
+	// Both should be handled correctly
+	require.Len(t, m.workerPane.workerMessages["worker-1"], 1)
+	require.Equal(t, "ProcessEvent output", m.workerPane.workerMessages["worker-1"][0].Content)
+
+	require.Len(t, m.workerPane.workerMessages["worker-2"], 1)
+	require.Equal(t, "WorkerEvent output", m.workerPane.workerMessages["worker-2"][0].Content)
+}
+
+// ===========================================================================
+// /stop command tests
+// ===========================================================================
+
+func TestHandleStopProcessCommand_ParsesWorkerID(t *testing.T) {
+	// Test that /stop worker-1 extracts worker ID correctly
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock command submitter
+	mockSubmitter := newMockCommandSubmitter()
+	m.cmdSubmitter = mockSubmitter
+
+	// Send /stop command via handleUserInput
+	m, cmd := m.handleUserInput("/stop worker-1", "COORDINATOR")
+
+	// Verify no error modal
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil command (submission is synchronous)")
+
+	// Verify command was submitted
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	stopCmd, ok := commands[0].(*command.StopProcessCommand)
+	require.True(t, ok, "should be a StopProcessCommand")
+	require.Equal(t, "worker-1", stopCmd.ProcessID, "should have correct worker ID")
+	require.False(t, stopCmd.Force, "should have Force=false by default")
+	require.Equal(t, "user_requested", stopCmd.Reason, "should have correct reason")
+	require.Equal(t, command.SourceUser, stopCmd.Source(), "should have SourceUser")
+}
+
+func TestHandleStopProcessCommand_ParsesForceFlag(t *testing.T) {
+	// Test that /stop worker-1 --force detects the force flag
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock command submitter
+	mockSubmitter := newMockCommandSubmitter()
+	m.cmdSubmitter = mockSubmitter
+
+	// Send /stop command with --force flag
+	m, cmd := m.handleUserInput("/stop worker-2 --force", "COORDINATOR")
+
+	// Verify no error modal
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil command")
+
+	// Verify command was submitted with Force=true
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	stopCmd, ok := commands[0].(*command.StopProcessCommand)
+	require.True(t, ok, "should be a StopProcessCommand")
+	require.Equal(t, "worker-2", stopCmd.ProcessID, "should have correct worker ID")
+	require.True(t, stopCmd.Force, "should have Force=true with --force flag")
+}
+
+func TestHandleStopProcessCommand_InvalidSyntax(t *testing.T) {
+	// Test that /stop with no worker ID shows usage error
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock command submitter
+	mockSubmitter := newMockCommandSubmitter()
+	m.cmdSubmitter = mockSubmitter
+
+	// Send /stop command without worker ID (just "/stop " to trigger the handler)
+	m, cmd := m.handleUserInput("/stop ", "COORDINATOR")
+
+	// Verify error modal is set
+	require.NotNil(t, m.errorModal, "should set error modal for invalid syntax")
+	require.Nil(t, cmd, "should return nil command")
+
+	// Verify no command was submitted
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 0, "should not submit any command on error")
+}
+
+func TestHandleStopProcessCommand_SubmitsCommand(t *testing.T) {
+	// Test that command is submitted via cmdSubmitter
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// First test: without cmdSubmitter, should show error
+	m, cmd := m.handleUserInput("/stop worker-1", "COORDINATOR")
+	require.NotNil(t, m.errorModal, "should set error when no cmdSubmitter")
+	require.Nil(t, cmd, "should return nil command")
+
+	// Reset error modal
+	m = m.ClearError()
+
+	// Now set up mock command submitter
+	mockSubmitter := newMockCommandSubmitter()
+	m.cmdSubmitter = mockSubmitter
+
+	// Send /stop command
+	m, cmd = m.handleUserInput("/stop worker-3", "COORDINATOR")
+
+	// Verify no error
+	require.Nil(t, m.errorModal, "should not set error modal when cmdSubmitter exists")
+	require.Nil(t, cmd, "should return nil command")
+
+	// Verify command was submitted correctly
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	stopCmd, ok := commands[0].(*command.StopProcessCommand)
+	require.True(t, ok, "should be a StopProcessCommand")
+	require.Equal(t, command.CmdStopProcess, stopCmd.Type(), "should have correct command type")
 }

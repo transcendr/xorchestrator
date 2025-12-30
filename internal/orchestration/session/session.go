@@ -482,27 +482,23 @@ func (s *Session) generateSummary(meta *Metadata) error {
 }
 
 // AttachToBrokers subscribes to all event brokers and spawns goroutines to stream events to disk.
-// The coordBroker can be nil if the coordinator hasn't started yet - use AttachCoordinatorBroker later.
 //
 // Each broker spawns a dedicated goroutine that reads events from the subscription channel
 // and writes them to the appropriate log files via the Write* methods.
 //
+// Note: Coordinator events should be received via AttachV2EventBus which handles both
+// coordinator and worker ProcessEvents from the unified v2EventBus.
+//
 // Context cancellation stops all subscriber goroutines cleanly.
 func (s *Session) AttachToBrokers(
 	ctx context.Context,
-	coordBroker *pubsub.Broker[events.CoordinatorEvent],
-	workerBroker *pubsub.Broker[events.WorkerEvent],
+	processBroker *pubsub.Broker[events.ProcessEvent],
 	msgBroker *pubsub.Broker[message.Event],
 	mcpBroker *pubsub.Broker[events.MCPEvent],
 ) {
-	// Attach coordinator broker if provided
-	if coordBroker != nil {
-		s.AttachCoordinatorBroker(ctx, coordBroker)
-	}
-
-	// Attach worker broker
-	if workerBroker != nil {
-		s.attachWorkerBroker(ctx, workerBroker)
+	// Attach process broker for worker events
+	if processBroker != nil {
+		s.attachProcessBroker(ctx, processBroker)
 	}
 
 	// Attach message broker
@@ -516,41 +512,21 @@ func (s *Session) AttachToBrokers(
 	}
 }
 
-// AttachCoordinatorBroker subscribes to the coordinator event broker for late binding.
-// This is useful when the coordinator starts after the session is created.
+// handleCoordinatorProcessEvent processes a coordinator ProcessEvent and writes to appropriate logs.
+// This replaces the legacy handleCoordinatorEvent function that used CoordinatorEvent type.
 //
-// The subscriber goroutine handles:
-//   - CoordinatorChat: writes to coordinator output.log and raw.jsonl (if RawJSON present)
-//   - CoordinatorTokenUsage: updates metadata token counts
-//   - CoordinatorError: writes error to log
-func (s *Session) AttachCoordinatorBroker(ctx context.Context, broker *pubsub.Broker[events.CoordinatorEvent]) {
-	sub := broker.Subscribe(ctx)
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case ev, ok := <-sub:
-				if !ok {
-					return
-				}
-				s.handleCoordinatorEvent(ev.Payload)
-			}
-		}
-	}()
-
-	log.Debug(log.CatOrch, "Session attached to coordinator broker", "sessionID", s.ID)
-}
-
-// handleCoordinatorEvent processes a coordinator event and writes to appropriate logs.
-func (s *Session) handleCoordinatorEvent(event events.CoordinatorEvent) {
+// Event type mapping from legacy to v2:
+//   - CoordinatorChat → ProcessOutput
+//   - CoordinatorTokenUsage → ProcessTokenUsage
+//   - CoordinatorError → ProcessError
+//   - CoordinatorStatusChange/Ready/Working → ProcessStatusChange/Ready/Working
+func (s *Session) handleCoordinatorProcessEvent(event events.ProcessEvent) {
 	now := time.Now()
 
 	switch event.Type {
-	case events.CoordinatorChat:
+	case events.ProcessOutput:
 		// Write to coordinator output.log
-		if err := s.WriteCoordinatorEvent(now, event.Role, event.Content); err != nil {
+		if err := s.WriteCoordinatorEvent(now, string(event.Role), event.Output); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write coordinator event", "error", err)
 		}
 		// Write raw JSON if present
@@ -560,13 +536,13 @@ func (s *Session) handleCoordinatorEvent(event events.CoordinatorEvent) {
 			}
 		}
 
-	case events.CoordinatorTokenUsage:
+	case events.ProcessTokenUsage:
 		// Update token usage in metadata
 		if event.Metrics != nil {
 			s.updateTokenUsage(event.Metrics.InputTokens, event.Metrics.OutputTokens, event.Metrics.TotalCostUSD)
 		}
 
-	case events.CoordinatorError:
+	case events.ProcessError:
 		// Write error to coordinator output.log
 		errMsg := "unknown error"
 		if event.Error != nil {
@@ -576,7 +552,7 @@ func (s *Session) handleCoordinatorEvent(event events.CoordinatorEvent) {
 			log.Warn(log.CatOrch, "Session: failed to write coordinator error", "error", err)
 		}
 
-	case events.CoordinatorStatusChange, events.CoordinatorReady, events.CoordinatorWorking:
+	case events.ProcessStatusChange, events.ProcessReady, events.ProcessWorking:
 		// Status changes are informational - optionally log them
 		if err := s.WriteCoordinatorEvent(now, "status", string(event.Status)); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write coordinator status", "error", err)
@@ -584,15 +560,15 @@ func (s *Session) handleCoordinatorEvent(event events.CoordinatorEvent) {
 	}
 }
 
-// attachWorkerBroker subscribes to the worker event broker.
+// attachProcessBroker subscribes to the process event broker for worker events.
 //
 // The subscriber goroutine handles:
-//   - WorkerOutput: writes to worker output.log and raw.jsonl (if RawJSON present)
-//   - WorkerSpawned: updates metadata workers list
-//   - WorkerStatusChange/WorkerRetired: updates worker metadata
-//   - WorkerTokenUsage: updates metadata token counts
-//   - WorkerError: writes error to worker log
-func (s *Session) attachWorkerBroker(ctx context.Context, broker *pubsub.Broker[events.WorkerEvent]) {
+//   - ProcessOutput: writes to worker output.log and raw.jsonl (if RawJSON present)
+//   - ProcessSpawned: updates metadata workers list
+//   - ProcessStatusChange: updates worker metadata
+//   - ProcessTokenUsage: updates metadata token counts
+//   - ProcessError: writes error to worker log
+func (s *Session) attachProcessBroker(ctx context.Context, broker *pubsub.Broker[events.ProcessEvent]) {
 	sub := broker.Subscribe(ctx)
 
 	go func() {
@@ -604,72 +580,116 @@ func (s *Session) attachWorkerBroker(ctx context.Context, broker *pubsub.Broker[
 				if !ok {
 					return
 				}
-				s.handleWorkerEvent(ev.Payload)
+				// Only handle worker events, skip coordinator events
+				if ev.Payload.IsWorker() {
+					s.handleProcessEvent(ev.Payload)
+				}
 			}
 		}
 	}()
 
-	log.Debug(log.CatOrch, "Session attached to worker broker", "sessionID", s.ID)
+	log.Debug(log.CatOrch, "Session attached to process broker", "sessionID", s.ID)
 }
 
-// handleWorkerEvent processes a worker event and writes to appropriate logs.
-func (s *Session) handleWorkerEvent(event events.WorkerEvent) {
+// AttachV2EventBus subscribes to the unified v2EventBus for all process events.
+// This handles both coordinator and worker events via the unified ProcessEvent type.
+//
+// The subscriber goroutine type-asserts to ProcessEvent and routes events based on Role:
+// - RoleCoordinator: routes to handleCoordinatorProcessEvent
+// - RoleWorker: routes to handleProcessEvent
+//
+// This replaces the legacy AttachCoordinatorBroker method that used CoordinatorEvent type.
+func (s *Session) AttachV2EventBus(ctx context.Context, broker *pubsub.Broker[any]) {
+	sub := broker.Subscribe(ctx)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case ev, ok := <-sub:
+				if !ok {
+					return
+				}
+				// Type-assert to ProcessEvent and route based on role
+				if processEvent, isProcess := ev.Payload.(events.ProcessEvent); isProcess {
+					if processEvent.IsCoordinator() {
+						s.handleCoordinatorProcessEvent(processEvent)
+					} else if processEvent.IsWorker() {
+						s.handleProcessEvent(processEvent)
+					}
+				}
+				// Other event types from v2EventBus are ignored by session logger
+			}
+		}
+	}()
+
+	log.Debug(log.CatOrch, "Session attached to v2EventBus", "sessionID", s.ID)
+}
+
+// handleProcessEvent processes a process event (worker) and writes to appropriate logs.
+func (s *Session) handleProcessEvent(event events.ProcessEvent) {
 	now := time.Now()
+	workerID := event.ProcessID
 
 	switch event.Type {
-	case events.WorkerSpawned:
+	case events.ProcessSpawned:
 		// Add worker to metadata
-		s.addWorker(event.WorkerID, now)
+		s.addWorker(workerID, now)
 		// Log the spawn event
-		if err := s.WriteWorkerEvent(event.WorkerID, now, "Worker spawned"); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write worker spawn event", "error", err, "workerID", event.WorkerID)
+		if err := s.WriteWorkerEvent(workerID, now, "Worker spawned"); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write worker spawn event", "error", err, "workerID", workerID)
 		}
 
-	case events.WorkerOutput:
+	case events.ProcessOutput:
 		// Write to worker output.log
-		if err := s.WriteWorkerEvent(event.WorkerID, now, event.Output); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write worker output", "error", err, "workerID", event.WorkerID)
+		if err := s.WriteWorkerEvent(workerID, now, event.Output); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write worker output", "error", err, "workerID", workerID)
 		}
 		// Write raw JSON if present
 		if len(event.RawJSON) > 0 {
-			if err := s.WriteWorkerRawJSON(event.WorkerID, now, event.RawJSON); err != nil {
-				log.Warn(log.CatOrch, "Session: failed to write worker raw JSON", "error", err, "workerID", event.WorkerID)
+			if err := s.WriteWorkerRawJSON(workerID, now, event.RawJSON); err != nil {
+				log.Warn(log.CatOrch, "Session: failed to write worker raw JSON", "error", err, "workerID", workerID)
 			}
 		}
 
-	case events.WorkerStatusChange:
+	case events.ProcessStatusChange:
 		// Update worker phase in metadata
-		s.updateWorkerPhase(event.WorkerID, string(event.Phase))
+		var phaseStr string
+		if event.Phase != nil {
+			phaseStr = string(*event.Phase)
+		}
+		s.updateProcessPhase(workerID, phaseStr)
 		// If worker is retired, record retirement time
-		if event.Status == events.WorkerRetired {
-			s.retireWorker(event.WorkerID, now, string(event.Phase))
+		if event.Status == events.ProcessStatusRetired {
+			s.retireWorker(workerID, now, phaseStr)
 		}
 		// Log the status change
-		statusMsg := fmt.Sprintf("Status: %s, Phase: %s", event.Status.String(), event.Phase)
-		if err := s.WriteWorkerEvent(event.WorkerID, now, statusMsg); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write worker status change", "error", err, "workerID", event.WorkerID)
+		statusMsg := fmt.Sprintf("Status: %s, Phase: %s", event.Status, phaseStr)
+		if err := s.WriteWorkerEvent(workerID, now, statusMsg); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write worker status change", "error", err, "workerID", workerID)
 		}
 
-	case events.WorkerTokenUsage:
+	case events.ProcessTokenUsage:
 		// Update token usage in metadata
 		if event.Metrics != nil {
 			s.updateTokenUsage(event.Metrics.InputTokens, event.Metrics.OutputTokens, event.Metrics.TotalCostUSD)
 		}
 
-	case events.WorkerIncoming:
+	case events.ProcessIncoming:
 		// Log incoming message notification
-		if err := s.WriteWorkerEvent(event.WorkerID, now, fmt.Sprintf("Incoming message: %s", event.Message)); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write worker incoming message", "error", err, "workerID", event.WorkerID)
+		if err := s.WriteWorkerEvent(workerID, now, fmt.Sprintf("Incoming message: %s", event.Message)); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write worker incoming message", "error", err, "workerID", workerID)
 		}
 
-	case events.WorkerError:
+	case events.ProcessError:
 		// Write error to worker log
 		errMsg := "unknown error"
 		if event.Error != nil {
 			errMsg = event.Error.Error()
 		}
-		if err := s.WriteWorkerEvent(event.WorkerID, now, fmt.Sprintf("Error: %s", errMsg)); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write worker error", "error", err, "workerID", event.WorkerID)
+		if err := s.WriteWorkerEvent(workerID, now, fmt.Sprintf("Error: %s", errMsg)); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write worker error", "error", err, "workerID", workerID)
 		}
 	}
 }
@@ -767,8 +787,8 @@ func (s *Session) addWorker(workerID string, spawnedAt time.Time) {
 	})
 }
 
-// updateWorkerPhase updates a worker's current phase in the metadata.
-func (s *Session) updateWorkerPhase(workerID, phase string) {
+// updateProcessPhase updates a worker's current phase in the metadata.
+func (s *Session) updateProcessPhase(workerID, phase string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

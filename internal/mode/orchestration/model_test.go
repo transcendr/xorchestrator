@@ -12,7 +12,6 @@ import (
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/pool"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 )
 
@@ -138,9 +137,9 @@ func TestSetSize_UpdatesWorkerViewports(t *testing.T) {
 	m = m.SetSize(120, 30)
 
 	// Add workers with viewports
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
 	m = m.AddWorkerMessage("worker-1", "Processing task...")
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
 	m = m.AddWorkerMessage("worker-2", "Also processing...")
 
 	// Render to create viewports
@@ -212,7 +211,7 @@ func TestUpdateWorker(t *testing.T) {
 	m := New(Config{})
 
 	// Add first worker
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
 	m = m.AddWorkerMessage("worker-1", "Processing task...")
 
 	total, active := m.WorkerCount()
@@ -221,7 +220,7 @@ func TestUpdateWorker(t *testing.T) {
 	require.Equal(t, "worker-1", m.CurrentWorkerID())
 
 	// Add second worker
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
 	m = m.AddWorkerMessage("worker-2", "Also processing...")
 
 	total, active = m.WorkerCount()
@@ -229,7 +228,7 @@ func TestUpdateWorker(t *testing.T) {
 	require.Equal(t, 2, active)
 
 	// Update first worker to retired - should be removed from list
-	m = m.UpdateWorker("worker-1", pool.WorkerRetired)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusRetired)
 
 	total, active = m.WorkerCount()
 	require.Equal(t, 1, total)  // Retired workers are removed
@@ -241,9 +240,9 @@ func TestUpdateWorker_ExitsFullscreenWhenFullscreenWorkerRetires(t *testing.T) {
 	m := New(Config{})
 
 	// Add three workers
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-3", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-3", events.ProcessStatusWorking)
 
 	// Enter fullscreen for worker-2 (index 1)
 	m.fullscreenPaneType = PaneWorker
@@ -252,7 +251,7 @@ func TestUpdateWorker_ExitsFullscreenWhenFullscreenWorkerRetires(t *testing.T) {
 	require.Equal(t, 1, m.fullscreenWorkerIndex)
 
 	// Retire worker-2 (the fullscreen worker)
-	m = m.UpdateWorker("worker-2", pool.WorkerRetired)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusRetired)
 
 	// Should exit fullscreen
 	require.Equal(t, PaneNone, m.fullscreenPaneType)
@@ -263,9 +262,9 @@ func TestUpdateWorker_KeepsFullscreenWhenNonFullscreenWorkerRetires(t *testing.T
 	m := New(Config{})
 
 	// Add three workers
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-3", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-3", events.ProcessStatusWorking)
 
 	// Enter fullscreen for worker-2 (index 1)
 	m.fullscreenPaneType = PaneWorker
@@ -274,7 +273,7 @@ func TestUpdateWorker_KeepsFullscreenWhenNonFullscreenWorkerRetires(t *testing.T
 	require.Equal(t, 1, m.fullscreenWorkerIndex)
 
 	// Retire worker-3 (not the fullscreen worker)
-	m = m.UpdateWorker("worker-3", pool.WorkerRetired)
+	m = m.UpdateWorker("worker-3", events.ProcessStatusRetired)
 
 	// Should keep fullscreen
 	require.Equal(t, PaneWorker, m.fullscreenPaneType)
@@ -289,7 +288,7 @@ func TestCleanupRetiredWorkerViewports(t *testing.T) {
 	// maxRetiredWorkerViewports = 5, so oldest 3 should be cleaned up
 	for i := 1; i <= 8; i++ {
 		workerID := "worker-" + string(rune('0'+i))
-		m = m.UpdateWorker(workerID, pool.WorkerWorking)
+		m = m.UpdateWorker(workerID, events.ProcessStatusWorking)
 		m = m.AddWorkerMessage(workerID, "Processing...")
 		// Manually create viewport to simulate what rendering would do
 		m.workerPane.viewports[workerID] = viewport.New(10, 10)
@@ -303,7 +302,7 @@ func TestCleanupRetiredWorkerViewports(t *testing.T) {
 	// Retire workers one by one (1 through 8)
 	for i := 1; i <= 8; i++ {
 		workerID := "worker-" + string(rune('0'+i))
-		m = m.UpdateWorker(workerID, pool.WorkerRetired)
+		m = m.UpdateWorker(workerID, events.ProcessStatusRetired)
 	}
 
 	// All workers should be removed from active list
@@ -351,14 +350,14 @@ func TestCleanupRetiredWorkerViewports_ActiveWorkersNeverCleaned(t *testing.T) {
 	// Create 10 workers - retire some but keep others active
 	for i := 1; i <= 10; i++ {
 		workerID := "worker-" + string(rune('0'+i))
-		m = m.UpdateWorker(workerID, pool.WorkerWorking)
+		m = m.UpdateWorker(workerID, events.ProcessStatusWorking)
 		m = m.AddWorkerMessage(workerID, "Processing...")
 	}
 
 	// Retire workers 1-8 (8 retired total, triggers cleanup)
 	for i := 1; i <= 8; i++ {
 		workerID := "worker-" + string(rune('0'+i))
-		m = m.UpdateWorker(workerID, pool.WorkerRetired)
+		m = m.UpdateWorker(workerID, events.ProcessStatusRetired)
 	}
 
 	// Workers 9 and 10 (shown as ':' and ';' in ASCII) should still be active
@@ -381,9 +380,9 @@ func TestCleanupRetiredWorkerViewports_UnderLimit(t *testing.T) {
 	// Create 3 workers and retire them (under the limit of 5)
 	for i := 1; i <= 3; i++ {
 		workerID := "worker-" + string(rune('0'+i))
-		m = m.UpdateWorker(workerID, pool.WorkerWorking)
+		m = m.UpdateWorker(workerID, events.ProcessStatusWorking)
 		m = m.AddWorkerMessage(workerID, "Processing...")
-		m = m.UpdateWorker(workerID, pool.WorkerRetired)
+		m = m.UpdateWorker(workerID, events.ProcessStatusRetired)
 	}
 
 	// All 3 should be retained since we're under the limit
@@ -404,9 +403,9 @@ func TestCycleWorker(t *testing.T) {
 	require.Equal(t, "", m.CurrentWorkerID())
 
 	// Add workers (retired workers are not added to list)
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-3", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-3", events.ProcessStatusWorking)
 
 	// Initial state - first worker
 	require.Equal(t, "worker-1", m.CurrentWorkerID())
@@ -427,7 +426,7 @@ func TestCycleWorker(t *testing.T) {
 	require.Equal(t, "worker-3", m.CurrentWorkerID())
 
 	// Retire worker-2 - should be removed and cycling adjusted
-	m = m.UpdateWorker("worker-2", pool.WorkerRetired)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusRetired)
 	total, _ := m.WorkerCount()
 	require.Equal(t, 2, total) // worker-1 and worker-3 remain
 
@@ -510,15 +509,12 @@ func TestView_Golden_WithWorkers(t *testing.T) {
 	m = m.SetSize(120, 30)
 	m.mcpPort = 9000
 
-	// Create a pool with workers that have task IDs and phases
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	workerPool.AddWorkerForTesting("worker-1", "perles-abc.1", pool.WorkerWorking, events.PhaseImplementing)
-	workerPool.AddWorkerForTesting("worker-2", "", pool.WorkerReady, events.PhaseIdle)
-	m.pool = workerPool
-
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	// Add workers with task IDs and phases
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.SetWorkerTask("worker-1", "perles-auth.1", events.ProcessPhaseImplementing)
 	m = m.AddWorkerMessage("worker-1", "Reading auth/oauth.go\nFound existing setup\nAdding Google provider")
-	m = m.UpdateWorker("worker-2", pool.WorkerReady)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusReady)
+	m = m.SetWorkerTask("worker-2", "", events.ProcessPhaseIdle) // Idle worker, no task
 	m = m.AddWorkerMessage("worker-2", "Task complete")
 
 	view := m.View()
@@ -529,12 +525,6 @@ func TestView_Golden_FullState(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(140, 35)
 	m.mcpPort = 8467
-
-	// Create a pool with workers that have task IDs and phases
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	workerPool.AddWorkerForTesting("worker-1", "perles-auth.1", pool.WorkerReady, events.PhaseIdle)
-	workerPool.AddWorkerForTesting("worker-2", "perles-auth.2", pool.WorkerWorking, events.PhaseReviewing)
-	m.pool = workerPool
 
 	// Add chat messages
 	m = m.AddChatMessage("user", "Start working on the auth epic")
@@ -569,10 +559,12 @@ func TestView_Golden_FullState(t *testing.T) {
 	}
 	m = m.SetMessageEntries(entries)
 
-	// Add workers
-	m = m.UpdateWorker("worker-1", pool.WorkerReady)
+	// Add workers with task context
+	m = m.UpdateWorker("worker-1", events.ProcessStatusReady)
+	m = m.SetWorkerTask("worker-1", "perles-auth.1", events.ProcessPhaseIdle)
 	m = m.AddWorkerMessage("worker-1", "OAuth setup complete")
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
+	m = m.SetWorkerTask("worker-2", "perles-auth.2", events.ProcessPhaseReviewing)
 	m = m.AddWorkerMessage("worker-2", "Adding JWT validation\nProcessing...")
 
 	// Focus on workers pane by pressing Tab twice (Coordinator -> Message -> Worker)
@@ -588,7 +580,7 @@ func TestView_Golden_Narrow(t *testing.T) {
 	m = m.SetSize(80, 24)
 
 	m = m.AddChatMessage("user", "Hello")
-	m = m.UpdateWorker("worker-1", pool.WorkerReady)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusReady)
 
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))
@@ -599,6 +591,38 @@ func TestView_Golden_Wide(t *testing.T) {
 	m = m.SetSize(200, 40)
 
 	m = m.AddChatMessage("coordinator", "I see this epic has many tasks. Let me analyze the dependency graph to determine optimal execution order.")
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_CoordinatorStopped(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+	m.mcpPort = 8467
+
+	// Set coordinator to stopped status
+	m.coordinatorStatus = events.ProcessStatusStopped
+
+	m = m.AddChatMessage("user", "Please pause operations")
+	m = m.AddChatMessage("coordinator", "Understood, pausing now.")
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_WorkerStopped(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+	m.mcpPort = 9000
+
+	// Add a working worker and a stopped worker
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.SetWorkerTask("worker-1", "perles-auth.1", events.ProcessPhaseImplementing)
+	m = m.AddWorkerMessage("worker-1", "Working on OAuth provider integration...")
+
+	m = m.UpdateWorker("worker-2", events.ProcessStatusStopped)
+	m = m.AddWorkerMessage("worker-2", "Stopped by user request")
 
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))
@@ -630,7 +654,7 @@ func TestView_Golden_WithToolCalls(t *testing.T) {
 	m = m.AddChatMessage("coordinator", "I've spawned 2 workers. Monitoring their progress.")
 
 	// Add a worker with formatted output showing tool calls
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
 	m = m.AddWorkerMessage("worker-1", "I'll start by checking for messages")
 	m = m.AddWorkerMessage("worker-1", "🔧 mcp__perles-worker__check_messages")
 	m = m.AddWorkerMessage("worker-1", "🔧 mcp__perles-worker__post_message")
@@ -734,14 +758,9 @@ func TestView_Golden_FullscreenWorker(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 30)
 
-	// Create a pool with workers that have task IDs and phases
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	workerPool.AddWorkerForTesting("worker-1", "perles-oauth.3", pool.WorkerWorking, events.PhaseAddressingFeedback)
-	workerPool.AddWorkerForTesting("worker-2", "", pool.WorkerReady, events.PhaseIdle)
-	m.pool = workerPool
-
-	// Add workers with messages
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	// Add workers with messages, task IDs and phases
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.SetWorkerTask("worker-1", "perles-auth.1", events.ProcessPhaseImplementing)
 	m = m.AddWorkerMessage("worker-1", "Reading auth/oauth.go")
 	m = m.AddWorkerMessage("worker-1", "Found existing OAuth setup")
 	m = m.AddWorkerMessage("worker-1", "🔧 Read")
@@ -751,7 +770,8 @@ func TestView_Golden_FullscreenWorker(t *testing.T) {
 	m = m.AddWorkerMessage("worker-1", "Running tests to verify changes")
 	m = m.AddWorkerMessage("worker-1", "🔧 Bash")
 
-	m = m.UpdateWorker("worker-2", pool.WorkerReady)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusReady)
+	m = m.SetWorkerTask("worker-2", "perles-auth.2", events.ProcessPhaseAwaitingReview)
 	m = m.AddWorkerMessage("worker-2", "Task complete")
 
 	// Enter navigation mode and fullscreen worker-1 (index 0)

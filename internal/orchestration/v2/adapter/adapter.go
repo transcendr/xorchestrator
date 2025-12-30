@@ -1,0 +1,983 @@
+// Package adapter provides the MCP tool adapter layer for the v2 orchestration architecture.
+// The V2Adapter bridges MCP tool calls to v2 commands by parsing arguments, creating commands,
+// and converting results to MCP format.
+package adapter
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	mcptypes "github.com/zjrosen/perles/internal/orchestration/mcp/types"
+	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+)
+
+// DefaultTimeout is the default timeout for command execution.
+const DefaultTimeout = 30 * time.Second
+
+// V2Adapter bridges MCP tool calls to v2 commands.
+// It parses MCP arguments, creates commands, submits them to the processor,
+// and converts results back to MCP format.
+//
+// For read-only operations (list_workers, query_worker_state), the adapter
+// reads directly from repositories without going through the CommandProcessor,
+// since these operations don't mutate state and don't require FIFO ordering.
+type V2Adapter struct {
+	processor   *processor.CommandProcessor
+	processRepo repository.ProcessRepository
+	taskRepo    repository.TaskRepository
+	queueRepo   repository.QueueRepository
+	msgRepo     repository.MessageRepository
+	timeout     time.Duration
+}
+
+// Option configures the V2Adapter.
+type Option func(*V2Adapter)
+
+// WithTimeout sets the default timeout for command execution.
+func WithTimeout(timeout time.Duration) Option {
+	return func(a *V2Adapter) {
+		a.timeout = timeout
+	}
+}
+
+// WithProcessRepository sets the process repository for read-only operations.
+func WithProcessRepository(repo repository.ProcessRepository) Option {
+	return func(a *V2Adapter) {
+		a.processRepo = repo
+	}
+}
+
+// WithTaskRepository sets the task repository for read-only operations.
+func WithTaskRepository(repo repository.TaskRepository) Option {
+	return func(a *V2Adapter) {
+		a.taskRepo = repo
+	}
+}
+
+// WithQueueRepository sets the queue repository for read-only operations.
+func WithQueueRepository(repo repository.QueueRepository) Option {
+	return func(a *V2Adapter) {
+		a.queueRepo = repo
+	}
+}
+
+// WithMessageRepository sets the message repository for read and write operations.
+func WithMessageRepository(repo repository.MessageRepository) Option {
+	return func(a *V2Adapter) {
+		a.msgRepo = repo
+	}
+}
+
+// NewV2Adapter creates a new V2Adapter with the given processor.
+func NewV2Adapter(proc *processor.CommandProcessor, opts ...Option) *V2Adapter {
+	a := &V2Adapter{
+		processor: proc,
+		timeout:   DefaultTimeout,
+	}
+	for _, opt := range opts {
+		opt(a)
+	}
+	return a
+}
+
+// ===========================================================================
+// MCP Argument Types
+// ===========================================================================
+
+// retireWorkerArgs holds arguments for retire_worker tool.
+type retireWorkerArgs struct {
+	WorkerID string `json:"worker_id"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// replaceWorkerArgs holds arguments for replace_worker tool.
+type replaceWorkerArgs struct {
+	WorkerID string `json:"worker_id"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// sendToWorkerArgs holds arguments for send_to_worker tool.
+type sendToWorkerArgs struct {
+	WorkerID string `json:"worker_id"`
+	Message  string `json:"message"`
+}
+
+// postMessageArgs holds arguments for post_message tool.
+type postMessageArgs struct {
+	To      string `json:"to"`
+	Content string `json:"content"`
+}
+
+// assignTaskArgs holds arguments for assign_task tool.
+type assignTaskArgs struct {
+	WorkerID string `json:"worker_id"`
+	TaskID   string `json:"task_id"`
+	Summary  string `json:"summary,omitempty"`
+}
+
+// assignTaskReviewArgs holds arguments for assign_task_review tool.
+type assignTaskReviewArgs struct {
+	ReviewerID    string `json:"reviewer_id"`
+	TaskID        string `json:"task_id"`
+	ImplementerID string `json:"implementer_id"`
+	Summary       string `json:"summary,omitempty"`
+}
+
+// assignReviewFeedbackArgs holds arguments for assign_review_feedback tool.
+type assignReviewFeedbackArgs struct {
+	ImplementerID string `json:"implementer_id"`
+	TaskID        string `json:"task_id"`
+	Feedback      string `json:"feedback"`
+}
+
+// approveCommitArgs holds arguments for approve_commit tool.
+type approveCommitArgs struct {
+	ImplementerID string `json:"implementer_id"`
+	TaskID        string `json:"task_id"`
+	CommitMessage string `json:"commit_message,omitempty"`
+}
+
+// reportImplementationCompleteArgs holds arguments for report_implementation_complete tool.
+type reportImplementationCompleteArgs struct {
+	Summary string `json:"summary"`
+}
+
+// reportReviewVerdictArgs holds arguments for report_review_verdict tool.
+type reportReviewVerdictArgs struct {
+	Verdict  string `json:"verdict"`
+	Comments string `json:"comments,omitempty"`
+}
+
+// ===========================================================================
+// Process Lifecycle Handlers
+// ===========================================================================
+
+// HandleSpawnProcess handles the spawn_process MCP tool call.
+// For workers, it spawns a new idle worker ready for task assignment.
+func (a *V2Adapter) HandleSpawnProcess(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	// Default to worker role if not specified
+	cmd := command.NewSpawnProcessCommand(command.SourceMCPTool, repository.RoleWorker)
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("spawn_process command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	// Extract ProcessID from result
+	processID := extractProcessID(result.Data)
+	return mcptypes.SuccessResult(fmt.Sprintf("Process %s spawned and ready", processID)), nil
+}
+
+// HandleRetireProcess handles the retire_process MCP tool call.
+func (a *V2Adapter) HandleRetireProcess(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	var parsed retireWorkerArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if parsed.WorkerID == "" {
+		return nil, fmt.Errorf("process_id is required")
+	}
+
+	cmd := command.NewRetireProcessCommand(command.SourceMCPTool, parsed.WorkerID, parsed.Reason)
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("retire_process command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	return mcptypes.SuccessResult(fmt.Sprintf("Process %s retired successfully", parsed.WorkerID)), nil
+}
+
+// HandleReplaceProcess handles the replace_process MCP tool call.
+func (a *V2Adapter) HandleReplaceProcess(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	var parsed replaceWorkerArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if parsed.WorkerID == "" {
+		return nil, fmt.Errorf("process_id is required")
+	}
+
+	cmd := command.NewReplaceProcessCommand(command.SourceMCPTool, parsed.WorkerID, parsed.Reason)
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("replace_process command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	return mcptypes.SuccessResult(fmt.Sprintf("Process %s replaced successfully", parsed.WorkerID)), nil
+}
+
+// HandleListWorkers handles the list_workers MCP tool call.
+// This is a read-only operation that reads directly from the ProcessRepository
+// without going through the CommandProcessor, since it doesn't mutate state.
+func (a *V2Adapter) HandleListWorkers(_ context.Context, _ json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	if a.processRepo == nil {
+		return nil, fmt.Errorf("process repository not configured for read-only operations")
+	}
+
+	workers := a.processRepo.Workers()
+
+	// Return human-readable message when no workers exist (matches old coordinator behavior)
+	if len(workers) == 0 {
+		return mcptypes.SuccessResult("No active workers."), nil
+	}
+
+	// Format workers for JSON response
+	// Field names match coordinator.go handleListWorkers for backward compatibility
+	type workerInfo struct {
+		WorkerID      string `json:"worker_id"`
+		Status        string `json:"status"`
+		Phase         string `json:"phase"`
+		TaskID        string `json:"task_id,omitempty"`
+		SessionID     string `json:"session_id"`
+		StartedAt     string `json:"started_at"`
+		ContextTokens int    `json:"context_tokens,omitempty"`
+		ContextWindow int    `json:"context_window,omitempty"`
+		ContextUsage  string `json:"context_usage,omitempty"`
+		QueueSize     int    `json:"queue_size"`
+	}
+
+	workerList := make([]workerInfo, 0, len(workers))
+	for _, p := range workers {
+		queueSize := 0
+		if a.queueRepo != nil {
+			queueSize = a.queueRepo.Size(p.ID)
+		}
+		phase := ""
+		if p.Phase != nil {
+			phase = string(*p.Phase)
+		}
+		info := workerInfo{
+			WorkerID:  p.ID,
+			Status:    processStatusToWorkerStatus(p.Status),
+			Phase:     phase,
+			TaskID:    p.TaskID,
+			SessionID: p.SessionID,
+			StartedAt: p.CreatedAt.Format("15:04:05"),
+			QueueSize: queueSize,
+		}
+
+		// Add context metrics if available
+		if p.Metrics != nil {
+			info.ContextTokens = p.Metrics.ContextTokens
+			info.ContextWindow = p.Metrics.ContextWindow
+			if info.ContextTokens > 0 && info.ContextWindow > 0 {
+				info.ContextUsage = formatContextUsage(info.ContextTokens, info.ContextWindow)
+			}
+		}
+
+		workerList = append(workerList, info)
+	}
+
+	// Return JSON response
+	jsonBytes, err := json.Marshal(workerList)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal worker list: %w", err)
+	}
+
+	return mcptypes.SuccessResult(string(jsonBytes)), nil
+}
+
+// processStatusToWorkerStatus converts ProcessStatus to the string format expected by the API.
+// This maintains backward compatibility with the old WorkerStatus string representation.
+func processStatusToWorkerStatus(status repository.ProcessStatus) string {
+	switch status {
+	case repository.StatusPending, repository.StatusStarting:
+		return "starting"
+	case repository.StatusReady:
+		return "ready"
+	case repository.StatusWorking:
+		return "working"
+	case repository.StatusRetired, repository.StatusFailed:
+		return "retired"
+	default:
+		return "unknown"
+	}
+}
+
+// formatContextUsage returns a human-readable string for context usage.
+func formatContextUsage(contextTokens, contextWindow int) string {
+	tokensK := contextTokens / 1000
+	windowK := contextWindow / 1000
+	percentage := (contextTokens * 100) / contextWindow
+	return fmt.Sprintf("%dk/%dk (%d%%)", tokensK, windowK, percentage)
+}
+
+// queryWorkerStateArgs holds arguments for query_worker_state tool.
+type queryWorkerStateArgs struct {
+	WorkerID string `json:"worker_id,omitempty"`
+	TaskID   string `json:"task_id,omitempty"`
+}
+
+// workerStateInfo represents worker state in query_worker_state response.
+// Field names match coordinator.go for backward compatibility.
+type workerStateInfo struct {
+	WorkerID     string `json:"worker_id"`
+	Status       string `json:"status"`
+	Phase        string `json:"phase"`
+	TaskID       string `json:"task_id,omitempty"`
+	SessionID    string `json:"session_id,omitempty"`
+	QueueSize    int    `json:"queue_size,omitempty"`
+	ContextUsage string `json:"context_usage,omitempty"`
+	StartedAt    string `json:"started_at"`
+	CreatedAt    string `json:"created_at,omitempty"`
+	RetiredAt    string `json:"retired_at,omitempty"`
+	// Task details if assigned
+	TaskStatus  string `json:"task_status,omitempty"`
+	TaskStarted string `json:"task_started,omitempty"`
+	ReviewerID  string `json:"reviewer_id,omitempty"`
+}
+
+// workerStateResponse is the response format for query_worker_state tool.
+// Matches coordinator.go response format for feature parity.
+type workerStateResponse struct {
+	Workers      []workerStateInfo `json:"workers"`
+	ReadyWorkers []string          `json:"ready_workers"`
+}
+
+// HandleQueryWorkerState handles the query_worker_state MCP tool call.
+// This is a read-only operation that reads directly from repositories
+// without going through the CommandProcessor, since it doesn't mutate state.
+//
+// Supports optional filters:
+//   - worker_id: filter to specific worker
+//   - task_id: filter to worker assigned to specific task
+//
+// Returns a response with:
+//   - workers: array of worker state info
+//   - ready_workers: array of worker IDs that are Ready status with no assigned task
+func (a *V2Adapter) HandleQueryWorkerState(_ context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	if a.processRepo == nil {
+		return nil, fmt.Errorf("process repository not configured for read-only operations")
+	}
+
+	var parsed queryWorkerStateArgs
+	if len(args) > 0 {
+		if err := json.Unmarshal(args, &parsed); err != nil {
+			return nil, fmt.Errorf("invalid arguments: %w", err)
+		}
+	}
+
+	// Get all active workers from repository
+	workers := a.processRepo.ActiveWorkers()
+
+	// Build response matching coordinator format
+	response := workerStateResponse{
+		Workers:      make([]workerStateInfo, 0),
+		ReadyWorkers: make([]string, 0),
+	}
+
+	for _, p := range workers {
+		// Filter by worker_id if specified
+		if parsed.WorkerID != "" && p.ID != parsed.WorkerID {
+			continue
+		}
+
+		// Filter by task_id if specified
+		if parsed.TaskID != "" && p.TaskID != parsed.TaskID {
+			continue
+		}
+
+		// Get queue size if queue repository is available
+		queueSize := 0
+		if a.queueRepo != nil {
+			queueSize = a.queueRepo.Size(p.ID)
+		}
+
+		// Build worker info matching coordinator format
+		phase := ""
+		if p.Phase != nil {
+			phase = string(*p.Phase)
+		}
+		info := workerStateInfo{
+			WorkerID:  p.ID,
+			Status:    processStatusToWorkerStatus(p.Status),
+			Phase:     phase,
+			TaskID:    p.TaskID,
+			SessionID: p.SessionID,
+			QueueSize: queueSize,
+			StartedAt: p.CreatedAt.Format("15:04:05"),
+			CreatedAt: p.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+
+		// Add retired_at if worker is retired
+		if !p.RetiredAt.IsZero() {
+			info.RetiredAt = p.RetiredAt.Format("2006-01-02T15:04:05Z07:00")
+		}
+
+		// Add context usage if metrics available
+		if p.Metrics != nil && p.Metrics.ContextTokens > 0 && p.Metrics.ContextWindow > 0 {
+			info.ContextUsage = formatContextUsage(p.Metrics.ContextTokens, p.Metrics.ContextWindow)
+		}
+
+		// Get current task assignment if task repository is available
+		if a.taskRepo != nil && p.TaskID != "" {
+			if task, err := a.taskRepo.Get(p.TaskID); err == nil {
+				info.TaskStatus = string(task.Status)
+				if !task.StartedAt.IsZero() {
+					info.TaskStarted = task.StartedAt.Format("2006-01-02T15:04:05Z07:00")
+				}
+				info.ReviewerID = task.Reviewer
+			}
+		}
+
+		response.Workers = append(response.Workers, info)
+
+		// Track ready workers (Ready status with no task)
+		if p.Status == repository.StatusReady && p.TaskID == "" {
+			response.ReadyWorkers = append(response.ReadyWorkers, p.ID)
+		}
+	}
+
+	jsonBytes, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal worker state: %w", err)
+	}
+
+	return mcptypes.SuccessResult(string(jsonBytes)), nil
+}
+
+// ===========================================================================
+// Messaging Handlers (Batch 2)
+// ===========================================================================
+
+// HandleSendToWorker handles the send_to_worker MCP tool call.
+func (a *V2Adapter) HandleSendToWorker(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	var parsed sendToWorkerArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	cmd := command.NewSendToProcessCommand(command.SourceMCPTool, parsed.WorkerID, parsed.Message)
+	if err := cmd.Validate(); err != nil {
+		return nil, fmt.Errorf("send_to_worker command validation failed: %w", err)
+	}
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("send_to_worker command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	return mcptypes.SuccessResult(fmt.Sprintf("Message sent to worker %s", parsed.WorkerID)), nil
+}
+
+// HandlePostMessage handles the post_message MCP tool call.
+// This routes to SendToWorker or Broadcast based on the "to" field.
+func (a *V2Adapter) HandlePostMessage(ctx context.Context, args json.RawMessage, senderID string) (*mcptypes.ToolCallResult, error) {
+	var parsed postMessageArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if parsed.To == "" {
+		return nil, fmt.Errorf("to is required")
+	}
+	if parsed.Content == "" {
+		return nil, fmt.Errorf("content is required")
+	}
+
+	// Route based on "to" field
+	switch parsed.To {
+	case "ALL":
+		// Broadcast to all workers, excluding sender
+		cmd := command.NewBroadcastCommand(command.SourceMCPTool, parsed.Content, []string{senderID})
+		result, err := a.submitWithTimeout(ctx, cmd)
+		if err != nil {
+			return nil, fmt.Errorf("broadcast command failed: %w", err)
+		}
+		if !result.Success {
+			return mcptypes.ErrorResult(result.Error.Error()), nil
+		}
+		return mcptypes.SuccessResult("Message broadcast to all workers"), nil
+
+	case "COORDINATOR":
+		// Route to message log instead of returning error.
+		// This allows workers to post messages to the coordinator via v2Adapter.
+		if a.msgRepo != nil {
+			_, err := a.msgRepo.Append(senderID, message.ActorCoordinator, parsed.Content, message.MessageInfo)
+			if err != nil {
+				return nil, fmt.Errorf("failed to append message to coordinator log: %w", err)
+			}
+			return mcptypes.SuccessResult("Message posted to coordinator"), nil
+		}
+		return nil, fmt.Errorf("post_message to COORDINATOR requires message repository (not wired)")
+
+	default:
+		// Send to specific worker
+		cmd := command.NewSendToProcessCommand(command.SourceMCPTool, parsed.To, parsed.Content)
+		result, err := a.submitWithTimeout(ctx, cmd)
+		if err != nil {
+			return nil, fmt.Errorf("send_to_worker command failed: %w", err)
+		}
+		if !result.Success {
+			return mcptypes.ErrorResult(result.Error.Error()), nil
+		}
+		return mcptypes.SuccessResult(fmt.Sprintf("Message sent to %s", parsed.To)), nil
+	}
+}
+
+// readMessageLogArgs holds arguments for read_message_log tool.
+type readMessageLogArgs struct {
+	Limit   int  `json:"limit,omitempty"`
+	ReadAll bool `json:"read_all,omitempty"`
+}
+
+// messageLogResponse is the structured response for read_message_log.
+type messageLogResponse struct {
+	TotalCount    int               `json:"total_count"`
+	ReturnedCount int               `json:"returned_count"`
+	Messages      []messageLogEntry `json:"messages"`
+}
+
+// messageLogEntry is a single message in the log response.
+type messageLogEntry struct {
+	Timestamp string `json:"timestamp"` // HH:MM:SS format
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Content   string `json:"content"`
+}
+
+// HandleReadMessageLog handles the read_message_log MCP tool call.
+// This is a read-only operation that reads from the message repository.
+// Requires a MessageRepository to be configured via WithMessageRepository.
+//
+// Arguments:
+//   - limit: maximum number of messages to return (default 20)
+//   - read_all: if true, returns all messages; if false, returns only unread messages
+//     for the given agent and marks them as read.
+func (a *V2Adapter) HandleReadMessageLog(_ context.Context, args json.RawMessage, agentID string) (*mcptypes.ToolCallResult, error) {
+	if a.msgRepo == nil {
+		return nil, fmt.Errorf("message repository not configured for read operations")
+	}
+
+	var parsed readMessageLogArgs
+	if len(args) > 0 {
+		if err := json.Unmarshal(args, &parsed); err != nil {
+			return nil, fmt.Errorf("invalid arguments: %w", err)
+		}
+	}
+
+	limit := parsed.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+
+	var entries []message.Entry
+	var totalCount int
+
+	if parsed.ReadAll {
+		allEntries := a.msgRepo.Entries()
+		totalCount = len(allEntries)
+		entries = allEntries
+		if len(entries) > limit {
+			entries = entries[len(entries)-limit:]
+		}
+	} else {
+		entries = a.msgRepo.UnreadFor(agentID)
+		totalCount = len(entries)
+		a.msgRepo.MarkRead(agentID)
+	}
+
+	messages := make([]messageLogEntry, len(entries))
+	for i, entry := range entries {
+		messages[i] = messageLogEntry{
+			Timestamp: entry.Timestamp.Format("15:04:05"),
+			From:      entry.From,
+			To:        entry.To,
+			Content:   entry.Content,
+		}
+	}
+
+	response := messageLogResponse{
+		TotalCount:    totalCount,
+		ReturnedCount: len(messages),
+		Messages:      messages,
+	}
+
+	data, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling response: %w", err)
+	}
+
+	return mcptypes.StructuredResult(string(data), response), nil
+}
+
+// ===========================================================================
+// Task Assignment Handlers (Batch 3-4)
+// ===========================================================================
+
+// HandleAssignTask handles the assign_task MCP tool call.
+func (a *V2Adapter) HandleAssignTask(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	var parsed assignTaskArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, parsed.WorkerID, parsed.TaskID, parsed.Summary)
+	err := cmd.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("assign_task command validation failed: %w", err)
+	}
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("assign_task command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	return mcptypes.SuccessResult(fmt.Sprintf("Task %s assigned to worker %s", parsed.TaskID, parsed.WorkerID)), nil
+}
+
+// HandleAssignTaskReview handles the assign_task_review MCP tool call.
+func (a *V2Adapter) HandleAssignTaskReview(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	var parsed assignTaskReviewArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, parsed.ReviewerID, parsed.TaskID, parsed.ImplementerID)
+	if err := cmd.Validate(); err != nil {
+		return nil, fmt.Errorf("assign_task_review command validation failed: %w", err)
+	}
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("assign_task_review command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	return mcptypes.SuccessResult(fmt.Sprintf("Review of task %s assigned to worker %s", parsed.TaskID, parsed.ReviewerID)), nil
+}
+
+// HandleAssignReviewFeedback handles the assign_review_feedback MCP tool call.
+// This transitions an implementer to the AddressingFeedback phase with a message.
+func (a *V2Adapter) HandleAssignReviewFeedback(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	var parsed assignReviewFeedbackArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	cmd := command.NewAssignReviewFeedbackCommand(command.SourceMCPTool, parsed.ImplementerID, parsed.TaskID, parsed.Feedback)
+	if err := cmd.Validate(); err != nil {
+		return nil, fmt.Errorf("assign_review_feedback command validation failed: %w", err)
+	}
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("assign_review_feedback command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	return mcptypes.SuccessResult(fmt.Sprintf("Review feedback sent to worker %s for task %s", parsed.ImplementerID, parsed.TaskID)), nil
+}
+
+// HandleApproveCommit handles the approve_commit MCP tool call.
+func (a *V2Adapter) HandleApproveCommit(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	var parsed approveCommitArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, parsed.ImplementerID, parsed.TaskID)
+	if err := cmd.Validate(); err != nil {
+		return nil, fmt.Errorf("approve_commit command validation failed: %w", err)
+	}
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("approve_commit command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	return mcptypes.SuccessResult(fmt.Sprintf("Commit approved for worker %s on task %s", parsed.ImplementerID, parsed.TaskID)), nil
+}
+
+// ===========================================================================
+// State Transition Handlers (Batch 5)
+// ===========================================================================
+
+// HandleSignalReady handles the signal_ready MCP tool call.
+// This signals that a worker is ready for task assignment.
+// Posts a worker-ready message to the message log so the coordinator knows the worker is available.
+func (a *V2Adapter) HandleSignalReady(_ context.Context, _ json.RawMessage, workerID string) (*mcptypes.ToolCallResult, error) {
+	// Post worker-ready message to the message log for the coordinator
+	if a.msgRepo != nil {
+		_, err := a.msgRepo.Append(
+			workerID,
+			message.ActorCoordinator,
+			fmt.Sprintf("Worker %s is ready for task assignment", workerID),
+			message.MessageWorkerReady,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to post ready message: %w", err)
+		}
+	}
+
+	return mcptypes.SuccessResult(fmt.Sprintf("Worker %s ready signal acknowledged", workerID)), nil
+}
+
+// HandleReportImplementationComplete handles the report_implementation_complete MCP tool call.
+func (a *V2Adapter) HandleReportImplementationComplete(ctx context.Context, args json.RawMessage, workerID string) (*mcptypes.ToolCallResult, error) {
+	var parsed reportImplementationCompleteArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	cmd := command.NewReportCompleteCommand(command.SourceMCPTool, workerID, parsed.Summary)
+	if err := cmd.Validate(); err != nil {
+		return nil, fmt.Errorf("report_implementation_complete command validation failed: %w", err)
+	}
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("report_implementation_complete command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	// Post completion message to the coordinator so it knows the worker is done
+	if a.msgRepo != nil {
+		content := fmt.Sprintf("Implementation complete: %s", parsed.Summary)
+		if parsed.Summary == "" {
+			content = "Implementation complete"
+		}
+		_, err := a.msgRepo.Append(
+			workerID,
+			message.ActorCoordinator,
+			content,
+			message.MessageCompletion,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to post completion message: %w", err)
+		}
+	}
+
+	return mcptypes.SuccessResult("Implementation complete signal sent"), nil
+}
+
+// HandleReportReviewVerdict handles the report_review_verdict MCP tool call.
+func (a *V2Adapter) HandleReportReviewVerdict(ctx context.Context, args json.RawMessage, workerID string) (*mcptypes.ToolCallResult, error) {
+	var parsed reportReviewVerdictArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if parsed.Verdict == "" {
+		return nil, fmt.Errorf("verdict is required")
+	}
+
+	// Convert string verdict to command.Verdict
+	var verdict command.Verdict
+	switch parsed.Verdict {
+	case "APPROVED":
+		verdict = command.VerdictApproved
+	case "DENIED":
+		verdict = command.VerdictDenied
+	default:
+		return nil, fmt.Errorf("invalid verdict: must be APPROVED or DENIED")
+	}
+
+	cmd := command.NewReportVerdictCommand(command.SourceMCPTool, workerID, verdict, parsed.Comments)
+	if err := cmd.Validate(); err != nil {
+		return nil, fmt.Errorf("report_review_verdict command validation failed: %w", err)
+	}
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("report_review_verdict command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	// Post verdict message to the coordinator so it knows the review is complete
+	if a.msgRepo != nil {
+		content := fmt.Sprintf("Review verdict: %s", parsed.Verdict)
+		if parsed.Comments != "" {
+			content = fmt.Sprintf("Review verdict: %s - %s", parsed.Verdict, parsed.Comments)
+		}
+		_, err := a.msgRepo.Append(
+			workerID,
+			message.ActorCoordinator,
+			content,
+			message.MessageCompletion,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to post verdict message: %w", err)
+		}
+	}
+
+	return mcptypes.SuccessResult(fmt.Sprintf("Review verdict %s submitted", parsed.Verdict)), nil
+}
+
+// ===========================================================================
+// BD Integration Handlers (Batch 6)
+// ===========================================================================
+
+// markTaskCompleteArgs holds arguments for mark_task_complete tool.
+type markTaskCompleteArgs struct {
+	TaskID string `json:"task_id"`
+}
+
+// markTaskFailedArgs holds arguments for mark_task_failed tool.
+type markTaskFailedArgs struct {
+	TaskID string `json:"task_id"`
+	Reason string `json:"reason"`
+}
+
+// HandleMarkTaskComplete handles the mark_task_complete MCP tool call.
+// Routes through the v2 command processor using CmdMarkTaskComplete.
+func (a *V2Adapter) HandleMarkTaskComplete(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	var parsed markTaskCompleteArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, parsed.TaskID)
+	if err := cmd.Validate(); err != nil {
+		return nil, fmt.Errorf("mark_task_complete command validation failed: %w", err)
+	}
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("mark_task_complete command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	// Return structured response for consistency with existing behavior
+	response := map[string]any{
+		"status":  "success",
+		"message": fmt.Sprintf("Task %s marked as completed", parsed.TaskID),
+	}
+	data, _ := json.MarshalIndent(response, "", "  ")
+	return mcptypes.StructuredResult(string(data), response), nil
+}
+
+// HandleMarkTaskFailed handles the mark_task_failed MCP tool call.
+// Routes through the v2 command processor using CmdMarkTaskFailed.
+func (a *V2Adapter) HandleMarkTaskFailed(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	var parsed markTaskFailedArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	cmd := command.NewMarkTaskFailedCommand(command.SourceMCPTool, parsed.TaskID, parsed.Reason)
+	if err := cmd.Validate(); err != nil {
+		return nil, fmt.Errorf("mark_task_failed command validation failed: %w", err)
+	}
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("mark_task_failed command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	return mcptypes.SuccessResult(fmt.Sprintf("Task %s marked as failed with comment: %s", parsed.TaskID, parsed.Reason)), nil
+}
+
+// ===========================================================================
+// Worker Control Handlers
+// ===========================================================================
+
+// HandleStopProcess stops a process (worker or coordinator) programmatically.
+// Used by MCP tools to enable coordinator-initiated stops.
+func (a *V2Adapter) HandleStopProcess(processID string, force bool, reason string) error {
+	cmd := command.NewStopProcessCommand(command.SourceMCPTool, processID, force, reason)
+
+	if err := cmd.Validate(); err != nil {
+		return fmt.Errorf("invalid stop process command: %w", err)
+	}
+
+	return a.processor.Submit(cmd)
+}
+
+// ===========================================================================
+// Helper Methods
+// ===========================================================================
+
+// submitWithTimeout submits a command to the processor with the adapter's timeout.
+func (a *V2Adapter) submitWithTimeout(ctx context.Context, cmd command.Command) (*command.CommandResult, error) {
+	// Create a context with timeout
+	timeoutCtx, cancel := context.WithTimeout(ctx, a.timeout)
+	defer cancel()
+
+	// Submit and wait for result
+	result, err := a.processor.SubmitAndWait(timeoutCtx, cmd)
+	if err != nil {
+		// Check if it's a queue full error
+		if errors.Is(err, command.ErrQueueFull) {
+			return nil, fmt.Errorf("command queue is full, try again later")
+		}
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// processIDExtractor is an interface for types that can provide a process ID.
+type processIDExtractor interface {
+	GetProcessID() string
+}
+
+// extractProcessID extracts a process ID from command result data.
+// Supports SpawnProcessResult structs and raw string values.
+func extractProcessID(data any) string {
+	// Try string directly
+	if s, ok := data.(string); ok {
+		return s
+	}
+
+	// Try interface with GetProcessID method
+	if v, ok := data.(processIDExtractor); ok {
+		return v.GetProcessID()
+	}
+
+	// Fallback: return string representation
+	return fmt.Sprintf("%v", data)
+}

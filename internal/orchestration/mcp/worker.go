@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/perles/internal/orchestration/validation"
 )
 
 // Validation constants for post_reflections tool.
@@ -19,31 +20,19 @@ const (
 	MinSummaryLength = 20
 )
 
-// reflectionTaskIDPattern validates task IDs for reflections to prevent path traversal.
-// Matches patterns like: perles-abc123, ms-e52, task-abc.1
-var reflectionTaskIDPattern = regexp.MustCompile(`^[a-zA-Z]+-[a-zA-Z0-9]{2,10}(\.\d+)?$`)
-
 // MessageStore defines the interface for message storage operations.
 // This allows for dependency injection and easier testing.
+// Note: This interface is a subset of repository.MessageRepository.
+// MemoryMessageRepository satisfies this interface, verified by compile-time assertion below.
 type MessageStore interface {
 	UnreadFor(agentID string) []message.Entry
 	MarkRead(agentID string)
 	Append(from, to, content string, msgType message.MessageType) (*message.Entry, error)
 }
 
-// WorkerStateCallback defines the interface for workers to notify the coordinator
-// of phase transitions. This allows the coordinator to update its state tracking
-// when workers call tools like report_implementation_complete or report_review_verdict.
-type WorkerStateCallback interface {
-	// GetWorkerPhase returns the current phase for a worker.
-	GetWorkerPhase(workerID string) (events.WorkerPhase, error)
-	// OnImplementationComplete is called when a worker reports implementation is done.
-	// Returns error if worker is not in PhaseImplementing.
-	OnImplementationComplete(workerID, summary string) error
-	// OnReviewVerdict is called when a reviewer reports their verdict.
-	// Returns error if worker is not in PhaseReviewing or verdict is invalid.
-	OnReviewVerdict(workerID, verdict, comments string) error
-}
+// Compile-time interface assertion: MemoryMessageRepository satisfies MessageStore.
+// This ensures compatibility with the v2 MessageRepository migration.
+var _ MessageStore = (*repository.MemoryMessageRepository)(nil)
 
 // ReflectionWriter defines the interface for writing worker reflections.
 // This allows the session service to handle storage without tight coupling.
@@ -59,10 +48,13 @@ type WorkerServer struct {
 	*Server
 	workerID         string
 	msgStore         MessageStore
-	stateCallback    WorkerStateCallback
 	reflectionWriter ReflectionWriter
 	// dedup tracks recent messages to prevent duplicate sends to coordinator
 	dedup *MessageDeduplicator
+
+	// V2 adapter for command-based processing
+	// See docs/proposals/orchestration-v2-architecture.md for architecture details
+	v2Adapter *adapter.V2Adapter
 }
 
 // NewWorkerServer creates a new worker MCP server.
@@ -83,16 +75,15 @@ func NewWorkerServer(workerID string, msgStore MessageStore) *WorkerServer {
 	return ws
 }
 
-// SetStateCallback sets the callback interface for worker state notifications.
-// This must be called before the worker tools can perform state transitions.
-func (ws *WorkerServer) SetStateCallback(callback WorkerStateCallback) {
-	ws.stateCallback = callback
-}
-
 // SetReflectionWriter sets the reflection writer for saving worker reflections.
 // This must be called before the post_reflections tool can be used.
 func (ws *WorkerServer) SetReflectionWriter(writer ReflectionWriter) {
 	ws.reflectionWriter = writer
+}
+
+// SetV2Adapter allows setting the v2 adapter after construction.
+func (ws *WorkerServer) SetV2Adapter(adapter *adapter.V2Adapter) {
+	ws.v2Adapter = adapter
 }
 
 // registerTools registers all worker tools with the MCP server.
@@ -214,15 +205,6 @@ type sendMessageArgs struct {
 	Content string `json:"content"`
 }
 
-type reportImplementationCompleteArgs struct {
-	Summary string `json:"summary"`
-}
-
-type reportReviewVerdictArgs struct {
-	Verdict  string `json:"verdict"`
-	Comments string `json:"comments"`
-}
-
 // postReflectionsArgs defines the arguments for the post_reflections tool.
 type postReflectionsArgs struct {
 	TaskID    string `json:"task_id"`
@@ -319,132 +301,18 @@ func (ws *WorkerServer) handlePostMessage(_ context.Context, rawArgs json.RawMes
 }
 
 // handleSignalReady signals the coordinator that this worker is ready for task assignment.
-func (ws *WorkerServer) handleSignalReady(_ context.Context, _ json.RawMessage) (*ToolCallResult, error) {
-	if ws.msgStore == nil {
-		return nil, fmt.Errorf("message store not available")
-	}
-
-	// Send ready signal to coordinator
-	readyContent := fmt.Sprintf("Worker %s ready for task assignment", ws.workerID)
-	_, err := ws.msgStore.Append(ws.workerID, message.ActorCoordinator, readyContent, message.MessageWorkerReady)
-	if err != nil {
-		log.Debug(log.CatMCP, "Failed to signal ready", "workerID", ws.workerID, "error", err)
-		return nil, fmt.Errorf("failed to signal ready: %w", err)
-	}
-
-	log.Debug(log.CatMCP, "Worker signaled ready", "workerID", ws.workerID)
-
-	return SuccessResult("Ready signal sent to coordinator"), nil
+func (ws *WorkerServer) handleSignalReady(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
+	return ws.v2Adapter.HandleSignalReady(ctx, args, ws.workerID)
 }
 
 // handleReportImplementationComplete signals that implementation is complete and ready for review.
-func (ws *WorkerServer) handleReportImplementationComplete(_ context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
-	var args reportImplementationCompleteArgs
-	if err := json.Unmarshal(rawArgs, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	if args.Summary == "" {
-		return nil, fmt.Errorf("summary is required")
-	}
-
-	// Validate state callback is available
-	if ws.stateCallback == nil {
-		return nil, fmt.Errorf("state callback not configured - cannot perform state transitions")
-	}
-
-	// Validate worker is in PhaseImplementing
-	phase, err := ws.stateCallback.GetWorkerPhase(ws.workerID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get worker phase: %w", err)
-	}
-	if phase != events.PhaseImplementing && phase != events.PhaseAddressingFeedback {
-		return nil, fmt.Errorf("worker %s is not in implementing or addressing_feedback phase (current: %s)", ws.workerID, phase)
-	}
-
-	// Call the callback to update coordinator state
-	if err := ws.stateCallback.OnImplementationComplete(ws.workerID, args.Summary); err != nil {
-		return nil, fmt.Errorf("failed to update state: %w", err)
-	}
-
-	// Post message to coordinator
-	if ws.msgStore != nil {
-		content := fmt.Sprintf("Implementation complete: %s", args.Summary)
-		if _, err := ws.msgStore.Append(ws.workerID, message.ActorCoordinator, content, message.MessageInfo); err != nil {
-			log.Warn(log.CatMCP, "Failed to post implementation complete message", "workerID", ws.workerID, "error", err)
-		}
-	}
-
-	log.Debug(log.CatMCP, "Worker reported implementation complete", "workerID", ws.workerID, "summary", args.Summary)
-
-	// Return structured response
-	response := map[string]any{
-		"status":  "success",
-		"message": "Implementation complete, awaiting review",
-		"phase":   string(events.PhaseAwaitingReview),
-	}
-	data, _ := json.MarshalIndent(response, "", "  ")
-	return StructuredResult(string(data), response), nil
+func (ws *WorkerServer) handleReportImplementationComplete(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
+	return ws.v2Adapter.HandleReportImplementationComplete(ctx, rawArgs, ws.workerID)
 }
 
 // handleReportReviewVerdict reports the code review verdict (APPROVED or DENIED).
-func (ws *WorkerServer) handleReportReviewVerdict(_ context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
-	var args reportReviewVerdictArgs
-	if err := json.Unmarshal(rawArgs, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	if args.Verdict == "" {
-		return nil, fmt.Errorf("verdict is required")
-	}
-	if args.Comments == "" {
-		return nil, fmt.Errorf("comments is required")
-	}
-
-	// Validate verdict value
-	if args.Verdict != "APPROVED" && args.Verdict != "DENIED" {
-		return nil, fmt.Errorf("verdict must be 'APPROVED' or 'DENIED', got '%s'", args.Verdict)
-	}
-
-	// Validate state callback is available
-	if ws.stateCallback == nil {
-		return nil, fmt.Errorf("state callback not configured - cannot perform state transitions")
-	}
-
-	// Validate worker is in PhaseReviewing
-	phase, err := ws.stateCallback.GetWorkerPhase(ws.workerID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get worker phase: %w", err)
-	}
-	if phase != events.PhaseReviewing {
-		return nil, fmt.Errorf("worker %s is not in reviewing phase (current: %s)", ws.workerID, phase)
-	}
-
-	// Call the callback to update coordinator state
-	if err := ws.stateCallback.OnReviewVerdict(ws.workerID, args.Verdict, args.Comments); err != nil {
-		return nil, fmt.Errorf("failed to update state: %w", err)
-	}
-
-	// Post message to coordinator
-	if ws.msgStore != nil {
-		content := fmt.Sprintf("Review verdict: %s - %s", args.Verdict, args.Comments)
-		if _, err := ws.msgStore.Append(ws.workerID, message.ActorCoordinator, content, message.MessageInfo); err != nil {
-			log.Warn(log.CatMCP, "Failed to post review verdict message", "workerID", ws.workerID, "error", err)
-		}
-	}
-
-	log.Debug(log.CatMCP, "Worker reported review verdict", "workerID", ws.workerID, "verdict", args.Verdict)
-
-	// Return structured response
-	response := map[string]any{
-		"status":   "success",
-		"message":  fmt.Sprintf("Review verdict reported: %s", args.Verdict),
-		"verdict":  args.Verdict,
-		"phase":    string(events.PhaseIdle), // Reviewer returns to idle
-		"comments": args.Comments,
-	}
-	data, _ := json.MarshalIndent(response, "", "  ")
-	return StructuredResult(string(data), response), nil
+func (ws *WorkerServer) handleReportReviewVerdict(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
+	return ws.v2Adapter.HandleReportReviewVerdict(ctx, rawArgs, ws.workerID)
 }
 
 // validateReflectionArgs validates the arguments for the post_reflections tool.
@@ -463,7 +331,7 @@ func validateReflectionArgs(args postReflectionsArgs) error {
 	}
 
 	// Validate task_id matches expected format
-	if !reflectionTaskIDPattern.MatchString(args.TaskID) {
+	if !validation.IsValidTaskID(args.TaskID) {
 		return fmt.Errorf("invalid task_id format: %s", args.TaskID)
 	}
 
@@ -546,14 +414,6 @@ func (ws *WorkerServer) handlePostReflections(_ context.Context, rawArgs json.Ra
 	if err != nil {
 		log.Debug(log.CatMCP, "Failed to write reflection", "workerID", ws.workerID, "error", err)
 		return nil, fmt.Errorf("failed to save reflection: %w", err)
-	}
-
-	// Optionally post info message to coordinator for tracking
-	if ws.msgStore != nil {
-		msg := fmt.Sprintf("Reflection posted for task %s", args.TaskID)
-		if _, err := ws.msgStore.Append(ws.workerID, message.ActorCoordinator, msg, message.MessageInfo); err != nil {
-			log.Warn(log.CatMCP, "Failed to notify coordinator of reflection", "error", err)
-		}
 	}
 
 	log.Debug(log.CatMCP, "Worker posted reflection", "workerID", ws.workerID, "taskID", args.TaskID, "path", filePath)

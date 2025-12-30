@@ -258,17 +258,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Switch back to kanban mode from orchestration
 		log.Info(log.CatMode, "Switching mode", "from", "orchestration", "to", "kanban")
 
-		// Cancel pub/sub subscriptions first
+		// Cancel pub/sub subscriptions first - this triggers cleanup via v2 commands
 		m.orchestration.CancelSubscriptions()
 
-		// Clean up coordinator and pool before switching modes
+		// Log coordinator cleanup (actual cleanup happens via CmdRetireProcess in model.cleanup())
 		if coord := m.orchestration.Coordinator(); coord != nil {
-			log.Debug(log.CatMode, "Cancelling coordinator")
-			_ = coord.Cancel() // Preserves state for resume
-		}
-		if pool := m.orchestration.Pool(); pool != nil {
-			log.Debug(log.CatMode, "Closing worker pool")
-			pool.Close()
+			log.Debug(log.CatMode, "Coordinator cleanup initiated")
 		}
 		// Shut down MCP server synchronously to free the port
 		if srv := m.orchestration.MCPServer(); srv != nil {
@@ -543,13 +538,9 @@ func (m *Model) Close() error {
 	m.logOverlay.StopListening()
 
 	// Clean up orchestration mode resources if active
+	// Cleanup is handled via CmdRetireProcess in model.cleanup()
 	if m.currentMode == mode.ModeOrchestration {
-		if coord := m.orchestration.Coordinator(); coord != nil {
-			_ = coord.Cancel() // Preserves state for resume
-		}
-		if pool := m.orchestration.Pool(); pool != nil {
-			pool.Close()
-		}
+		m.orchestration.CancelSubscriptions()
 	}
 
 	// Close mode controllers

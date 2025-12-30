@@ -175,15 +175,17 @@ The reviewer will call `report_review_verdict(verdict, comments)` which:
        feedback="<specific feedback about required changes>"
    )
    ```
-   - This automatically:
-     - Validates task is in `denied` status
-     - Sets implementer phase to `AddressingFeedback`
-     - Sends feedback message to implementer
-     - Adds BD comment with feedback
+   - This sends the feedback message to the implementer
+   - Note: The `report_review_verdict` call already transitioned the implementer to `AddressingFeedback` phase and the reviewer back to `Idle` phase
 
 2. **Wait for implementer to fix** - they will call `report_implementation_complete` again when ready
+   - This transitions implementer from `AddressingFeedback` → `AwaitingReview`
 
-3. **Assign another review** (return to Step 3) - use a fresh reviewer
+3. **MUST call `assign_task_review` again** (return to Step 3)
+   - **CRITICAL:** The previous reviewer is now in `Idle` phase and CANNOT submit another verdict until re-assigned
+   - You MUST call `assign_task_review` to put a reviewer back into `Reviewing` phase
+   - The reviewer can be the same worker or a different one, but assignment is required
+   - Do NOT just send a message asking them to re-review - they need the phase transition
 
 4. **Repeat until approved**
 
@@ -550,6 +552,7 @@ Coordinator: "Epic perles-abc1 is now complete. All 7 tasks implemented and revi
 ❌ **Saying "No response requested" without explanation** - Always explain why you're not taking action
 ❌ **Using send_to_worker for state changes** - Use structured tools (assign_task, assign_task_review, etc.) instead
 ❌ **Skipping query_worker_state** - Always check state before making assignments
+❌ **Asking reviewer to re-review without assign_task_review** - After denial, reviewer is in Idle phase and MUST be re-assigned via `assign_task_review` before they can submit another verdict
 
 ## Adaptation for Different Scenarios
 

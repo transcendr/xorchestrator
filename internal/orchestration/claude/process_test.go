@@ -174,12 +174,12 @@ func TestOutputEventParsing(t *testing.T) {
 	tests := []struct {
 		name     string
 		json     string
-		validate func(t *testing.T, e OutputEvent)
+		validate func(t *testing.T, e client.OutputEvent)
 	}{
 		{
 			name: "system init event",
 			json: `{"type":"system","subtype":"init","session_id":"sess-abc123","cwd":"/project"}`,
-			validate: func(t *testing.T, e OutputEvent) {
+			validate: func(t *testing.T, e client.OutputEvent) {
 				require.Equal(t, client.EventSystem, e.Type)
 				require.Equal(t, "init", e.SubType)
 				require.Equal(t, "sess-abc123", e.SessionID)
@@ -191,7 +191,7 @@ func TestOutputEventParsing(t *testing.T) {
 		{
 			name: "assistant message with text",
 			json: `{"type":"assistant","message":{"id":"msg_1","role":"assistant","content":[{"type":"text","text":"Hello, world!"}],"model":"claude-sonnet-4"}}`,
-			validate: func(t *testing.T, e OutputEvent) {
+			validate: func(t *testing.T, e client.OutputEvent) {
 				require.Equal(t, client.EventAssistant, e.Type)
 				require.True(t, e.IsAssistant())
 				require.NotNil(t, e.Message)
@@ -205,7 +205,7 @@ func TestOutputEventParsing(t *testing.T) {
 		{
 			name: "assistant message with tool use",
 			json: `{"type":"assistant","message":{"id":"msg_2","content":[{"type":"tool_use","id":"toolu_123","name":"Read","input":{"file_path":"main.go"}}]}}`,
-			validate: func(t *testing.T, e OutputEvent) {
+			validate: func(t *testing.T, e client.OutputEvent) {
 				require.Equal(t, client.EventAssistant, e.Type)
 				require.True(t, e.IsAssistant())
 				require.NotNil(t, e.Message)
@@ -219,7 +219,7 @@ func TestOutputEventParsing(t *testing.T) {
 		{
 			name: "assistant message with text and tool use",
 			json: `{"type":"assistant","message":{"content":[{"type":"text","text":"Let me read that file."},{"type":"tool_use","id":"toolu_456","name":"Read","input":{"file_path":"go.mod"}}]}}`,
-			validate: func(t *testing.T, e OutputEvent) {
+			validate: func(t *testing.T, e client.OutputEvent) {
 				require.True(t, e.IsAssistant())
 				require.NotNil(t, e.Message)
 				require.Equal(t, "Let me read that file.", e.Message.GetText())
@@ -232,7 +232,7 @@ func TestOutputEventParsing(t *testing.T) {
 		{
 			name: "tool result event",
 			json: `{"type":"tool_result","tool":{"id":"toolu_123","name":"Read","content":"package main\n"}}`,
-			validate: func(t *testing.T, e OutputEvent) {
+			validate: func(t *testing.T, e client.OutputEvent) {
 				require.Equal(t, client.EventToolResult, e.Type)
 				require.True(t, e.IsToolResult())
 				require.NotNil(t, e.Tool)
@@ -244,7 +244,7 @@ func TestOutputEventParsing(t *testing.T) {
 		{
 			name: "tool result with output field",
 			json: `{"type":"tool_result","tool":{"name":"Bash","output":"success"}}`,
-			validate: func(t *testing.T, e OutputEvent) {
+			validate: func(t *testing.T, e client.OutputEvent) {
 				require.True(t, e.IsToolResult())
 				require.NotNil(t, e.Tool)
 				require.Equal(t, "success", e.Tool.GetOutput())
@@ -253,7 +253,7 @@ func TestOutputEventParsing(t *testing.T) {
 		{
 			name: "result success event",
 			json: `{"type":"result","subtype":"success","total_cost_usd":0.0123,"duration_ms":45000,"usage":{"input_tokens":5000,"output_tokens":1500,"cache_read_input_tokens":10000,"cache_creation_input_tokens":2000}}`,
-			validate: func(t *testing.T, e OutputEvent) {
+			validate: func(t *testing.T, e client.OutputEvent) {
 				require.Equal(t, client.EventResult, e.Type)
 				require.Equal(t, "success", e.SubType)
 				require.True(t, e.IsResult())
@@ -270,7 +270,7 @@ func TestOutputEventParsing(t *testing.T) {
 		{
 			name: "result with model usage",
 			json: `{"type":"result","subtype":"success","modelUsage":{"claude-sonnet-4":{"inputTokens":1000,"outputTokens":500,"contextWindow":200000,"costUSD":0.05}}}`,
-			validate: func(t *testing.T, e OutputEvent) {
+			validate: func(t *testing.T, e client.OutputEvent) {
 				require.True(t, e.IsResult())
 				require.NotNil(t, e.ModelUsage)
 				usage, ok := e.ModelUsage["claude-sonnet-4"]
@@ -284,7 +284,7 @@ func TestOutputEventParsing(t *testing.T) {
 		{
 			name: "error event",
 			json: `{"type":"error","error":{"message":"Rate limit exceeded","code":"rate_limit"}}`,
-			validate: func(t *testing.T, e OutputEvent) {
+			validate: func(t *testing.T, e client.OutputEvent) {
 				require.Equal(t, client.EventError, e.Type)
 				require.True(t, e.IsError())
 				require.NotNil(t, e.Error)
@@ -296,7 +296,7 @@ func TestOutputEventParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var event OutputEvent
+			var event client.OutputEvent
 			err := json.Unmarshal([]byte(tt.json), &event)
 			require.NoError(t, err)
 			tt.validate(t, event)
@@ -306,15 +306,15 @@ func TestOutputEventParsing(t *testing.T) {
 
 func TestProcessStatus(t *testing.T) {
 	tests := []struct {
-		status   ProcessStatus
+		status   client.ProcessStatus
 		expected string
 	}{
-		{StatusPending, "pending"},
-		{StatusRunning, "running"},
-		{StatusCompleted, "completed"},
-		{StatusFailed, "failed"},
-		{StatusCancelled, "cancelled"},
-		{ProcessStatus(99), "unknown"},
+		{client.StatusPending, "pending"},
+		{client.StatusRunning, "running"},
+		{client.StatusCompleted, "completed"},
+		{client.StatusFailed, "failed"},
+		{client.StatusCancelled, "cancelled"},
+		{client.ProcessStatus(99), "unknown"},
 	}
 
 	for _, tt := range tests {
@@ -325,29 +325,29 @@ func TestProcessStatus(t *testing.T) {
 }
 
 func TestGetContextTokensNilUsage(t *testing.T) {
-	event := OutputEvent{Type: "result"}
+	event := client.OutputEvent{Type: "result"}
 	require.Equal(t, 0, event.GetContextTokens())
 }
 
 func TestToolContentGetOutput(t *testing.T) {
 	tests := []struct {
 		name     string
-		tool     ToolContent
+		tool     client.ToolContent
 		expected string
 	}{
 		{
 			name:     "output field set",
-			tool:     ToolContent{Output: "from output", Content: "from content"},
+			tool:     client.ToolContent{Output: "from output", Content: "from content"},
 			expected: "from output",
 		},
 		{
 			name:     "only content field set",
-			tool:     ToolContent{Content: "from content"},
+			tool:     client.ToolContent{Content: "from content"},
 			expected: "from content",
 		},
 		{
 			name:     "both empty",
-			tool:     ToolContent{},
+			tool:     client.ToolContent{},
 			expected: "",
 		},
 	}
@@ -360,8 +360,8 @@ func TestToolContentGetOutput(t *testing.T) {
 }
 
 func TestMessageContentMultipleTextBlocks(t *testing.T) {
-	msg := MessageContent{
-		Content: []ContentBlock{
+	msg := client.MessageContent{
+		Content: []client.ContentBlock{
 			{Type: "text", Text: "First. "},
 			{Type: "tool_use", Name: "Read"},
 			{Type: "text", Text: "Second."},
@@ -381,8 +381,8 @@ func TestMessageContentMultipleTextBlocks(t *testing.T) {
 }
 
 func TestMessageContentNoToolUses(t *testing.T) {
-	msg := MessageContent{
-		Content: []ContentBlock{
+	msg := client.MessageContent{
+		Content: []client.ContentBlock{
 			{Type: "text", Text: "Just text"},
 		},
 	}
@@ -393,7 +393,7 @@ func TestMessageContentNoToolUses(t *testing.T) {
 
 func TestOutputEventTypeChecks(t *testing.T) {
 	tests := []struct {
-		event       OutputEvent
+		event       client.OutputEvent
 		isInit      bool
 		isAssistant bool
 		isToolRes   bool
@@ -401,27 +401,27 @@ func TestOutputEventTypeChecks(t *testing.T) {
 		isError     bool
 	}{
 		{
-			event:  OutputEvent{Type: client.EventSystem, SubType: "init"},
+			event:  client.OutputEvent{Type: client.EventSystem, SubType: "init"},
 			isInit: true,
 		},
 		{
-			event:       OutputEvent{Type: client.EventAssistant},
+			event:       client.OutputEvent{Type: client.EventAssistant},
 			isAssistant: true,
 		},
 		{
-			event:     OutputEvent{Type: client.EventToolResult},
+			event:     client.OutputEvent{Type: client.EventToolResult},
 			isToolRes: true,
 		},
 		{
-			event:    OutputEvent{Type: client.EventResult},
+			event:    client.OutputEvent{Type: client.EventResult},
 			isResult: true,
 		},
 		{
-			event:   OutputEvent{Type: client.EventError},
+			event:   client.OutputEvent{Type: client.EventError},
 			isError: true,
 		},
 		{
-			event:   OutputEvent{Type: "other", Error: &ErrorInfo{Message: "oops"}},
+			event:   client.OutputEvent{Type: "other", Error: &client.ErrorInfo{Message: "oops"}},
 			isError: true, // Error field set makes it an error
 		},
 	}
@@ -448,8 +448,8 @@ func newTestProcess() *Process {
 	return &Process{
 		sessionID:  "test-session-123",
 		workDir:    "/test/project",
-		status:     StatusRunning,
-		events:     make(chan OutputEvent, 100),
+		status:     client.StatusRunning,
+		events:     make(chan client.OutputEvent, 100),
 		errors:     make(chan error, 10),
 		cancelFunc: cancel,
 		ctx:        ctx,
@@ -460,31 +460,31 @@ func TestProcessLifecycle_StatusTransitions(t *testing.T) {
 	p := newTestProcess()
 
 	// Initial status should be Running (as set in newTestProcess)
-	require.Equal(t, StatusRunning, p.Status())
+	require.Equal(t, client.StatusRunning, p.Status())
 	require.True(t, p.IsRunning())
 
 	// Test setStatus transitions
-	p.setStatus(StatusCompleted)
-	require.Equal(t, StatusCompleted, p.Status())
+	p.setStatus(client.StatusCompleted)
+	require.Equal(t, client.StatusCompleted, p.Status())
 	require.False(t, p.IsRunning())
 
-	p.setStatus(StatusFailed)
-	require.Equal(t, StatusFailed, p.Status())
+	p.setStatus(client.StatusFailed)
+	require.Equal(t, client.StatusFailed, p.Status())
 
-	p.setStatus(StatusCancelled)
-	require.Equal(t, StatusCancelled, p.Status())
+	p.setStatus(client.StatusCancelled)
+	require.Equal(t, client.StatusCancelled, p.Status())
 }
 
 func TestProcessLifecycle_Cancel(t *testing.T) {
 	p := newTestProcess()
 
 	// Verify initial state
-	require.Equal(t, StatusRunning, p.Status())
+	require.Equal(t, client.StatusRunning, p.Status())
 
 	// Cancel should set status to Cancelled
 	err := p.Cancel()
 	require.NoError(t, err)
-	require.Equal(t, StatusCancelled, p.Status())
+	require.Equal(t, client.StatusCancelled, p.Status())
 
 	// Context should be cancelled
 	select {
@@ -502,15 +502,15 @@ func TestProcessLifecycle_CancelRacePrevention(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
 		p := &Process{
-			status:     StatusRunning,
-			events:     make(chan OutputEvent, 100),
+			status:     client.StatusRunning,
+			events:     make(chan client.OutputEvent, 100),
 			errors:     make(chan error, 10),
 			cancelFunc: cancel,
 			ctx:        ctx,
 		}
 
 		// Track status seen by a goroutine that races with Cancel
-		var observedStatus ProcessStatus
+		var observedStatus client.ProcessStatus
 		var wg sync.WaitGroup
 		wg.Add(1)
 
@@ -518,7 +518,7 @@ func TestProcessLifecycle_CancelRacePrevention(t *testing.T) {
 			defer wg.Done()
 			// Wait for context cancellation
 			<-p.ctx.Done()
-			// Immediately check status - should already be StatusCancelled
+			// Immediately check status - should already be client.StatusCancelled
 			observedStatus = p.Status()
 		}()
 
@@ -530,9 +530,9 @@ func TestProcessLifecycle_CancelRacePrevention(t *testing.T) {
 
 		wg.Wait()
 
-		// The goroutine should have seen StatusCancelled, not StatusRunning
-		require.Equal(t, StatusCancelled, observedStatus,
-			"Goroutine should see StatusCancelled after context cancel (iteration %d)", i)
+		// The goroutine should have seen client.StatusCancelled, not client.StatusRunning
+		require.Equal(t, client.StatusCancelled, observedStatus,
+			"Goroutine should see client.StatusCancelled after context cancel (iteration %d)", i)
 	}
 }
 
@@ -556,7 +556,7 @@ func TestProcessLifecycle_Channels(t *testing.T) {
 
 	// Send an event
 	go func() {
-		p.events <- OutputEvent{Type: "test"}
+		p.events <- client.OutputEvent{Type: "test"}
 	}()
 
 	select {
@@ -726,12 +726,12 @@ func TestResumeWithConfig(t *testing.T) {
 func TestContentBlock_FormatToolDisplay(t *testing.T) {
 	tests := []struct {
 		name     string
-		block    ContentBlock
+		block    client.ContentBlock
 		expected string
 	}{
 		{
 			name: "non-tool block returns empty",
-			block: ContentBlock{
+			block: client.ContentBlock{
 				Type: "text",
 				Text: "Hello",
 			},
@@ -739,7 +739,7 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 		},
 		{
 			name: "bash with description",
-			block: ContentBlock{
+			block: client.ContentBlock{
 				Type:  "tool_use",
 				Name:  "Bash",
 				Input: json.RawMessage(`{"command":"find . -name '*.go'","description":"Find Go files"}`),
@@ -748,7 +748,7 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 		},
 		{
 			name: "bash with command only",
-			block: ContentBlock{
+			block: client.ContentBlock{
 				Type:  "tool_use",
 				Name:  "Bash",
 				Input: json.RawMessage(`{"command":"ls -la"}`),
@@ -757,7 +757,7 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 		},
 		{
 			name: "bash with long command gets truncated",
-			block: ContentBlock{
+			block: client.ContentBlock{
 				Type:  "tool_use",
 				Name:  "Bash",
 				Input: json.RawMessage(`{"command":"find /Users/zack/Development/go/src/perles/internal -type d | wc -l"}`),
@@ -766,7 +766,7 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 		},
 		{
 			name: "view with file path",
-			block: ContentBlock{
+			block: client.ContentBlock{
 				Type:  "tool_use",
 				Name:  "View",
 				Input: json.RawMessage(`{"file_path":"/Users/zack/project/src/main.go"}`),
@@ -775,7 +775,7 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 		},
 		{
 			name: "edit with file path",
-			block: ContentBlock{
+			block: client.ContentBlock{
 				Type:  "tool_use",
 				Name:  "Edit",
 				Input: json.RawMessage(`{"file_path":"/project/config.yaml","old_string":"foo","new_string":"bar"}`),
@@ -784,7 +784,7 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 		},
 		{
 			name: "grep with pattern",
-			block: ContentBlock{
+			block: client.ContentBlock{
 				Type:  "tool_use",
 				Name:  "Grep",
 				Input: json.RawMessage(`{"pattern":"func.*Test","path":"/project"}`),
@@ -793,7 +793,7 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 		},
 		{
 			name: "glob with pattern",
-			block: ContentBlock{
+			block: client.ContentBlock{
 				Type:  "tool_use",
 				Name:  "Glob",
 				Input: json.RawMessage(`{"pattern":"**/*.go"}`),
@@ -802,7 +802,7 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 		},
 		{
 			name: "unknown tool shows just name",
-			block: ContentBlock{
+			block: client.ContentBlock{
 				Type:  "tool_use",
 				Name:  "spawn_worker",
 				Input: json.RawMessage(`{"task_id":"EPIC-1","prompt":"Do something"}`),
@@ -811,7 +811,7 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 		},
 		{
 			name: "empty name returns empty",
-			block: ContentBlock{
+			block: client.ContentBlock{
 				Type:  "tool_use",
 				Name:  "",
 				Input: json.RawMessage(`{}`),

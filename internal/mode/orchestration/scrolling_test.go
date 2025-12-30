@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/pool"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 )
 
@@ -43,7 +43,7 @@ func TestEmptyPane_WorkerShowsPlaceholder(t *testing.T) {
 	m = m.SetSize(120, 30)
 
 	// Add a worker but no messages
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
 
 	view := m.View()
 	require.Contains(t, view, "Waiting for output...")
@@ -92,7 +92,7 @@ func TestShortContent_WorkerNoScrollIndicator(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 30)
 
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
 	m = m.AddWorkerMessage("worker-1", "Short message")
 	_ = m.View()
 
@@ -111,8 +111,8 @@ func TestMultipleWorkers_ScrollAffectsCurrentWorkerOnly(t *testing.T) {
 	m = m.SetSize(120, 30)
 
 	// Add two workers with enough content to scroll
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
 
 	// Add lots of content to both workers
 	for i := 0; i < 50; i++ {
@@ -163,8 +163,8 @@ func TestMultipleWorkers_CyclingPreservesScrollPosition(t *testing.T) {
 	m = m.SetSize(120, 30)
 
 	// Add workers with content
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
 
 	for i := 0; i < 50; i++ {
 		m = m.AddWorkerMessage("worker-1", "Worker 1 message")
@@ -328,8 +328,8 @@ func TestRapidUpdates_WorkerContentDirtyPerWorker(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 30)
 
-	m = m.UpdateWorker("worker-1", pool.WorkerWorking)
-	m = m.UpdateWorker("worker-2", pool.WorkerWorking)
+	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
+	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
 
 	// Add message to worker-1 only
 	m = m.AddWorkerMessage("worker-1", "Message")
@@ -531,14 +531,14 @@ func TestWorkerRetirement_ViewportCleanedUp(t *testing.T) {
 	// Create and retire many workers to trigger cleanup
 	for i := 1; i <= 10; i++ {
 		workerID := "worker-" + string(rune('0'+i))
-		m = m.UpdateWorker(workerID, pool.WorkerWorking)
+		m = m.UpdateWorker(workerID, events.ProcessStatusWorking)
 		m = m.AddWorkerMessage(workerID, "Processing...")
 
 		// Render to create viewport
 		_ = m.View()
 
 		// Retire
-		m = m.UpdateWorker(workerID, pool.WorkerRetired)
+		m = m.UpdateWorker(workerID, events.ProcessStatusRetired)
 	}
 
 	// Only maxRetiredWorkerViewports (5) should be retained

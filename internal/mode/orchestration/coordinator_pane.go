@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/orchestration/coordinator"
+	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 	"github.com/zjrosen/perles/internal/ui/styles"
 )
@@ -49,7 +49,15 @@ func (m Model) renderCoordinatorPane(width, height int, fullscreen bool) string 
 			metricsDisplay = m.coordinatorMetrics.FormatContextDisplay()
 		}
 		hasNewContent = m.coordinatorPane.hasNewContent
-		borderColor = styles.BorderDefaultColor
+		// Determine border color based on status
+		switch m.coordinatorStatus {
+		case events.ProcessStatusWorking:
+			borderColor = workerWorkingBorderColor
+		case events.ProcessStatusStopped, events.ProcessStatusRetired, events.ProcessStatusFailed:
+			borderColor = workerStoppedBorderColor
+		default:
+			borderColor = styles.BorderDefaultColor
+		}
 	}
 
 	// Build bottom-left queue indicator
@@ -81,30 +89,28 @@ func (m Model) buildCoordinatorTitle() string {
 	var indicator string
 	var indicatorStyle lipgloss.Style
 
-	if m.coord != nil {
-		status := m.coord.Status()
-		switch status {
-		case coordinator.StatusRunning:
-			// When running, show working (blue ●) or ready (green ○) based on activity
-			if m.coordinatorWorking {
-				indicator = "●"
-				indicatorStyle = workerWorkingStyle // Blue - actively working
-			} else {
-				indicator = "○"
-				indicatorStyle = workerReadyStyle // Green - ready/waiting for input
-			}
-		case coordinator.StatusPaused:
-			indicator = "⏸"
-			indicatorStyle = statusPausedStyle
-		case coordinator.StatusFailed, coordinator.StatusStopped:
-			indicator = "✗"
-			indicatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B"))
-		default:
+	// Use coordinatorStatus from v2 events instead of calling m.coord.Status()
+	switch m.coordinatorStatus {
+	case events.ProcessStatusReady, events.ProcessStatusWorking:
+		// When ready or working, show indicator based on activity
+		if m.coordinatorWorking {
+			indicator = "●"
+			indicatorStyle = workerWorkingStyle // Blue - actively working
+		} else {
 			indicator = "○"
-			indicatorStyle = lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
+			indicatorStyle = workerReadyStyle // Green - ready/waiting for input
 		}
-	} else {
-		// No coordinator yet - show empty circle
+	case events.ProcessStatusPaused:
+		indicator = "⏸"
+		indicatorStyle = statusPausedStyle
+	case events.ProcessStatusStopped:
+		indicator = "⚠"
+		indicatorStyle = workerStoppedStyle // Yellow/amber - stopped (can be resumed)
+	case events.ProcessStatusFailed, events.ProcessStatusRetired:
+		indicator = "✗"
+		indicatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B"))
+	default:
+		// StatusPending, StatusStarting, or no status yet - show empty circle
 		indicator = "○"
 		indicatorStyle = lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
 	}

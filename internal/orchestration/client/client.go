@@ -53,18 +53,3 @@ func NewClient(clientType ClientType) (HeadlessClient, error) {
 	}
 	return factory(), nil
 }
-
-// RegisteredClients returns a list of all registered client types.
-func RegisteredClients() []ClientType {
-	types := make([]ClientType, 0, len(clientRegistry))
-	for t := range clientRegistry {
-		types = append(types, t)
-	}
-	return types
-}
-
-// IsRegistered returns true if the given client type is registered.
-func IsRegistered(clientType ClientType) bool {
-	_, ok := clientRegistry[clientType]
-	return ok
-}

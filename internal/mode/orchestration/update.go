@@ -12,17 +12,18 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/coordinator"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/pool"
 	"github.com/zjrosen/perles/internal/orchestration/session"
+	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
-
-	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // KeyMap defines the keybindings for orchestration mode.
@@ -382,17 +383,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case StartCoordinatorMsg:
 		return m.handleStartCoordinator()
 
-	// Handle coordinator events from pub/sub
-	case pubsub.Event[events.CoordinatorEvent]:
-		return m.handleCoordinatorEvent(msg)
-
-	// Handle worker events from pub/sub
-	case pubsub.Event[events.WorkerEvent]:
-		return m.handleWorkerEvent(msg)
-
 	// Handle message events from pub/sub
 	case pubsub.Event[message.Event]:
 		return m.handleMessageEvent(msg)
+
+	// Handle v2 orchestration events from pub/sub (includes all worker events)
+	case pubsub.Event[any]:
+		return m.handleV2Event(msg)
 
 	case CoordinatorStoppedMsg:
 		// Close session with appropriate status
@@ -509,22 +506,26 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case RefreshTimeoutMsg:
 		if m.pendingRefresh {
 			m.pendingRefresh = false
-			coord := m.coord
-			msgLog := m.messageLog
+			if m.cmdSubmitter == nil {
+				m = m.SetError("Command submitter not available")
+				return m, nil
+			}
+			msgRepo := m.messageRepo
+			cmdSubmitter := m.cmdSubmitter
 			return m, func() tea.Msg {
 				log.Debug(log.CatOrch, "Handoff timeout - proceeding with generic handoff", "subsystem", "update")
 				// Post fallback message
-				if msgLog != nil {
-					_, _ = msgLog.Append(
+				if msgRepo != nil {
+					_, _ = msgRepo.Append(
 						message.ActorCoordinator,
 						message.ActorAll,
 						"[HANDOFF] Context refresh initiated (coordinator did not respond)",
 						message.MessageHandoff,
 					)
 				}
-				if err := coord.Replace(); err != nil {
-					return CoordinatorErrorMsg{Error: err}
-				}
+				// Submit replace command via v2
+				cmd := command.NewReplaceProcessCommand(command.SourceUser, repository.CoordinatorID, "handoff_timeout")
+				cmdSubmitter.Submit(cmd)
 				return nil
 			}
 		}
@@ -535,117 +536,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 // --- Pub/sub event handlers ---
-
-// handleCoordinatorEvent processes coordinator events from the pub/sub broker.
-// CRITICAL: Always returns coordListener.Listen() to continue receiving events.
-func (m Model) handleCoordinatorEvent(event pubsub.Event[events.CoordinatorEvent]) (Model, tea.Cmd) {
-	if m.coordListener == nil {
-		return m, nil
-	}
-
-	payload := event.Payload
-
-	cmds := make([]tea.Cmd, 0)
-
-	switch payload.Type {
-	case events.CoordinatorChat:
-		// Add message to coordinator pane
-		m = m.AddChatMessage(payload.Role, payload.Content)
-
-	case events.CoordinatorStatusChange:
-		m = m.updateStatusFromCoordinator(convertCoordinatorStatus(payload.Status))
-
-	case events.CoordinatorError:
-		m = m.SetError(payload.Error.Error())
-
-	case events.CoordinatorTokenUsage:
-		if payload.Metrics != nil {
-			m.coordinatorMetrics = payload.Metrics
-			log.Debug(log.CatOrch, "Coordinator token usage updated",
-				"subsystem", "update",
-				"contextTokens", payload.Metrics.ContextTokens,
-				"contextWindow", payload.Metrics.ContextWindow,
-				"totalCost", payload.Metrics.TotalCostUSD)
-		}
-
-	case events.CoordinatorWorking:
-		m.coordinatorWorking = true
-
-	case events.CoordinatorReady:
-		m.coordinatorWorking = false
-		// Note: Do NOT reset queue count here. The queue may still have messages
-		// that will be drained by drainQueue() which emits CoordinatorMessageQueued
-		// with the remaining count. CoordinatorMessageQueued is the source of truth.
-
-	case events.CoordinatorMessageQueued:
-		// Update queue count for display
-		m.coordinatorPane.queueCount = payload.QueueCount
-		log.Debug(log.CatOrch, "Coordinator queue count updated",
-			"subsystem", "update",
-			"queueCount", payload.QueueCount)
-	}
-
-	cmds = append(cmds, m.coordListener.Listen())
-
-	return m, tea.Batch(cmds...)
-}
-
-// handleWorkerEvent processes worker events from the pub/sub broker.
-// CRITICAL: Always returns workerListener.Listen() to continue receiving events.
-func (m Model) handleWorkerEvent(event pubsub.Event[events.WorkerEvent]) (Model, tea.Cmd) {
-	if m.workerListener == nil {
-		return m, nil
-	}
-
-	payload := event.Payload
-
-	switch payload.Type {
-	case events.WorkerSpawned:
-		log.Debug(log.CatOrch, "Worker spawned in TUI", "subsystem", "update", "workerID", payload.WorkerID, "taskID", payload.TaskID, "status", payload.Status)
-		m = m.UpdateWorker(payload.WorkerID, payload.Status)
-
-	case events.WorkerOutput:
-		log.Debug(log.CatOrch, "Worker output received", "subsystem", "update", "workerID", payload.WorkerID, "outputLen", len(payload.Output))
-		if payload.Output != "" {
-			m = m.AddWorkerMessage(payload.WorkerID, payload.Output)
-		}
-
-	case events.WorkerStatusChange:
-		log.Debug(log.CatOrch, "Worker status changed", "subsystem", "update", "workerID", payload.WorkerID, "status", payload.Status)
-		m = m.UpdateWorker(payload.WorkerID, payload.Status)
-
-	case events.WorkerTokenUsage:
-		if payload.Metrics != nil {
-			log.Debug(log.CatOrch, "Worker token usage",
-				"subsystem", "update",
-				"workerID", payload.WorkerID,
-				"contextTokens", payload.Metrics.ContextTokens,
-				"contextWindow", payload.Metrics.ContextWindow,
-				"totalCost", payload.Metrics.TotalCostUSD)
-			m.workerPane.workerMetrics[payload.WorkerID] = payload.Metrics
-		}
-
-	case events.WorkerIncoming:
-		log.Debug(log.CatOrch, "Coordinator message to worker",
-			"subsystem", "update",
-			"workerID", payload.WorkerID,
-			"messageLen", len(payload.Message))
-		m = m.AddWorkerMessageWithRole(payload.WorkerID, "coordinator", payload.Message)
-
-	case events.WorkerQueueChanged:
-		log.Debug(log.CatOrch, "Worker queue changed",
-			"subsystem", "update",
-			"workerID", payload.WorkerID,
-			"queueCount", payload.QueueCount)
-		m = m.SetQueueCount(payload.WorkerID, payload.QueueCount)
-
-	case events.WorkerError:
-		log.Debug(log.CatOrch, "Worker error", "subsystem", "update", "workerID", payload.WorkerID, "error", payload.Error)
-	}
-
-	// Always continue listening for more events
-	return m, m.workerListener.Listen()
-}
 
 // handleMessageEvent processes message events from the pub/sub broker.
 // CRITICAL: Always returns messageListener.Listen() to continue receiving events.
@@ -666,20 +556,17 @@ func (m Model) handleMessageEvent(event pubsub.Event[message.Event]) (Model, tea
 		// Check if this is a handoff message while we're waiting for refresh
 		if m.pendingRefresh && entry.Type == message.MessageHandoff {
 			m.pendingRefresh = false
-			// Trigger the actual replacement
-			coord := m.coord
-			cmd := func() tea.Msg {
-				if err := coord.Replace(); err != nil {
-					return CoordinatorErrorMsg{Error: err}
-				}
-				return nil
+			// Trigger the actual replacement via v2 command
+			if m.cmdSubmitter != nil {
+				cmd := command.NewReplaceProcessCommand(command.SourceUser, repository.CoordinatorID, "handoff_received")
+				m.cmdSubmitter.Submit(cmd)
 			}
-			return m, tea.Batch(m.messageListener.Listen(), cmd)
+			return m, m.messageListener.Listen()
 		}
 
 		// Nudge coordinator if message is to COORDINATOR or ALL
 		if entry.To == message.ActorCoordinator || entry.To == message.ActorAll {
-			if m.coord != nil && m.nudgeBatcher != nil && entry.From != message.ActorCoordinator {
+			if m.processRepo != nil && m.nudgeBatcher != nil && entry.From != message.ActorCoordinator {
 				// Determine message type based on the entry type
 				msgType := WorkerNewMessage
 				if entry.Type == message.MessageWorkerReady {
@@ -693,20 +580,221 @@ func (m Model) handleMessageEvent(event pubsub.Event[message.Event]) (Model, tea
 	return m, m.messageListener.Listen()
 }
 
-// convertCoordinatorStatus converts events.CoordinatorStatus to coordinator.Status.
-func convertCoordinatorStatus(s events.CoordinatorStatus) coordinator.Status {
-	switch s {
-	case events.StatusReady:
-		return coordinator.StatusPending
-	case events.StatusWorking:
-		return coordinator.StatusRunning
-	case events.StatusPaused:
-		return coordinator.StatusPaused
-	case events.StatusStopped:
-		return coordinator.StatusStopped
-	default:
-		return coordinator.StatusPending
+// handleV2Event processes v2 orchestration events from the unified v2EventBus.
+// This is the single source of truth for all process events in the TUI.
+// Events are routed based on ProcessEvent.Role for coordinator vs worker handling.
+// CRITICAL: Always returns v2Listener.Listen() to continue receiving events.
+func (m Model) handleV2Event(event pubsub.Event[any]) (Model, tea.Cmd) {
+	if m.v2Listener == nil {
+		return m, nil
 	}
+
+	// Type-assert to known event types
+	switch payload := event.Payload.(type) {
+	case events.ProcessEvent:
+		// Handle unified ProcessEvent - route based on Role
+		if payload.IsCoordinator() {
+			m = m.handleCoordinatorProcessEvent(payload)
+		} else {
+			m = m.handleWorkerProcessEvent(payload)
+		}
+
+	case processor.CommandErrorEvent:
+		// Log command errors (display deferred to Phase 2)
+		log.Debug(log.CatOrch, "V2 command error",
+			"subsystem", "update",
+			"commandID", payload.CommandID,
+			"commandType", payload.CommandType,
+			"error", payload.Error)
+
+	default:
+		// Unknown event types are handled gracefully - just continue listening
+	}
+
+	return m, m.v2Listener.Listen()
+}
+
+// handleCoordinatorProcessEvent handles ProcessEvent events for the coordinator role.
+// Routes coordinator-specific events to update coordinator pane state.
+func (m Model) handleCoordinatorProcessEvent(evt events.ProcessEvent) Model {
+	switch evt.Type {
+	case events.ProcessSpawned:
+		log.Debug(log.CatOrch, "Coordinator process spawned",
+			"subsystem", "update",
+			"processID", evt.ProcessID)
+		// Coordinator pane initialization is handled elsewhere (initializer)
+
+	case events.ProcessOutput:
+		log.Debug(log.CatOrch, "Coordinator output received",
+			"subsystem", "update",
+			"processID", evt.ProcessID,
+			"outputLen", len(evt.Output))
+		if evt.Output != "" {
+			m = m.AddChatMessage("coordinator", evt.Output)
+		}
+
+	case events.ProcessReady:
+		log.Debug(log.CatOrch, "Coordinator ready",
+			"subsystem", "update",
+			"processID", evt.ProcessID)
+		m.coordinatorWorking = false
+		m.coordinatorStatus = events.ProcessStatusReady
+
+	case events.ProcessWorking:
+		log.Debug(log.CatOrch, "Coordinator working",
+			"subsystem", "update",
+			"processID", evt.ProcessID)
+		m.coordinatorWorking = true
+		m.coordinatorStatus = events.ProcessStatusWorking
+
+	case events.ProcessIncoming:
+		log.Debug(log.CatOrch, "Coordinator incoming message",
+			"subsystem", "update",
+			"processID", evt.ProcessID,
+			"messageLen", len(evt.Message))
+		if evt.Message != "" {
+			m = m.AddChatMessage("user", evt.Message)
+		}
+
+	case events.ProcessTokenUsage:
+		if evt.Metrics != nil {
+			log.Debug(log.CatOrch, "Coordinator token usage",
+				"subsystem", "update",
+				"processID", evt.ProcessID,
+				"contextTokens", evt.Metrics.ContextTokens,
+				"contextWindow", evt.Metrics.ContextWindow,
+				"totalCost", evt.Metrics.TotalCostUSD)
+			m.coordinatorMetrics = evt.Metrics
+		}
+
+	case events.ProcessError:
+		log.Debug(log.CatOrch, "Coordinator error",
+			"subsystem", "update",
+			"processID", evt.ProcessID,
+			"error", evt.Error)
+		if evt.Error != nil {
+			m = m.SetError(evt.Error.Error())
+		}
+
+	case events.ProcessQueueChanged:
+		log.Debug(log.CatOrch, "Coordinator queue changed",
+			"subsystem", "update",
+			"processID", evt.ProcessID,
+			"queueCount", evt.QueueCount)
+		m.coordinatorPane.queueCount = evt.QueueCount
+
+	case events.ProcessStatusChange:
+		log.Debug(log.CatOrch, "Coordinator status changed",
+			"subsystem", "update",
+			"processID", evt.ProcessID,
+			"status", evt.Status)
+		// Update coordinator status for UI rendering
+		m.coordinatorStatus = evt.Status
+		m = m.updateStatusFromProcessStatus(evt.Status)
+	}
+
+	return m
+}
+
+// handleWorkerProcessEvent handles ProcessEvent events for worker roles.
+// Routes worker-specific events to update worker pane state.
+func (m Model) handleWorkerProcessEvent(evt events.ProcessEvent) Model {
+	workerID := evt.ProcessID
+
+	// Update task ID and phase if present in any event
+	if evt.TaskID != "" {
+		m.workerPane.workerTaskIDs[workerID] = evt.TaskID
+	}
+	if evt.Phase != nil {
+		m.workerPane.workerPhases[workerID] = *evt.Phase
+	}
+
+	switch evt.Type {
+	case events.ProcessSpawned:
+		log.Debug(log.CatOrch, "Worker process spawned",
+			"subsystem", "update",
+			"workerID", workerID,
+			"taskID", evt.TaskID)
+		m = m.UpdateWorker(workerID, evt.Status)
+
+	case events.ProcessOutput:
+		log.Debug(log.CatOrch, "Worker output received",
+			"subsystem", "update",
+			"workerID", workerID,
+			"outputLen", len(evt.Output))
+		if evt.Output != "" {
+			m = m.AddWorkerMessage(workerID, evt.Output)
+		}
+
+	case events.ProcessReady:
+		log.Debug(log.CatOrch, "Worker ready",
+			"subsystem", "update",
+			"workerID", workerID)
+		m = m.UpdateWorker(workerID, events.ProcessStatusReady)
+
+	case events.ProcessWorking:
+		log.Debug(log.CatOrch, "Worker working",
+			"subsystem", "update",
+			"workerID", workerID)
+		m = m.UpdateWorker(workerID, events.ProcessStatusWorking)
+
+	case events.ProcessIncoming:
+		// ProcessIncoming indicates a message was delivered to the worker.
+		// Display messages from both user and coordinator.
+		log.Debug(log.CatOrch, "Worker incoming message",
+			"subsystem", "update",
+			"workerID", workerID,
+			"sender", evt.Sender,
+			"messageLen", len(evt.Message))
+		if evt.Message != "" {
+			m = m.AddWorkerMessageWithRole(workerID, evt.Sender, evt.Message)
+		}
+
+	case events.ProcessTokenUsage:
+		if evt.Metrics != nil {
+			log.Debug(log.CatOrch, "Worker token usage",
+				"subsystem", "update",
+				"workerID", workerID,
+				"contextTokens", evt.Metrics.ContextTokens,
+				"contextWindow", evt.Metrics.ContextWindow,
+				"totalCost", evt.Metrics.TotalCostUSD)
+			m.workerPane.workerMetrics[workerID] = evt.Metrics
+		}
+
+	case events.ProcessError:
+		log.Debug(log.CatOrch, "Worker error",
+			"subsystem", "update",
+			"workerID", workerID,
+			"error", evt.Error)
+		// Worker errors are logged but not shown in modal (non-fatal)
+
+	case events.ProcessQueueChanged:
+		log.Debug(log.CatOrch, "Worker queue changed",
+			"subsystem", "update",
+			"workerID", workerID,
+			"queueCount", evt.QueueCount)
+		m = m.SetQueueCount(workerID, evt.QueueCount)
+
+	case events.ProcessStatusChange:
+		log.Debug(log.CatOrch, "Worker status changed",
+			"subsystem", "update",
+			"workerID", workerID,
+			"status", evt.Status)
+		m = m.UpdateWorker(workerID, evt.Status)
+	}
+
+	return m
+}
+
+// updateStatusFromProcessStatus updates model state based on ProcessStatus.
+func (m Model) updateStatusFromProcessStatus(status events.ProcessStatus) Model {
+	switch status {
+	case events.ProcessStatusWorking, events.ProcessStatusReady:
+		m.paused = false
+	case events.ProcessStatusPaused:
+		m.paused = true
+	}
+	return m
 }
 
 // handleInitializerEvent processes events from the Initializer state machine.
@@ -717,22 +805,33 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 	case InitEventPhaseChanged:
 		// Set up TUI event subscriptions once coordinator is available
 		// This allows panes to populate during loading
-		if payload.Phase >= InitAwaitingFirstMessage && m.coordListener == nil {
-			if coord := m.initializer.GetCoordinator(); coord != nil {
-				m.coord = coord
-				m.coordListener = pubsub.NewContinuousListener(m.ctx, coord.Broker())
-				m.workerListener = pubsub.NewContinuousListener(m.ctx, coord.Workers())
+		// Note: Coordinator events now flow through v2EventBus via ProcessEvent
+		if payload.Phase >= InitAwaitingFirstMessage && m.v2Listener == nil {
+			// Get ProcessRepository for coordinator state queries
+			if processRepo := m.initializer.GetProcessRepository(); processRepo != nil {
+				m.processRepo = processRepo
 
-				if msgLog := m.initializer.GetMessageLog(); msgLog != nil {
-					m.messageLog = msgLog
-					m.messageListener = pubsub.NewContinuousListener(m.ctx, msgLog.Broker())
+				if msgRepo := m.initializer.GetMessageRepo(); msgRepo != nil {
+					m.messageRepo = msgRepo
+					m.messageListener = pubsub.NewContinuousListener(m.ctx, msgRepo.Broker())
+				}
+
+				// Set up v2 event subscription before workers spawn
+				// This is the single source of truth for all process events (coordinator + workers)
+				if v2Bus := m.initializer.GetV2EventBus(); v2Bus != nil {
+					m.v2Listener = pubsub.NewContinuousListener(m.ctx, v2Bus)
+				}
+
+				// Get cmdSubmitter for v2 command submission
+				if cmdSubmitter := m.initializer.GetCmdSubmitter(); cmdSubmitter != nil {
+					m.cmdSubmitter = cmdSubmitter
 				}
 
 				// Set up nudge batcher early so worker ready messages get forwarded
 				if m.nudgeBatcher == nil {
 					m.nudgeBatcher = NewNudgeBatcher(1 * time.Second)
 					m.nudgeBatcher.SetOnNudge(func(messagesByType map[MessageType][]string) {
-						if m.coord == nil {
+						if m.cmdSubmitter == nil {
 							return
 						}
 
@@ -752,26 +851,28 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 
 						if len(readyMessageWorkerIds) > 0 {
 							nudge = fmt.Sprintf("[%s] have started up and are now ready", strings.Join(readyMessageWorkerIds, ", "))
-							if _, err := m.coord.SendUserMessage(nudge); err != nil {
-								log.Debug(log.CatOrch, "Failed to nudge coordinator", "subsystem", "update", "error", err)
-							}
+							cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, nudge)
+							m.cmdSubmitter.Submit(cmd)
 						}
 
 						if len(newMessageWorkerIds) > 0 {
 							nudge = fmt.Sprintf("[%s sent messages] Use read_message_log to check for new messages.", strings.Join(newMessageWorkerIds, ", "))
-							if _, err := m.coord.SendUserMessage(nudge); err != nil {
-								log.Debug(log.CatOrch, "Failed to nudge coordinator", "subsystem", "update", "error", err)
-							}
+							cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, nudge)
+							m.cmdSubmitter.Submit(cmd)
 						}
 					})
 				}
 
-				return m, tea.Batch(
+				cmds := []tea.Cmd{
 					m.initListener.Listen(),
-					m.coordListener.Listen(),
-					m.workerListener.Listen(),
-					m.messageListener.Listen(),
-				)
+				}
+				if m.messageListener != nil {
+					cmds = append(cmds, m.messageListener.Listen())
+				}
+				if m.v2Listener != nil {
+					cmds = append(cmds, m.v2Listener.Listen())
+				}
+				return m, tea.Batch(cmds...)
 			}
 		}
 
@@ -780,30 +881,35 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 	case InitEventReady:
 		// Grab all resources from the initializer
 		res := m.initializer.Resources()
-		m.aiClient = res.AIClient
-		m.aiClientExtensions = res.Extensions
-		m.pool = res.Pool
-		m.messageLog = res.MessageLog
+		m.messageRepo = res.MessageRepo
 		m.mcpServer = res.MCPServer
 		m.mcpPort = res.MCPPort
 		m.mcpCoordServer = res.MCPCoordServer
-		m.coord = res.Coordinator
 		m.session = res.Session
+
+		// Get cmdSubmitter and processRepo if not already set
+		if m.cmdSubmitter == nil {
+			m.cmdSubmitter = m.initializer.GetCmdSubmitter()
+		}
+		if m.processRepo == nil {
+			m.processRepo = m.initializer.GetProcessRepository()
+		}
 
 		// Set up pub/sub subscriptions if not already set up
 		// (they may have been set up earlier when coordinator became available)
+		// Note: All process events (coordinator + workers) flow through v2EventBus
 		var cmds []tea.Cmd
-		if m.coordListener == nil {
-			m.coordListener = pubsub.NewContinuousListener(m.ctx, m.coord.Broker())
-			cmds = append(cmds, m.coordListener.Listen())
-		}
-		if m.workerListener == nil {
-			m.workerListener = pubsub.NewContinuousListener(m.ctx, m.coord.Workers())
-			cmds = append(cmds, m.workerListener.Listen())
-		}
 		if m.messageListener == nil {
-			m.messageListener = pubsub.NewContinuousListener(m.ctx, m.messageLog.Broker())
+			m.messageListener = pubsub.NewContinuousListener(m.ctx, m.messageRepo.Broker())
 			cmds = append(cmds, m.messageListener.Listen())
+		}
+		// Set up v2 event subscription if not already set up
+		// This is the single source of truth for all process events (coordinator + workers)
+		if m.v2Listener == nil {
+			if v2Bus := m.initializer.GetV2EventBus(); v2Bus != nil {
+				m.v2Listener = pubsub.NewContinuousListener(m.ctx, v2Bus)
+				cmds = append(cmds, m.v2Listener.Listen())
+			}
 		}
 
 		// Mark all panes dirty so they auto-scroll to bottom on first render
@@ -877,6 +983,11 @@ func (m Model) handleStartCoordinator() (Model, tea.Cmd) {
 
 // handleUserInput sends user input to the target (coordinator or worker).
 func (m Model) handleUserInput(content, target string) (Model, tea.Cmd) {
+	// Check for /stop command (routes directly to command submitter, ignores target)
+	if strings.HasPrefix(content, "/stop ") {
+		return m.handleStopProcessCommand(content)
+	}
+
 	// Route based on target
 	switch target {
 	case "COORDINATOR", "":
@@ -889,156 +1000,80 @@ func (m Model) handleUserInput(content, target string) (Model, tea.Cmd) {
 }
 
 // handleUserInputToCoordinator sends user input to the coordinator.
-// Uses the coordinator's queue system to handle busy state.
+// Uses v2 command submission via CmdSendToProcess.
 func (m Model) handleUserInputToCoordinator(content string) (Model, tea.Cmd) {
-	if m.coord == nil {
-		m = m.SetError("Coordinator not started")
+	if m.cmdSubmitter == nil {
+		m = m.SetError("Command submitter not available")
 		return m, nil
 	}
 
-	// Capture coordinator for closure
-	coord := m.coord
+	// Submit v2 command to send message to coordinator
+	// The command handler will add the message to chat via event emission
+	cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, content)
+	m.cmdSubmitter.Submit(cmd)
 
-	// Send to coordinator - it will emit an event that adds the message to chat
-	return m, func() tea.Msg {
-		result, err := coord.SendUserMessage(content)
-		if err != nil {
-			return CoordinatorErrorMsg{Error: err}
-		}
-
-		if result.Queued {
-			log.Debug(log.CatOrch, "User message queued for coordinator",
-				"subsystem", "update", "position", result.QueuePosition)
-			return CoordinatorMessageQueuedMsg{
-				QueuePosition: result.QueuePosition,
-			}
-		}
-
-		return nil
-	}
+	return m, nil
 }
 
 // handleUserInputToWorker sends user input directly to a worker.
-// Uses the CoordinatorServer's queue system to handle busy workers.
+// Uses v2 command submission via CmdSendToProcess.
 func (m Model) handleUserInputToWorker(content, workerID string) (Model, tea.Cmd) {
-	if m.mcpCoordServer == nil {
-		m = m.SetError("MCP coordinator server not available")
+	if m.cmdSubmitter == nil {
+		m = m.SetError("Command submitter not available")
 		return m, nil
 	}
 
-	// Add message to worker pane immediately (optimistic update)
-	m = m.AddWorkerMessageWithRole(workerID, "user", content)
-	log.Debug(log.CatOrch, "Sending message to worker", "subsystem", "update", "workerID", workerID)
+	// Submit v2 command to send message to worker
+	// The command handler will add the message to chat via event emission
+	cmd := command.NewSendToProcessCommand(command.SourceUser, workerID, content)
+	m.cmdSubmitter.Submit(cmd)
 
-	// Capture server for closure
-	mcpServer := m.mcpCoordServer
-
-	return m, func() tea.Msg {
-		// Use CoordinatorServer's queue-aware method to send the message
-		result, err := mcpServer.SendUserMessageToWorker(context.Background(), workerID, content)
-		if err != nil {
-			return WorkerErrorMsg{WorkerID: workerID, Error: err}
-		}
-
-		if result.Queued {
-			log.Debug(log.CatOrch, "User message queued for worker",
-				"subsystem", "update", "workerID", workerID, "position", result.QueuePosition)
-			return UserMessageQueuedMsg{
-				WorkerID:      workerID,
-				QueuePosition: result.QueuePosition,
-			}
-		}
-
-		log.Debug(log.CatOrch, "Message sent to worker", "subsystem", "update", "workerID", workerID)
-		return nil
-	}
+	return m, nil
 }
 
 // handleUserInputBroadcast sends user input to the coordinator and all active workers.
-// Uses the CoordinatorServer's queue system to handle busy workers.
+// Uses v2 command submission via CmdSendToProcess.
 func (m Model) handleUserInputBroadcast(content string) (Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
-	// Send to coordinator (the coordinator will emit an event that adds the message to chat)
-	if m.coord != nil {
-		coord := m.coord
-		coordCmd := func() tea.Msg {
-			result, err := coord.SendUserMessage("[BROADCAST]\n" + content)
-			if err != nil {
-				return CoordinatorErrorMsg{Error: err}
-			}
-			if result.Queued {
-				return CoordinatorMessageQueuedMsg{QueuePosition: result.QueuePosition}
-			}
-			return nil
-		}
-		cmds = append(cmds, coordCmd)
+	if m.cmdSubmitter == nil {
+		m = m.SetError("Command submitter not available")
+		return m, nil
 	}
 
-	// Send to all active workers using the queue system
-	if m.mcpCoordServer != nil {
-		for _, workerID := range m.workerPane.workerIDs {
-			status := m.workerPane.workerStatus[workerID]
-			// Only send to ready or working workers (not retired)
-			if status == pool.WorkerRetired {
-				continue
-			}
+	// Send to coordinator via v2 command
+	cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, "[BROADCAST]\n"+content)
+	m.cmdSubmitter.Submit(cmd)
 
-			// Add message to worker pane (optimistic update)
-			m = m.AddWorkerMessageWithRole(workerID, "user", "[BROADCAST] "+content)
-
-			// Capture for closure
-			wid := workerID
-			mcpServer := m.mcpCoordServer
-			broadcastContent := fmt.Sprintf("[BROADCAST FROM USER]\n%s", content)
-
-			workerCmd := func() tea.Msg {
-				// Use CoordinatorServer's queue-aware method to send the message
-				result, err := mcpServer.SendUserMessageToWorker(context.Background(), wid, broadcastContent)
-				if err != nil {
-					// Non-fatal errors for broadcast - log and continue
-					log.Debug(log.CatOrch, "Broadcast to worker failed",
-						"subsystem", "update", "workerID", wid, "error", err)
-					return nil
-				}
-
-				if result.Queued {
-					log.Debug(log.CatOrch, "Broadcast message queued for worker",
-						"subsystem", "update", "workerID", wid, "position", result.QueuePosition)
-					return UserMessageQueuedMsg{
-						WorkerID:      wid,
-						QueuePosition: result.QueuePosition,
-					}
-				}
-
-				return nil
-			}
-			cmds = append(cmds, workerCmd)
+	// Send to all active workers via v2 command
+	for _, workerID := range m.workerPane.workerIDs {
+		status := m.workerPane.workerStatus[workerID]
+		// Only send to ready or working workers (not retired)
+		if status == events.ProcessStatusRetired || status == events.ProcessStatusFailed {
+			continue
 		}
+
+		broadcastContent := fmt.Sprintf("[BROADCAST]\n%s", content)
+		cmd := command.NewSendToProcessCommand(command.SourceUser, workerID, broadcastContent)
+		m.cmdSubmitter.Submit(cmd)
 	}
 
-	log.Debug(log.CatOrch, "Broadcast message sent", "subsystem", "update", "targets", len(cmds))
-	return m, tea.Batch(cmds...)
+	log.Debug(log.CatOrch, "Broadcast message sent", "subsystem", "update")
+	return m, nil
 }
 
-// handlePauseToggle toggles the paused state.
+// handlePauseToggle toggles the paused state using v2 commands.
 func (m Model) handlePauseToggle() (Model, tea.Cmd) {
-	if m.coord == nil {
+	if m.cmdSubmitter == nil {
 		return m, nil
 	}
 
 	if m.paused {
-		if err := m.coord.Resume(); err != nil {
-			m = m.SetError(err.Error())
-			return m, nil
-		}
-		m.paused = false
+		// Submit resume command - the handler will update m.paused via ProcessStatusChange event
+		cmd := command.NewResumeProcessCommand(command.SourceUser, repository.CoordinatorID)
+		m.cmdSubmitter.Submit(cmd)
 	} else {
-		if err := m.coord.Pause(); err != nil {
-			m = m.SetError(err.Error())
-			return m, nil
-		}
-		m.paused = true
+		// Submit pause command - the handler will update m.paused via ProcessStatusChange event
+		cmd := command.NewPauseProcessCommand(command.SourceUser, repository.CoordinatorID, "user_requested")
+		m.cmdSubmitter.Submit(cmd)
 	}
 
 	return m, nil
@@ -1048,10 +1083,10 @@ func (m Model) handlePauseToggle() (Model, tea.Cmd) {
 // Sets pendingRefresh flag and sends a message to the coordinator asking it to post
 // a handoff message via prepare_handoff. The actual Replace() is triggered when the
 // handoff message is received in handleMessageEvent.
-// Also starts a 5-second timeout to handle cases where coordinator doesn't respond.
+// Also starts a 15-second timeout to handle cases where coordinator doesn't respond.
 func (m Model) handleReplaceCoordinator() (Model, tea.Cmd) {
-	if m.coord == nil {
-		m = m.SetError("Coordinator not started")
+	if m.cmdSubmitter == nil {
+		m = m.SetError("Command submitter not available")
 		return m, nil
 	}
 
@@ -1063,10 +1098,8 @@ func (m Model) handleReplaceCoordinator() (Model, tea.Cmd) {
 		return RefreshTimeoutMsg{}
 	})
 
-	// Send message to coordinator to post handoff
-	coord := m.coord
-	sendCmd := func() tea.Msg {
-		handoffMessage := `[CONTEXT REFRESH INITIATED]
+	// Send message to coordinator to post handoff via v2 command
+	handoffMessage := `[CONTEXT REFRESH INITIATED]
 
 Your context window is approaching limits. The user has initiated a coordinator refresh (Ctrl+R).
 
@@ -1090,47 +1123,54 @@ The more detailed your handoff, the smoother the transition will be. Think of th
 
 When you're ready, call: ` + "`prepare_handoff`" + ` with your summary.`
 
-		_, err := coord.SendUserMessage(handoffMessage)
-		if err != nil {
-			return CoordinatorErrorMsg{Error: fmt.Errorf("failed to request handoff: %w", err)}
-		}
-		return nil
-	}
+	cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, handoffMessage)
+	m.cmdSubmitter.Submit(cmd)
 
-	return m, tea.Batch(sendCmd, timeoutCmd)
+	return m, timeoutCmd
 }
 
-// updateStatusFromCoordinator updates model state based on coordinator status.
-func (m Model) updateStatusFromCoordinator(status coordinator.Status) Model {
-	switch status {
-	case coordinator.StatusRunning:
-		m.paused = false
-	case coordinator.StatusPaused:
-		m.paused = true
+// handleStopProcessCommand parses and handles the /stop <process-id> [--force] command.
+// Syntax: /stop worker-1 [--force] or /stop coordinator [--force]
+func (m Model) handleStopProcessCommand(content string) (Model, tea.Cmd) {
+	parts := strings.Fields(content)
+	if len(parts) < 2 {
+		m = m.SetError("Usage: /stop <process-id> [--force]")
+		return m, nil
 	}
-	return m
+
+	processID := parts[1]
+	force := len(parts) > 2 && parts[2] == "--force"
+
+	if m.cmdSubmitter == nil {
+		m = m.SetError("Command submitter not available")
+		return m, nil
+	}
+
+	cmd := command.NewStopProcessCommand(command.SourceUser, processID, force, "user_requested")
+	m.cmdSubmitter.Submit(cmd)
+
+	return m, nil
 }
 
 // workerServerCache manages worker MCP servers that share the same message store.
 // Workers connect via HTTP to /worker/{workerID} and all share the coordinator's
-// message issue instance, solving the in-memory cache isolation problem.
+// message repository instance, solving the in-memory cache isolation problem.
 type workerServerCache struct {
-	msgIssue         *message.Issue
-	stateCallback    mcp.WorkerStateCallback
+	msgStore         mcp.MessageStore
 	reflectionWriter mcp.ReflectionWriter
+	v2Adapter        *adapter.V2Adapter
 	servers          map[string]*mcp.WorkerServer
 	mu               sync.RWMutex
 }
 
 // newWorkerServerCache creates a new worker server cache.
-// The stateCallback allows workers to update coordinator state when they report
-// implementation complete or review verdicts.
 // The reflectionWriter allows workers to save reflections to session storage.
-func newWorkerServerCache(msgIssue *message.Issue, stateCallback mcp.WorkerStateCallback, reflectionWriter mcp.ReflectionWriter) *workerServerCache {
+// The v2Adapter routes all worker MCP tool handlers through v2 orchestration.
+func newWorkerServerCache(msgStore mcp.MessageStore, reflectionWriter mcp.ReflectionWriter, v2Adapter *adapter.V2Adapter) *workerServerCache {
 	return &workerServerCache{
-		msgIssue:         msgIssue,
-		stateCallback:    stateCallback,
+		msgStore:         msgStore,
 		reflectionWriter: reflectionWriter,
+		v2Adapter:        v2Adapter,
 		servers:          make(map[string]*mcp.WorkerServer),
 	}
 }
@@ -1166,14 +1206,14 @@ func (c *workerServerCache) getOrCreate(workerID string) *mcp.WorkerServer {
 		return ws
 	}
 
-	ws = mcp.NewWorkerServer(workerID, c.msgIssue)
-	// Set the state callback so workers can update coordinator state
-	if c.stateCallback != nil {
-		ws.SetStateCallback(c.stateCallback)
-	}
+	ws = mcp.NewWorkerServer(workerID, c.msgStore)
 	// Set the reflection writer so workers can save reflections to session storage
 	if c.reflectionWriter != nil {
 		ws.SetReflectionWriter(c.reflectionWriter)
+	}
+	// Set the v2 adapter so all handlers route through v2 orchestration
+	if c.v2Adapter != nil {
+		ws.SetV2Adapter(c.v2Adapter)
 	}
 	c.servers[workerID] = ws
 	log.Debug(log.CatOrch, "Created worker server", "subsystem", "update", "workerID", workerID)

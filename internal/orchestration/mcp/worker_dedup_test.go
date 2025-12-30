@@ -165,23 +165,29 @@ func TestWorkerServer_PostMessage_Deduplication_Concurrent(t *testing.T) {
 
 // TestWorkerServer_SignalReady_NotDeduplicated verifies that signal_ready
 // calls are NOT deduplicated (ready signals should always go through).
+// In v2 architecture, signal_ready posts to the v2 adapter's message log (if configured),
+// not to the worker's message store.
 func TestWorkerServer_SignalReady_NotDeduplicated(t *testing.T) {
 	store := newMockMessageStore()
-	ws := NewWorkerServer("WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
 
 	ctx := context.Background()
 
 	// Send first ready signal
-	result1, err := ws.handleSignalReady(ctx, json.RawMessage(`{}`))
+	result1, err := tws.handleSignalReady(ctx, json.RawMessage(`{}`))
 	require.NoError(t, err)
 	require.NotNil(t, result1)
+	require.Contains(t, result1.Content[0].Text, "ready signal acknowledged")
 
-	// Send ready signal again - should NOT be deduplicated
-	result2, err := ws.handleSignalReady(ctx, json.RawMessage(`{}`))
+	// Send ready signal again - should succeed again (not deduplicated)
+	result2, err := tws.handleSignalReady(ctx, json.RawMessage(`{}`))
 	require.NoError(t, err)
 	require.NotNil(t, result2)
+	require.Contains(t, result2.Content[0].Text, "ready signal acknowledged")
 
-	// Both signals should go through (ready signals are not deduplicated)
-	require.Len(t, store.appendCalls, 2,
-		"Ready signals should NOT be deduplicated - both should trigger Append")
+	// signal_ready posts to v2 adapter's message log, not the worker's message store
+	// The test verifies both calls succeed (not deduplicated/blocked)
+	require.Len(t, store.appendCalls, 0,
+		"signal_ready posts to v2 message log, not worker message store")
 }

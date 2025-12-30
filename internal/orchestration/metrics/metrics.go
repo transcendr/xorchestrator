@@ -21,8 +21,9 @@ type TokenMetrics struct {
 	ContextWindow int `json:"context_window"` // Maximum context size
 
 	// Cost tracking
-	TurnCostUSD  float64 `json:"turn_cost_usd"`
-	TotalCostUSD float64 `json:"total_cost_usd"`
+	TurnCostUSD       float64 `json:"turn_cost_usd"`
+	TotalCostUSD      float64 `json:"total_cost_usd"`
+	CumulativeCostUSD float64 `json:"cumulative_cost_usd"` // Running total across all turns
 
 	// Metadata
 	LastUpdatedAt time.Time `json:"last_updated_at"`

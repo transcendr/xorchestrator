@@ -14,10 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestIntegration_CoordinatorEventFlow verifies that coordinator events
+// TestIntegration_ProcessEventFlow verifies that process events
 // flow through the broker to subscribers correctly.
-func TestIntegration_CoordinatorEventFlow(t *testing.T) {
-	broker := pubsub.NewBroker[events.CoordinatorEvent]()
+// This tests both coordinator (RoleCoordinator) and worker (RoleWorker) events.
+func TestIntegration_ProcessEventFlow(t *testing.T) {
+	broker := pubsub.NewBroker[events.ProcessEvent]()
 	defer broker.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -26,13 +27,13 @@ func TestIntegration_CoordinatorEventFlow(t *testing.T) {
 	// Subscribe to events
 	ch := broker.Subscribe(ctx)
 
-	// Simulate coordinator publishing events
+	// Simulate coordinator publishing events via v2EventBus
 	testMetrics := &metrics.TokenMetrics{ContextTokens: 1500, ContextWindow: 200000}
-	testEvents := []events.CoordinatorEvent{
-		{Type: events.CoordinatorChat, Role: "coordinator", Content: "Starting epic execution"},
-		{Type: events.CoordinatorWorking},
-		{Type: events.CoordinatorTokenUsage, Metrics: testMetrics},
-		{Type: events.CoordinatorReady},
+	testEvents := []events.ProcessEvent{
+		{Type: events.ProcessOutput, Role: events.RoleCoordinator, Output: "Starting epic execution"},
+		{Type: events.ProcessWorking, Role: events.RoleCoordinator},
+		{Type: events.ProcessTokenUsage, Role: events.RoleCoordinator, Metrics: testMetrics},
+		{Type: events.ProcessReady, Role: events.RoleCoordinator},
 	}
 
 	// Publish events
@@ -46,7 +47,7 @@ func TestIntegration_CoordinatorEventFlow(t *testing.T) {
 		case received := <-ch:
 			require.Equal(t, expected.Type, received.Payload.Type, "event %d type mismatch", i)
 			require.Equal(t, expected.Role, received.Payload.Role, "event %d role mismatch", i)
-			require.Equal(t, expected.Content, received.Payload.Content, "event %d content mismatch", i)
+			require.Equal(t, expected.Output, received.Payload.Output, "event %d output mismatch", i)
 			require.Equal(t, expected.Metrics, received.Payload.Metrics, "event %d metrics mismatch", i)
 			require.Equal(t, pubsub.UpdatedEvent, received.Type, "wrapper event type should be UpdatedEvent")
 			require.False(t, received.Timestamp.IsZero(), "timestamp should be set")
@@ -59,25 +60,25 @@ func TestIntegration_CoordinatorEventFlow(t *testing.T) {
 // TestIntegration_MultipleSubscribers verifies that multiple subscribers
 // all receive the same events from a single publish.
 func TestIntegration_MultipleSubscribers(t *testing.T) {
-	broker := pubsub.NewBroker[events.CoordinatorEvent]()
+	broker := pubsub.NewBroker[events.ProcessEvent]()
 	defer broker.Close()
 
 	ctx := context.Background()
 
 	// Create 5 subscribers (simulates TUI, logger, metrics collector, etc.)
 	const numSubscribers = 5
-	channels := make([]<-chan pubsub.Event[events.CoordinatorEvent], numSubscribers)
+	channels := make([]<-chan pubsub.Event[events.ProcessEvent], numSubscribers)
 	for i := 0; i < numSubscribers; i++ {
 		channels[i] = broker.Subscribe(ctx)
 	}
 
 	require.Equal(t, numSubscribers, broker.SubscriberCount())
 
-	// Publish a chat event
-	testEvent := events.CoordinatorEvent{
-		Type:    events.CoordinatorChat,
-		Role:    "coordinator",
-		Content: "Hello from coordinator",
+	// Publish a coordinator output event
+	testEvent := events.ProcessEvent{
+		Type:   events.ProcessOutput,
+		Role:   events.RoleCoordinator,
+		Output: "Hello from coordinator",
 	}
 	broker.Publish(pubsub.UpdatedEvent, testEvent)
 
@@ -87,39 +88,39 @@ func TestIntegration_MultipleSubscribers(t *testing.T) {
 		case received := <-ch:
 			require.Equal(t, testEvent.Type, received.Payload.Type, "subscriber %d: type mismatch", i)
 			require.Equal(t, testEvent.Role, received.Payload.Role, "subscriber %d: role mismatch", i)
-			require.Equal(t, testEvent.Content, received.Payload.Content, "subscriber %d: content mismatch", i)
+			require.Equal(t, testEvent.Output, received.Payload.Output, "subscriber %d: output mismatch", i)
 		case <-time.After(100 * time.Millisecond):
 			require.Fail(t, "timeout waiting for event", "subscriber %d", i)
 		}
 	}
 }
 
-// TestIntegration_WorkerEventForwarding verifies that worker events
-// from the pool are forwarded through the worker broker to TUI subscribers.
-func TestIntegration_WorkerEventForwarding(t *testing.T) {
-	// Create worker broker (simulates coordinator.Workers())
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
-	defer workerBroker.Close()
+// TestIntegration_ProcessEventForwarding verifies that process events
+// from workers are forwarded through the process broker to TUI subscribers.
+func TestIntegration_ProcessEventForwarding(t *testing.T) {
+	// Create process broker (simulates v2EventBus)
+	processBroker := pubsub.NewBroker[events.ProcessEvent]()
+	defer processBroker.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Subscribe to worker events (simulates TUI subscription)
-	ch := workerBroker.Subscribe(ctx)
+	// Subscribe to process events (simulates TUI subscription)
+	ch := processBroker.Subscribe(ctx)
 
-	// Simulate pool events being converted and forwarded by coordinator
+	// Simulate worker events
 	workerMetrics := &metrics.TokenMetrics{ContextTokens: 500, ContextWindow: 200000}
-	testEvents := []events.WorkerEvent{
-		{Type: events.WorkerSpawned, WorkerID: "worker-1", TaskID: "task-1"},
-		{Type: events.WorkerStatusChange, WorkerID: "worker-1", TaskID: "task-1"},
-		{Type: events.WorkerOutput, WorkerID: "worker-1", Output: "Starting task execution"},
-		{Type: events.WorkerTokenUsage, WorkerID: "worker-1", Metrics: workerMetrics},
-		{Type: events.WorkerIncoming, WorkerID: "worker-1", Message: "Message from coordinator"},
+	testEvents := []events.ProcessEvent{
+		{Type: events.ProcessSpawned, ProcessID: "worker-1", Role: events.RoleWorker, TaskID: "task-1"},
+		{Type: events.ProcessStatusChange, ProcessID: "worker-1", Role: events.RoleWorker, TaskID: "task-1"},
+		{Type: events.ProcessOutput, ProcessID: "worker-1", Role: events.RoleWorker, Output: "Starting task execution"},
+		{Type: events.ProcessTokenUsage, ProcessID: "worker-1", Role: events.RoleWorker, Metrics: workerMetrics},
+		{Type: events.ProcessIncoming, ProcessID: "worker-1", Role: events.RoleWorker, Message: "Message from coordinator"},
 	}
 
-	// Publish events (simulates processPoolEvents forwarding)
+	// Publish events
 	for _, evt := range testEvents {
-		workerBroker.Publish(pubsub.UpdatedEvent, evt)
+		processBroker.Publish(pubsub.UpdatedEvent, evt)
 	}
 
 	// Verify all events received
@@ -127,7 +128,7 @@ func TestIntegration_WorkerEventForwarding(t *testing.T) {
 		select {
 		case received := <-ch:
 			require.Equal(t, expected.Type, received.Payload.Type, "event %d type mismatch", i)
-			require.Equal(t, expected.WorkerID, received.Payload.WorkerID, "event %d workerID mismatch", i)
+			require.Equal(t, expected.ProcessID, received.Payload.ProcessID, "event %d processID mismatch", i)
 			require.Equal(t, expected.TaskID, received.Payload.TaskID, "event %d taskID mismatch", i)
 			require.Equal(t, expected.Output, received.Payload.Output, "event %d output mismatch", i)
 			require.Equal(t, expected.Message, received.Payload.Message, "event %d message mismatch", i)
@@ -143,25 +144,25 @@ func TestIntegration_CleanShutdown(t *testing.T) {
 	// Record initial goroutine count
 	initialGoroutines := runtime.NumGoroutine()
 
-	// Create brokers and subscribers
-	coordBroker := pubsub.NewBroker[events.CoordinatorEvent]()
-	workerBroker := pubsub.NewBroker[events.WorkerEvent]()
+	// Create brokers and subscribers (using ProcessEvent for both coordinator and worker events)
+	processBroker := pubsub.NewBroker[events.ProcessEvent]()
+	v2EventBus := pubsub.NewBroker[events.ProcessEvent]()
 
 	// Create multiple subscriptions with different contexts
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	ctx2, cancel2 := context.WithCancel(context.Background())
 
-	ch1 := coordBroker.Subscribe(ctx1)
-	ch2 := coordBroker.Subscribe(ctx2)
-	ch3 := workerBroker.Subscribe(ctx1)
-	ch4 := workerBroker.Subscribe(ctx2)
+	ch1 := processBroker.Subscribe(ctx1)
+	ch2 := processBroker.Subscribe(ctx2)
+	ch3 := v2EventBus.Subscribe(ctx1)
+	ch4 := v2EventBus.Subscribe(ctx2)
 
-	require.Equal(t, 2, coordBroker.SubscriberCount())
-	require.Equal(t, 2, workerBroker.SubscriberCount())
+	require.Equal(t, 2, processBroker.SubscriberCount())
+	require.Equal(t, 2, v2EventBus.SubscriberCount())
 
 	// Publish some events to ensure goroutines are active
-	coordBroker.Publish(pubsub.UpdatedEvent, events.CoordinatorEvent{Type: events.CoordinatorChat})
-	workerBroker.Publish(pubsub.UpdatedEvent, events.WorkerEvent{Type: events.WorkerOutput})
+	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{Type: events.ProcessOutput, Role: events.RoleWorker})
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{Type: events.ProcessOutput, Role: events.RoleCoordinator})
 
 	// Drain channels
 	<-ch1
@@ -177,8 +178,8 @@ func TestIntegration_CleanShutdown(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Close brokers
-	coordBroker.Close()
-	workerBroker.Close()
+	processBroker.Close()
+	v2EventBus.Close()
 
 	// Verify all channels are closed
 	_, ok1 := <-ch1
@@ -192,8 +193,8 @@ func TestIntegration_CleanShutdown(t *testing.T) {
 	require.False(t, ok4, "ch4 should be closed")
 
 	// Verify subscriber counts are zero
-	require.Equal(t, 0, coordBroker.SubscriberCount())
-	require.Equal(t, 0, workerBroker.SubscriberCount())
+	require.Equal(t, 0, processBroker.SubscriberCount())
+	require.Equal(t, 0, v2EventBus.SubscriberCount())
 
 	// Allow time for goroutines to fully exit
 	time.Sleep(50 * time.Millisecond)
@@ -207,7 +208,7 @@ func TestIntegration_CleanShutdown(t *testing.T) {
 // TestIntegration_ConcurrentPublishSubscribe verifies thread safety
 // under concurrent publish and subscribe operations.
 func TestIntegration_ConcurrentPublishSubscribe(t *testing.T) {
-	broker := pubsub.NewBroker[events.CoordinatorEvent]()
+	broker := pubsub.NewBroker[events.ProcessEvent]()
 	defer broker.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -249,9 +250,10 @@ func TestIntegration_ConcurrentPublishSubscribe(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for e := 0; e < numEvents; e++ {
-				broker.Publish(pubsub.UpdatedEvent, events.CoordinatorEvent{
-					Type:    events.CoordinatorChat,
-					Content: "test",
+				broker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+					Type:   events.ProcessOutput,
+					Role:   events.RoleCoordinator,
+					Output: "test",
 				})
 			}
 		}()
@@ -271,7 +273,7 @@ func TestIntegration_ConcurrentPublishSubscribe(t *testing.T) {
 // TestIntegration_ContextCancellationCleanup verifies that context cancellation
 // properly removes subscribers without affecting other subscribers.
 func TestIntegration_ContextCancellationCleanup(t *testing.T) {
-	broker := pubsub.NewBroker[events.CoordinatorEvent]()
+	broker := pubsub.NewBroker[events.ProcessEvent]()
 	defer broker.Close()
 
 	// Create independent contexts
@@ -294,11 +296,11 @@ func TestIntegration_ContextCancellationCleanup(t *testing.T) {
 	require.False(t, ok, "ch1 should be closed after context cancellation")
 
 	// ch2 should still receive events
-	broker.Publish(pubsub.UpdatedEvent, events.CoordinatorEvent{Type: events.CoordinatorReady})
+	broker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{Type: events.ProcessReady, Role: events.RoleCoordinator})
 
 	select {
 	case event := <-ch2:
-		require.Equal(t, events.CoordinatorReady, event.Payload.Type)
+		require.Equal(t, events.ProcessReady, event.Payload.Type)
 	case <-time.After(100 * time.Millisecond):
 		require.Fail(t, "ch2 should still receive events")
 	}

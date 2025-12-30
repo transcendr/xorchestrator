@@ -11,16 +11,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/zjrosen/perles/internal/beads"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/amp"
 	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/coordinator"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/pool"
 	"github.com/zjrosen/perles/internal/orchestration/session"
+	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/orchestration/v2/handler"
+	"github.com/zjrosen/perles/internal/orchestration/v2/integration"
+	"github.com/zjrosen/perles/internal/orchestration/v2/process"
+	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 	"github.com/zjrosen/perles/internal/pubsub"
 )
 
@@ -59,16 +65,12 @@ type InitializerConfig struct {
 // InitializerResources holds the resources created during initialization.
 // These are transferred to the Model when initialization completes.
 type InitializerResources struct {
-	AIClient          client.HeadlessClient
-	Extensions        map[string]any
-	Pool              *pool.WorkerPool
-	MessageLog        *message.Issue
-	MCPServer         *http.Server
-	MCPPort           int // Dynamic port the MCP server is listening on
-	Coordinator       *coordinator.Coordinator
-	WorkerServerCache *workerServerCache
-	Session           *session.Session       // Session tracking for this orchestration run
-	MCPCoordServer    *mcp.CoordinatorServer // MCP coordinator server for direct worker messaging
+	MessageRepo    repository.MessageRepository // Message repository for inter-agent messaging
+	MCPServer      *http.Server
+	MCPPort        int                          // Dynamic port the MCP server is listening on
+	Session        *session.Session             // Session tracking for this orchestration run
+	MCPCoordServer *mcp.CoordinatorServer       // MCP coordinator server for direct worker messaging
+	ProcessRepo    repository.ProcessRepository // Process repository for unified state management
 }
 
 // Initializer manages the orchestration initialization lifecycle as a state machine.
@@ -87,17 +89,22 @@ type Initializer struct {
 	err              error
 
 	// Resources created during initialization
-	aiClient           client.HeadlessClient
-	aiClientExtensions map[string]any
-	pool               *pool.WorkerPool
-	messageLog         *message.Issue
-	mcpListener        net.Listener // Listener for dynamic port
-	mcpPort            int          // Assigned port
-	mcpServer          *http.Server
-	mcpCoordServer     *mcp.CoordinatorServer
-	coord              *coordinator.Coordinator
-	workerServers      *workerServerCache
-	session            *session.Session // Session tracking
+	messageRepo    *repository.MemoryMessageRepository // Message repository for inter-agent messaging
+	mcpPort        int                                 // Assigned port
+	mcpServer      *http.Server
+	mcpCoordServer *mcp.CoordinatorServer
+	workerServers  *workerServerCache // Used by HTTP handler; not transferred to Model
+	session        *session.Session   // Session tracking
+
+	// V2 orchestration infrastructure
+	cmdProcessor    *processor.CommandProcessor
+	dedupMiddleware *processor.DeduplicationMiddleware
+	v2EventBus      *pubsub.Broker[any] // Event bus for v2 command events (TUI subscription)
+
+	// Unified process infrastructure (coordinator + workers as Process entities)
+	processRepo     repository.ProcessRepository
+	processRegistry *process.ProcessRegistry
+	cmdSubmitter    process.CommandSubmitter
 
 	// Event broker for publishing state changes to TUI
 	broker *pubsub.Broker[InitializerEvent]
@@ -173,32 +180,46 @@ func (i *Initializer) Resources() InitializerResources {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	return InitializerResources{
-		AIClient:          i.aiClient,
-		Extensions:        i.aiClientExtensions,
-		Pool:              i.pool,
-		MessageLog:        i.messageLog,
-		MCPServer:         i.mcpServer,
-		MCPPort:           i.mcpPort,
-		Coordinator:       i.coord,
-		WorkerServerCache: i.workerServers,
-		Session:           i.session,
-		MCPCoordServer:    i.mcpCoordServer,
+		MessageRepo:    i.messageRepo,
+		MCPServer:      i.mcpServer,
+		MCPPort:        i.mcpPort,
+		Session:        i.session,
+		MCPCoordServer: i.mcpCoordServer,
+		ProcessRepo:    i.processRepo,
 	}
 }
 
-// GetCoordinator returns the coordinator if it has been created, nil otherwise.
-// This allows the TUI to set up event subscriptions as soon as the coordinator exists.
-func (i *Initializer) GetCoordinator() *coordinator.Coordinator {
+// GetMessageRepo returns the message repository if it has been created, nil otherwise.
+// The returned repository provides inter-agent messaging with pub/sub broker support.
+func (i *Initializer) GetMessageRepo() repository.MessageRepository {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
-	return i.coord
+	return i.messageRepo
 }
 
-// GetMessageLog returns the message log if it has been created, nil otherwise.
-func (i *Initializer) GetMessageLog() *message.Issue {
+// GetV2EventBus returns the v2 event bus for TUI subscription, nil if not yet created.
+// The event bus is created during createWorkspace() and can be subscribed to for
+// receiving v2 orchestration events (WorkerEvent, CommandErrorEvent, etc.).
+func (i *Initializer) GetV2EventBus() *pubsub.Broker[any] {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
-	return i.messageLog
+	return i.v2EventBus
+}
+
+// GetCmdSubmitter returns the command submitter for v2 command submission.
+// Returns nil if not yet created. Used by TUI to submit v2 commands directly.
+func (i *Initializer) GetCmdSubmitter() process.CommandSubmitter {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.cmdSubmitter
+}
+
+// GetProcessRepository returns the process repository for unified state management.
+// Returns nil if not yet created.
+func (i *Initializer) GetProcessRepository() repository.ProcessRepository {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.processRepo
 }
 
 // Start begins the initialization process.
@@ -229,17 +250,17 @@ func (i *Initializer) Retry() error {
 	i.confirmedWorkers = make(map[string]bool)
 	i.err = nil
 	i.started = false
-	i.aiClient = nil
-	i.aiClientExtensions = nil
-	i.pool = nil
-	i.messageLog = nil
-	i.mcpListener = nil
+	i.messageRepo = nil
 	i.mcpPort = 0
 	i.mcpServer = nil
 	i.mcpCoordServer = nil
-	i.coord = nil
 	i.workerServers = nil
 	i.session = nil
+	i.cmdProcessor = nil
+	i.dedupMiddleware = nil
+	i.v2EventBus = nil
+	i.processRepo = nil
+	i.processRegistry = nil
 	i.mu.Unlock()
 
 	return i.Start()
@@ -276,20 +297,11 @@ func (i *Initializer) run() {
 		return
 	}
 
-	// Attach session to coordinator broker now that coordinator exists
-	// (Pool and Message brokers were attached in createWorkspace(), MCP broker attached after mcpCoordServer creation)
-	i.mu.RLock()
-	sess := i.session
-	i.mu.RUnlock()
-	if sess != nil {
-		sess.AttachCoordinatorBroker(i.ctx, i.coord.Broker())
-	}
-
 	// Phase 3+: Event-driven phases
-	// Subscribe to all event sources and process them
-	coordSub := i.coord.Broker().Subscribe(i.ctx)
-	workerSub := i.coord.Workers().Subscribe(i.ctx)
-	msgSub := i.messageLog.Broker().Subscribe(i.ctx)
+	// Subscribe to v2EventBus for all process events (coordinator and workers)
+	// Coordinator events flow through v2EventBus as ProcessEvent with Role=RoleCoordinator
+	v2Sub := i.v2EventBus.Subscribe(i.ctx)
+	msgSub := i.messageRepo.Broker().Subscribe(i.ctx)
 
 	// Transition to awaiting first message
 	i.transitionTo(InitAwaitingFirstMessage)
@@ -303,19 +315,11 @@ func (i *Initializer) run() {
 			i.timeout()
 			return
 
-		case event, ok := <-coordSub:
+		case event, ok := <-v2Sub:
 			if !ok {
 				return
 			}
-			if i.handleCoordinatorEvent(event) {
-				return // Ready or terminal state
-			}
-
-		case event, ok := <-workerSub:
-			if !ok {
-				return
-			}
-			if i.handleWorkerEvent(event) {
+			if i.handleV2Event(event) {
 				return // Ready or terminal state
 			}
 
@@ -330,7 +334,7 @@ func (i *Initializer) run() {
 	}
 }
 
-// createWorkspace creates the AI client, worker pool, message log, and MCP server.
+// createWorkspace creates the AI client, message log, and MCP server.
 func (i *Initializer) createWorkspace() error {
 	// 1. Create AI client
 	clientType := client.ClientType(i.cfg.ClientType)
@@ -359,23 +363,10 @@ func (i *Initializer) createWorkspace() error {
 		}
 	}
 
+	// 2. Create message repository
+	msgRepo := repository.NewMemoryMessageRepository()
 	i.mu.Lock()
-	i.aiClient = aiClient
-	i.aiClientExtensions = extensions
-	i.mu.Unlock()
-
-	// 2. Create worker pool
-	workerPool := pool.NewWorkerPool(pool.Config{
-		Client: aiClient,
-	})
-	i.mu.Lock()
-	i.pool = workerPool
-	i.mu.Unlock()
-
-	// 3. Create message log
-	msgLog := message.New()
-	i.mu.Lock()
-	i.messageLog = msgLog
+	i.messageRepo = msgRepo
 	i.mu.Unlock()
 
 	// 4. Create session for tracking this orchestration run
@@ -391,15 +382,47 @@ func (i *Initializer) createWorkspace() error {
 
 	log.Debug(log.CatOrch, "Session created", "subsystem", "init", "sessionID", sessionID, "dir", sessionDir)
 
-	// Attach session to pool.Broker() and msgIssue.Broker() immediately
-	// (they exist at this point).
-	// Broker attachment order:
-	// 1. Pool and Message brokers - attached here in createWorkspace() (they exist now)
-	// 2. MCP broker - attached below after mcpCoordServer is created
-	// 3. Coordinator broker - attached later in run() after spawnCoordinator() completes
-	sess.AttachToBrokers(i.ctx, nil, workerPool.Broker(), msgLog.Broker(), nil)
+	// 5. Create V2 orchestration infrastructure
+	// Create repositories
+	taskRepo := repository.NewMemoryTaskRepository()
+	queueRepo := repository.NewMemoryQueueRepository(repository.DefaultQueueMaxSize)
+	processRepo := repository.NewMemoryProcessRepository() // Unified process repository
 
-	// 5. Start MCP server with dynamic port
+	// Create event bus for v2 command events (propagates to TUI subscribers)
+	// Store as field so TUI can subscribe via GetV2EventBus()
+	i.v2EventBus = pubsub.NewBroker[any]()
+
+	// Attach session to brokers:
+	// 1. Message broker - attached here (exists now)
+	// 2. v2EventBus for all process events (coordinator and workers) - attached here
+	// 3. MCP broker - attached below after mcpCoordServer is created
+	// Note: Coordinator events flow through v2EventBus as ProcessEvent with Role=RoleCoordinator
+	sess.AttachToBrokers(i.ctx, nil, msgRepo.Broker(), nil)
+	sess.AttachV2EventBus(i.ctx, i.v2EventBus)
+
+	// Create middleware for command processing
+	loggingMiddleware := processor.NewLoggingMiddleware(processor.LoggingMiddlewareConfig{})
+	//dedupMiddleware := processor.NewDeduplicationMiddleware(processor.DeduplicationMiddlewareConfig{
+	//	TTL: 5 * time.Second,
+	//})
+	timeoutMiddleware := processor.NewTimeoutMiddleware(processor.TimeoutMiddlewareConfig{
+		WarningThreshold: 500 * time.Millisecond,
+	})
+
+	// Create command processor with event bus for TUI event propagation
+	cmdProcessor := processor.NewCommandProcessor(
+		processor.WithQueueCapacity(1000),
+		processor.WithTaskRepository(taskRepo),
+		processor.WithQueueRepository(queueRepo),
+		processor.WithEventBus(i.v2EventBus),
+		processor.WithMiddleware(
+			loggingMiddleware,
+			// dedupMiddleware.Middleware(),
+			timeoutMiddleware,
+		),
+	)
+
+	// 6. Start MCP server with dynamic port
 	// Create listener on localhost:0 to get a random available port
 	// Using localhost (127.0.0.1) to avoid binding to all interfaces
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -416,11 +439,120 @@ func (i *Initializer) createWorkspace() error {
 	port := tcpAddr.Port
 	log.Debug(log.CatOrch, "MCP server listening on dynamic port", "subsystem", "init", "port", port)
 
-	// Create coordinator server with the dynamic port
-	mcpCoordServer := mcp.NewCoordinatorServer(aiClient, workerPool, msgLog, i.cfg.WorkDir, port, extensions, beads.NewRealExecutor(i.cfg.WorkDir))
-	// Pass the coordinator server as the state callback so workers can update coordinator state
+	// Create unified ProcessRegistry for coordinator and workers
+	// This single registry replaces the old worker.ProcessRegistry
+	processRegistry := process.NewProcessRegistry()
+
+	// Create MessageDeliverer for delivering messages to processes via session resume.
+	// This uses ProcessRegistrySessionProvider and ProcessRegistry (as ProcessResumer)
+	// for v2 command-based processing.
+	sessionProvider := handler.NewProcessRegistrySessionProvider(processRegistry, aiClient, i.cfg.WorkDir, port)
+	messageDeliverer := integration.NewProcessSessionDeliverer(sessionProvider, aiClient, processRegistry)
+
+	// Create BDTaskExecutor for syncing v2 state changes to BD tracker.
+	// This bridges v2 handlers to the BD CLI for task status updates and comments.
+	beadsExec := beads.NewRealExecutor(i.cfg.WorkDir)
+
+	// Register all handlers with the command processor
+
+	// Task Assignment handlers (3) - wired with BDExecutor for BD task status sync
+	// and QueueRepository for sending prompts to workers
+	cmdProcessor.RegisterHandler(command.CmdAssignTask,
+		handler.NewAssignTaskHandler(processRepo, taskRepo,
+			handler.WithBDExecutor(beadsExec),
+			handler.WithQueueRepository(queueRepo)))
+	cmdProcessor.RegisterHandler(command.CmdAssignReview,
+		handler.NewAssignReviewHandler(processRepo, taskRepo, queueRepo))
+	cmdProcessor.RegisterHandler(command.CmdApproveCommit,
+		handler.NewApproveCommitHandler(processRepo, taskRepo, queueRepo))
+	cmdProcessor.RegisterHandler(command.CmdAssignReviewFeedback,
+		handler.NewAssignReviewFeedbackHandler(processRepo, taskRepo, queueRepo))
+
+	// State Transition handlers (3) - wired with BDExecutor for BD comment sync
+	cmdProcessor.RegisterHandler(command.CmdReportComplete,
+		handler.NewReportCompleteHandler(processRepo, taskRepo, queueRepo,
+			handler.WithReportCompleteBDExecutor(beadsExec)))
+	cmdProcessor.RegisterHandler(command.CmdReportVerdict,
+		handler.NewReportVerdictHandler(processRepo, taskRepo, queueRepo,
+			handler.WithReportVerdictBDExecutor(beadsExec)))
+	cmdProcessor.RegisterHandler(command.CmdTransitionPhase,
+		handler.NewTransitionPhaseHandler(processRepo, queueRepo))
+	cmdProcessor.RegisterHandler(command.CmdProcessTurnComplete,
+		handler.NewProcessTurnCompleteHandler(processRepo, queueRepo))
+
+	// BD Task Status handlers (2) - for updating task status in beads database
+	cmdProcessor.RegisterHandler(command.CmdMarkTaskComplete,
+		handler.NewMarkTaskCompleteHandler(beadsExec))
+	cmdProcessor.RegisterHandler(command.CmdMarkTaskFailed,
+		handler.NewMarkTaskFailedHandler(beadsExec))
+
+	// Create UnifiedProcessSpawner for spawning AI processes
+	// This requires a CommandSubmitter adapter to bridge to the processor
+	cmdSubmitter := handler.NewProcessorSubmitterAdapter(cmdProcessor)
+	processSpawner := handler.NewUnifiedProcessSpawner(handler.UnifiedSpawnerConfig{
+		Client:     aiClient,
+		WorkDir:    i.cfg.WorkDir,
+		Port:       port,
+		Extensions: extensions,
+		Submitter:  cmdSubmitter,
+		EventBus:   i.v2EventBus,
+	})
+
+	// Unified Process handlers (7) - for coordinator and workers as Process entities
+	cmdProcessor.RegisterHandler(command.CmdSpawnProcess,
+		handler.NewSpawnProcessHandler(processRepo, processRegistry,
+			handler.WithSpawnMaxWorkers(i.cfg.ExpectedWorkers),
+			handler.WithUnifiedSpawner(processSpawner)))
+	cmdProcessor.RegisterHandler(command.CmdSendToProcess,
+		handler.NewSendToProcessHandler(processRepo, queueRepo))
+	cmdProcessor.RegisterHandler(command.CmdDeliverProcessQueued,
+		handler.NewDeliverProcessQueuedHandler(processRepo, queueRepo, processRegistry,
+			handler.WithProcessDeliverer(messageDeliverer)))
+	cmdProcessor.RegisterHandler(command.CmdProcessTurnComplete,
+		handler.NewProcessTurnCompleteHandler(processRepo, queueRepo))
+	cmdProcessor.RegisterHandler(command.CmdRetireProcess,
+		handler.NewRetireProcessHandler(processRepo, processRegistry))
+	cmdProcessor.RegisterHandler(command.CmdStopProcess,
+		handler.NewStopWorkerHandler(processRepo, taskRepo, queueRepo, processRegistry))
+	cmdProcessor.RegisterHandler(command.CmdReplaceProcess,
+		handler.NewReplaceProcessHandler(processRepo, processRegistry,
+			handler.WithReplaceSpawner(processSpawner)))
+
+	// Create V2Adapter with repositories for read-only operations and message repository for COORDINATOR routing
+	v2Adapter := adapter.NewV2Adapter(cmdProcessor,
+		adapter.WithProcessRepository(processRepo),
+		adapter.WithTaskRepository(taskRepo),
+		adapter.WithQueueRepository(queueRepo),
+		adapter.WithMessageRepository(msgRepo),
+	)
+
+	// Start processor loop in background
+	go cmdProcessor.Run(i.ctx)
+
+	// Wait for processor to be ready before continuing
+	if err := cmdProcessor.WaitForReady(i.ctx); err != nil {
+		return fmt.Errorf("waiting for command processor: %w", err)
+	}
+
+	log.Debug(log.CatOrch, "V2 orchestration infrastructure initialized", "subsystem", "init",
+		"handlers", 22, "queueCapacity", 1000)
+
+	// Store v2 infrastructure references
+	i.mu.Lock()
+	i.cmdProcessor = cmdProcessor
+	// i.dedupMiddleware = dedupMiddleware
+	i.processRepo = processRepo
+	i.processRegistry = processRegistry
+	i.cmdSubmitter = cmdSubmitter
+	i.mu.Unlock()
+
+	// Create coordinator server with the dynamic port and v2 adapter
+	mcpCoordServer := mcp.NewCoordinatorServerWithV2Adapter(
+		aiClient, msgRepo, i.cfg.WorkDir, port, extensions,
+		beads.NewRealExecutor(i.cfg.WorkDir), v2Adapter)
 	// Pass the session as the reflection writer so workers can save reflections
-	workerServers := newWorkerServerCache(msgLog, mcpCoordServer, sess)
+	// Pass the v2Adapter so all worker servers route through v2
+	workerServers := newWorkerServerCache(msgRepo, sess, v2Adapter)
 
 	// Attach session to MCP broker now that mcpCoordServer exists
 	sess.AttachMCPBroker(i.ctx, mcpCoordServer.Broker())
@@ -435,7 +567,6 @@ func (i *Initializer) createWorkspace() error {
 	}
 
 	i.mu.Lock()
-	i.mcpListener = listener
 	i.mcpPort = port
 	i.mcpServer = httpServer
 	i.mcpCoordServer = mcpCoordServer
@@ -452,41 +583,33 @@ func (i *Initializer) createWorkspace() error {
 	return nil
 }
 
-// spawnCoordinator creates and starts the coordinator.
+// spawnCoordinator creates and starts the coordinator using the v2 command processor.
+// This submits a SpawnProcessCommand which handles all the AI spawning, registry registration,
+// and ProcessRepository updates through the unified command pattern.
 func (i *Initializer) spawnCoordinator() error {
 	i.mu.RLock()
-	aiClient := i.aiClient
-	workerPool := i.pool
-	msgLog := i.messageLog
-	port := i.mcpPort
+	cmdProcessor := i.cmdProcessor
 	i.mu.RUnlock()
 
-	if aiClient == nil || workerPool == nil || msgLog == nil {
-		return fmt.Errorf("prerequisites not initialized")
+	if cmdProcessor == nil {
+		return fmt.Errorf("command processor not initialized")
 	}
 
-	coordCfg := coordinator.Config{
-		WorkDir:      i.cfg.WorkDir,
-		Client:       aiClient,
-		Pool:         workerPool,
-		MessageIssue: msgLog,
-		Port:         port,
-	}
+	// Create and submit SpawnProcessCommand for coordinator
+	spawnCmd := command.NewSpawnProcessCommand(command.SourceUser, repository.RoleCoordinator)
 
-	coord, err := coordinator.New(coordCfg)
+	// Use SubmitAndWait to ensure coordinator is fully spawned before continuing
+	result, err := cmdProcessor.SubmitAndWait(i.ctx, spawnCmd)
 	if err != nil {
-		return err
+		return fmt.Errorf("spawning coordinator via command: %w", err)
 	}
 
-	i.mu.Lock()
-	i.coord = coord
-	i.mu.Unlock()
-
-	if err := coord.Start(); err != nil {
-		return err
+	if !result.Success {
+		return fmt.Errorf("spawn coordinator command failed: %w", result.Error)
 	}
 
-	log.Debug(log.CatOrch, "Coordinator started", "subsystem", "init")
+	log.Debug(log.CatOrch, "Coordinator spawned via v2 command processor", "subsystem", "init")
+
 	return nil
 }
 
@@ -514,17 +637,48 @@ func (i *Initializer) spawnWorkers() {
 	}
 }
 
-// handleCoordinatorEvent processes coordinator events.
+// handleV2Event processes v2 orchestration events from the unified v2EventBus.
 // Returns true if initialization reached a terminal state.
-func (i *Initializer) handleCoordinatorEvent(event pubsub.Event[events.CoordinatorEvent]) bool {
-	payload := event.Payload
+func (i *Initializer) handleV2Event(event pubsub.Event[any]) bool {
+	// Type-assert to ProcessEvent (unified event type)
+	if payload, ok := event.Payload.(events.ProcessEvent); ok {
+		return i.handleProcessEventPayload(payload)
+	}
+	return false
+}
 
+// handleProcessEventPayload processes unified process events from the v2EventBus.
+// This handles events from both coordinator and worker processes via the unified architecture.
+// Returns true if initialization reached a terminal state.
+//
+// Note: Worker confirmation is handled via MessageWorkerReady messages in handleMessageEvent,
+// not via ProcessReady events. This is because workers call signal_ready which posts a message.
+func (i *Initializer) handleProcessEventPayload(payload events.ProcessEvent) bool {
+	// Handle coordinator events
+	if payload.Role == events.RoleCoordinator {
+		return i.handleCoordinatorProcessEvent(payload)
+	}
+
+	// Handle worker events
+	switch payload.Type {
+	case events.ProcessSpawned:
+		return i.handleProcessSpawned(payload)
+	}
+
+	return false
+}
+
+// handleCoordinatorProcessEvent processes coordinator events from the v2EventBus.
+// This replaces the legacy handleCoordinatorEvent function that used CoordinatorEvent type.
+// Returns true if initialization reached a terminal state.
+func (i *Initializer) handleCoordinatorProcessEvent(payload events.ProcessEvent) bool {
 	i.mu.Lock()
 	phase := i.phase
 	i.mu.Unlock()
 
 	// Detect first coordinator message for phase transition
-	if phase == InitAwaitingFirstMessage && payload.Type == events.CoordinatorChat {
+	// ProcessOutput is equivalent to the legacy CoordinatorChat event
+	if phase == InitAwaitingFirstMessage && payload.Type == events.ProcessOutput {
 		log.Debug(log.CatOrch, "First coordinator message received, spawning workers", "subsystem", "init")
 		i.transitionTo(InitSpawningWorkers)
 
@@ -535,15 +689,10 @@ func (i *Initializer) handleCoordinatorEvent(event pubsub.Event[events.Coordinat
 	return false
 }
 
-// handleWorkerEvent processes worker events.
-// Returns true if initialization reached a terminal state.
-func (i *Initializer) handleWorkerEvent(event pubsub.Event[events.WorkerEvent]) bool {
-	payload := event.Payload
-
-	if payload.Type != events.WorkerSpawned {
-		return false
-	}
-
+// handleProcessSpawned processes unified ProcessSpawned events for workers.
+// Note: Worker confirmation happens via MessageWorkerReady in handleMessageEvent,
+// not here. This only tracks spawn count.
+func (i *Initializer) handleProcessSpawned(payload events.ProcessEvent) bool {
 	i.mu.Lock()
 	phase := i.phase
 	i.workersSpawned++
@@ -551,11 +700,12 @@ func (i *Initializer) handleWorkerEvent(event pubsub.Event[events.WorkerEvent]) 
 	expected := i.cfg.ExpectedWorkers
 	i.mu.Unlock()
 
-	log.Debug(log.CatOrch, "Worker spawned",
+	log.Debug(log.CatOrch, "Worker process spawned (unified)",
 		"subsystem", "init",
-		"workerID", payload.WorkerID,
+		"processID", payload.ProcessID,
 		"spawned", spawned,
-		"expected", expected)
+		"expected", expected,
+		"status", payload.Status)
 
 	// Check if all workers spawned
 	if phase == InitSpawningWorkers && spawned >= expected {
@@ -684,8 +834,21 @@ func (i *Initializer) publishEvent(event InitializerEvent) {
 func (i *Initializer) cleanup() {
 	i.mu.Lock()
 	mcpServer := i.mcpServer
-	coord := i.coord
+	cmdProcessor := i.cmdProcessor
+	dedupMiddleware := i.dedupMiddleware
+	processRegistry := i.processRegistry
 	i.mu.Unlock()
+
+	// Drain the v2 command processor first to complete in-flight commands
+	// This must happen before shutting down MCP server
+	if cmdProcessor != nil {
+		cmdProcessor.Drain()
+	}
+
+	// Stop deduplication middleware background cleanup goroutine
+	if dedupMiddleware != nil {
+		dedupMiddleware.Stop()
+	}
 
 	if mcpServer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -693,7 +856,10 @@ func (i *Initializer) cleanup() {
 		cancel()
 	}
 
-	if coord != nil {
-		_ = coord.Cancel()
+	// Stop coordinator process via registry
+	if processRegistry != nil {
+		if coordProcess := processRegistry.GetCoordinator(); coordProcess != nil {
+			coordProcess.Stop()
+		}
 	}
 }

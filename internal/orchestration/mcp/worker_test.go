@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 )
 
 // mockMessageStore implements MessageStore for testing.
@@ -381,37 +381,35 @@ func TestWorkerServer_SendMessageHappyPath(t *testing.T) {
 	require.Contains(t, result.Content[0].Text, "Message sent to COORDINATOR", "Result should confirm sending")
 }
 
-// TestWorkerServer_SignalReadyValidation tests input validation for signal_ready.
+// TestWorkerServer_SignalReadyValidation tests signal_ready with v2 adapter.
+// In v2 architecture, signal_ready posts to the v2 adapter's message log (if configured).
 func TestWorkerServer_SignalReadyValidation(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
-	handler := ws.handlers["signal_ready"]
+	tws := NewTestWorkerServer(t, "WORKER.1", nil)
+	defer tws.Close()
+	handler := tws.handlers["signal_ready"]
 
-	// signal_ready takes no parameters, so only test message store error
-	_, err := handler(context.Background(), json.RawMessage(`{}`))
-	require.Error(t, err, "Expected error when message store is nil")
-	require.Contains(t, err.Error(), "message store not available", "Error should mention 'message store not available'")
+	// signal_ready always returns success
+	result, err := handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err, "signal_ready should not error")
+	require.Contains(t, result.Content[0].Text, "ready signal acknowledged", "Result should confirm signal")
 }
 
-// TestWorkerServer_SignalReadyHappyPath tests successful ready signaling.
+// TestWorkerServer_SignalReadyHappyPath tests successful ready signaling with v2.
+// In v2 architecture, signal_ready posts to the v2 adapter's message log, not the worker's message store.
 func TestWorkerServer_SignalReadyHappyPath(t *testing.T) {
 	store := newMockMessageStore()
-	ws := NewWorkerServer("WORKER.1", store)
-	handler := ws.handlers["signal_ready"]
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["signal_ready"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
 	require.NoError(t, err, "Unexpected error")
 
-	// Verify Append was called with correct parameters
-	require.Len(t, store.appendCalls, 1, "Expected 1 append call")
-	call := store.appendCalls[0]
-	require.Equal(t, "WORKER.1", call.From, "From mismatch")
-	require.Equal(t, message.ActorCoordinator, call.To, "To mismatch")
-	expectedContent := "Worker WORKER.1 ready for task assignment"
-	require.Equal(t, expectedContent, call.Content, "Content mismatch")
-	require.Equal(t, message.MessageWorkerReady, call.Type, "Type mismatch")
+	// signal_ready posts to v2 adapter's message log, not to worker's message store
+	require.Len(t, store.appendCalls, 0, "signal_ready posts to v2 message log, not worker store")
 
 	// Verify success result
-	require.Contains(t, result.Content[0].Text, "Ready signal sent", "Result should confirm signal")
+	require.Contains(t, result.Content[0].Text, "ready signal acknowledged", "Result should confirm signal")
 }
 
 // TestWorkerServer_ToolDescriptionsAreHelpful verifies tool descriptions are informative.
@@ -503,291 +501,262 @@ func TestWorkerServer_SignalReadySchema(t *testing.T) {
 	require.Empty(t, tool.InputSchema.Properties, "signal_ready should have 0 properties")
 }
 
-// mockStateCallback implements WorkerStateCallback for testing.
-type mockStateCallback struct {
-	workerPhases map[string]events.WorkerPhase
-	calls        []stateCallbackCall
-	mu           sync.RWMutex
-
-	// Error injection
-	getPhaseError                 error
-	onImplementationCompleteError error
-	onReviewVerdictError          error
-}
-
-type stateCallbackCall struct {
-	Method   string
-	WorkerID string
-	Summary  string
-	Verdict  string
-	Comments string
-}
-
-func newMockStateCallback() *mockStateCallback {
-	return &mockStateCallback{
-		workerPhases: make(map[string]events.WorkerPhase),
-		calls:        make([]stateCallbackCall, 0),
-	}
-}
-
-func (m *mockStateCallback) setPhase(workerID string, phase events.WorkerPhase) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.workerPhases[workerID] = phase
-}
-
-func (m *mockStateCallback) GetWorkerPhase(workerID string) (events.WorkerPhase, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.calls = append(m.calls, stateCallbackCall{Method: "GetWorkerPhase", WorkerID: workerID})
-	if m.getPhaseError != nil {
-		return "", m.getPhaseError
-	}
-	phase, ok := m.workerPhases[workerID]
-	if !ok {
-		return events.PhaseIdle, nil
-	}
-	return phase, nil
-}
-
-func (m *mockStateCallback) OnImplementationComplete(workerID, summary string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.calls = append(m.calls, stateCallbackCall{Method: "OnImplementationComplete", WorkerID: workerID, Summary: summary})
-	if m.onImplementationCompleteError != nil {
-		return m.onImplementationCompleteError
-	}
-	// Update phase as coordinator would
-	m.workerPhases[workerID] = events.PhaseAwaitingReview
-	return nil
-}
-
-func (m *mockStateCallback) OnReviewVerdict(workerID, verdict, comments string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.calls = append(m.calls, stateCallbackCall{Method: "OnReviewVerdict", WorkerID: workerID, Verdict: verdict, Comments: comments})
-	if m.onReviewVerdictError != nil {
-		return m.onReviewVerdictError
-	}
-	// Update phase as coordinator would
-	m.workerPhases[workerID] = events.PhaseIdle
-	return nil
-}
-
-// TestWorkerServer_ReportImplementationComplete_NoCallback tests error when callback not set.
-func TestWorkerServer_ReportImplementationComplete_NoCallback(t *testing.T) {
+// TestWorkerServer_ReportImplementationComplete_SubmitsCommand tests command submission in v2.
+// In v2 architecture, report_implementation_complete submits a command to the processor,
+// not through the callback mechanism.
+func TestWorkerServer_ReportImplementationComplete_SubmitsCommand(t *testing.T) {
 	store := newMockMessageStore()
-	ws := NewWorkerServer("WORKER.1", store)
-	handler := ws.handlers["report_implementation_complete"]
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_implementation_complete"]
 
-	_, err := handler(context.Background(), json.RawMessage(`{"summary": "completed feature X"}`))
-	require.Error(t, err, "Expected error when callback not configured")
-	require.Contains(t, err.Error(), "state callback not configured", "Expected 'state callback not configured' error")
+	// Configure mock to return success
+	tws.V2Handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Implementation complete",
+	})
+
+	result, err := handler(context.Background(), json.RawMessage(`{"summary": "completed feature X"}`))
+	require.NoError(t, err, "Expected no error with v2 adapter")
+	require.NotNil(t, result)
+	require.False(t, result.IsError, "Expected success result")
+
+	// Verify command was submitted
+	commands := tws.V2Handler.GetCommands()
+	require.Len(t, commands, 1, "Expected 1 command")
+	require.Equal(t, command.CmdReportComplete, commands[0].Type(), "Expected ReportComplete command")
 }
 
-// TestWorkerServer_ReportImplementationComplete_MissingSummary tests validation.
-func TestWorkerServer_ReportImplementationComplete_MissingSummary(t *testing.T) {
+// TestWorkerServer_ReportImplementationComplete_EmptySummary tests that empty summary is accepted in v2.
+// In v2 architecture, summary is optional (empty string is valid).
+func TestWorkerServer_ReportImplementationComplete_EmptySummary(t *testing.T) {
 	store := newMockMessageStore()
-	callback := newMockStateCallback()
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetStateCallback(callback)
-	handler := ws.handlers["report_implementation_complete"]
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_implementation_complete"]
 
-	_, err := handler(context.Background(), json.RawMessage(`{}`))
-	require.Error(t, err, "Expected error for missing summary")
-	require.Contains(t, err.Error(), "summary is required", "Expected 'summary is required' error")
+	// Configure mock to return success
+	tws.V2Handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Implementation complete",
+	})
+
+	result, err := handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err, "Empty summary should not error in v2")
+	require.NotNil(t, result)
+	require.False(t, result.IsError, "Expected success result")
 }
 
-// TestWorkerServer_ReportImplementationComplete_WrongPhase tests phase validation.
-func TestWorkerServer_ReportImplementationComplete_WrongPhase(t *testing.T) {
+// TestWorkerServer_ReportImplementationComplete_ProcessorRejectsWrongPhase tests that processor validates phase.
+// In v2 architecture, phase validation happens in the processor, not the MCP handler.
+func TestWorkerServer_ReportImplementationComplete_ProcessorRejectsWrongPhase(t *testing.T) {
 	store := newMockMessageStore()
-	callback := newMockStateCallback()
-	callback.setPhase("WORKER.1", events.PhaseIdle) // Not implementing
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_implementation_complete"]
 
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetStateCallback(callback)
-	handler := ws.handlers["report_implementation_complete"]
+	// Configure mock to return error (simulating processor rejecting wrong phase)
+	tws.V2Handler.SetResult(&command.CommandResult{
+		Success: false,
+		Error:   fmt.Errorf("worker not in implementing or addressing_feedback phase"),
+	})
 
-	_, err := handler(context.Background(), json.RawMessage(`{"summary": "done"}`))
-	require.Error(t, err, "Expected error for wrong phase")
-	require.Contains(t, err.Error(), "not in implementing or addressing_feedback phase", "Expected phase error")
+	result, err := handler(context.Background(), json.RawMessage(`{"summary": "done"}`))
+	require.NoError(t, err, "Handler returns nil error")
+	require.NotNil(t, result)
+	require.True(t, result.IsError, "Expected error result from processor")
+	require.Contains(t, result.Content[0].Text, "not in implementing or addressing_feedback phase", "Expected phase error")
 }
 
-// TestWorkerServer_ReportImplementationComplete_HappyPath tests successful completion.
+// TestWorkerServer_ReportImplementationComplete_HappyPath tests successful completion in v2.
 func TestWorkerServer_ReportImplementationComplete_HappyPath(t *testing.T) {
 	store := newMockMessageStore()
-	callback := newMockStateCallback()
-	callback.setPhase("WORKER.1", events.PhaseImplementing)
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_implementation_complete"]
 
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetStateCallback(callback)
-	handler := ws.handlers["report_implementation_complete"]
+	// Configure mock to return success
+	tws.V2Handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Implementation complete",
+	})
 
 	result, err := handler(context.Background(), json.RawMessage(`{"summary": "Added feature X with tests"}`))
 	require.NoError(t, err, "Unexpected error")
 
-	// Verify callback was called
-	require.Len(t, callback.calls, 2, "Expected 2 callback calls (GetWorkerPhase + OnImplementationComplete)")
-	// Find the OnImplementationComplete call
-	found := false
-	for _, call := range callback.calls {
-		if call.Method == "OnImplementationComplete" {
-			found = true
-			require.Equal(t, "WORKER.1", call.WorkerID, "WorkerID mismatch")
-			require.Equal(t, "Added feature X with tests", call.Summary, "Summary mismatch")
-		}
-	}
-	require.True(t, found, "OnImplementationComplete callback not called")
+	// Verify command was submitted
+	commands := tws.V2Handler.GetCommands()
+	require.Len(t, commands, 1, "Expected 1 command")
+	require.Equal(t, command.CmdReportComplete, commands[0].Type(), "Expected ReportComplete command")
 
-	// Verify message was posted to coordinator
-	require.Len(t, store.appendCalls, 1, "Expected 1 message posted")
-	require.Contains(t, store.appendCalls[0].Content, "Implementation complete", "Message should contain 'Implementation complete'")
-
-	// Verify structured response
+	// Verify success result
 	require.NotNil(t, result, "Expected result with content")
 	require.NotEmpty(t, result.Content, "Expected result with content")
-	require.Contains(t, result.Content[0].Text, "awaiting_review", "Response should contain 'awaiting_review'")
+	require.False(t, result.IsError, "Expected success result")
 }
 
-// TestWorkerServer_ReportImplementationComplete_AddressingFeedback tests completion from addressing_feedback phase.
+// TestWorkerServer_ReportImplementationComplete_AddressingFeedback tests completion from addressing_feedback phase in v2.
 func TestWorkerServer_ReportImplementationComplete_AddressingFeedback(t *testing.T) {
 	store := newMockMessageStore()
-	callback := newMockStateCallback()
-	callback.setPhase("WORKER.1", events.PhaseAddressingFeedback)
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_implementation_complete"]
 
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetStateCallback(callback)
-	handler := ws.handlers["report_implementation_complete"]
+	// Configure mock to return success
+	tws.V2Handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Implementation complete",
+	})
 
-	_, err := handler(context.Background(), json.RawMessage(`{"summary": "Fixed review feedback"}`))
-	require.NoError(t, err, "Should succeed from addressing_feedback phase")
+	result, err := handler(context.Background(), json.RawMessage(`{"summary": "Fixed review feedback"}`))
+	require.NoError(t, err, "Should succeed in v2")
+	require.NotNil(t, result)
+	require.False(t, result.IsError, "Expected success result")
 }
 
-// TestWorkerServer_ReportReviewVerdict_NoCallback tests error when callback not set.
-func TestWorkerServer_ReportReviewVerdict_NoCallback(t *testing.T) {
+// TestWorkerServer_ReportReviewVerdict_SubmitsCommand tests command submission in v2.
+func TestWorkerServer_ReportReviewVerdict_SubmitsCommand(t *testing.T) {
 	store := newMockMessageStore()
-	ws := NewWorkerServer("WORKER.1", store)
-	handler := ws.handlers["report_review_verdict"]
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_review_verdict"]
 
-	_, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED", "comments": "LGTM"}`))
-	require.Error(t, err, "Expected error when callback not configured")
-	require.Contains(t, err.Error(), "state callback not configured", "Expected 'state callback not configured' error")
+	// Configure mock to return success
+	tws.V2Handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Verdict submitted",
+	})
+
+	result, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED", "comments": "LGTM"}`))
+	require.NoError(t, err, "Expected no error with v2 adapter")
+	require.NotNil(t, result)
+	require.False(t, result.IsError, "Expected success result")
+
+	// Verify command was submitted
+	commands := tws.V2Handler.GetCommands()
+	require.Len(t, commands, 1, "Expected 1 command")
+	require.Equal(t, command.CmdReportVerdict, commands[0].Type(), "Expected ReportVerdict command")
 }
 
-// TestWorkerServer_ReportReviewVerdict_MissingVerdict tests validation.
+// TestWorkerServer_ReportReviewVerdict_MissingVerdict tests validation in v2.
 func TestWorkerServer_ReportReviewVerdict_MissingVerdict(t *testing.T) {
 	store := newMockMessageStore()
-	callback := newMockStateCallback()
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetStateCallback(callback)
-	handler := ws.handlers["report_review_verdict"]
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_review_verdict"]
 
+	// v2 adapter validates verdict is required before submitting to processor
 	_, err := handler(context.Background(), json.RawMessage(`{"comments": "LGTM"}`))
 	require.Error(t, err, "Expected error for missing verdict")
 	require.Contains(t, err.Error(), "verdict is required", "Expected 'verdict is required' error")
 }
 
-// TestWorkerServer_ReportReviewVerdict_MissingComments tests validation.
-func TestWorkerServer_ReportReviewVerdict_MissingComments(t *testing.T) {
+// TestWorkerServer_ReportReviewVerdict_EmptyComments tests that empty comments are valid in v2.
+// In v2 architecture, comments are optional.
+func TestWorkerServer_ReportReviewVerdict_EmptyComments(t *testing.T) {
 	store := newMockMessageStore()
-	callback := newMockStateCallback()
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetStateCallback(callback)
-	handler := ws.handlers["report_review_verdict"]
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_review_verdict"]
 
-	_, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED"}`))
-	require.Error(t, err, "Expected error for missing comments")
-	require.Contains(t, err.Error(), "comments is required", "Expected 'comments is required' error")
+	// Configure mock to return success
+	tws.V2Handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Verdict submitted",
+	})
+
+	result, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED"}`))
+	require.NoError(t, err, "Empty comments should not error in v2")
+	require.NotNil(t, result)
+	require.False(t, result.IsError, "Expected success result")
 }
 
-// TestWorkerServer_ReportReviewVerdict_InvalidVerdict tests invalid verdict value.
+// TestWorkerServer_ReportReviewVerdict_InvalidVerdict tests invalid verdict value in v2.
 func TestWorkerServer_ReportReviewVerdict_InvalidVerdict(t *testing.T) {
 	store := newMockMessageStore()
-	callback := newMockStateCallback()
-	callback.setPhase("WORKER.1", events.PhaseReviewing)
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetStateCallback(callback)
-	handler := ws.handlers["report_review_verdict"]
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_review_verdict"]
 
+	// v2 adapter validates verdict value
 	_, err := handler(context.Background(), json.RawMessage(`{"verdict": "MAYBE", "comments": "Not sure"}`))
 	require.Error(t, err, "Expected error for invalid verdict")
-	require.Contains(t, err.Error(), "must be 'APPROVED' or 'DENIED'", "Expected verdict validation error")
+	require.Contains(t, err.Error(), "must be APPROVED or DENIED", "Expected verdict validation error")
 }
 
-// TestWorkerServer_ReportReviewVerdict_WrongPhase tests phase validation.
-func TestWorkerServer_ReportReviewVerdict_WrongPhase(t *testing.T) {
+// TestWorkerServer_ReportReviewVerdict_ProcessorRejectsWrongPhase tests that processor validates phase.
+// In v2 architecture, phase validation happens in the processor, not the MCP handler.
+func TestWorkerServer_ReportReviewVerdict_ProcessorRejectsWrongPhase(t *testing.T) {
 	store := newMockMessageStore()
-	callback := newMockStateCallback()
-	callback.setPhase("WORKER.1", events.PhaseImplementing) // Not reviewing
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_review_verdict"]
 
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetStateCallback(callback)
-	handler := ws.handlers["report_review_verdict"]
+	// Configure mock to return error (simulating processor rejecting wrong phase)
+	tws.V2Handler.SetResult(&command.CommandResult{
+		Success: false,
+		Error:   fmt.Errorf("worker not in reviewing phase"),
+	})
 
-	_, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED", "comments": "LGTM"}`))
-	require.Error(t, err, "Expected error for wrong phase")
-	require.Contains(t, err.Error(), "not in reviewing phase", "Expected phase error")
+	result, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED", "comments": "LGTM"}`))
+	require.NoError(t, err, "Handler returns nil error")
+	require.NotNil(t, result)
+	require.True(t, result.IsError, "Expected error result from processor")
+	require.Contains(t, result.Content[0].Text, "not in reviewing phase", "Expected phase error")
 }
 
-// TestWorkerServer_ReportReviewVerdict_Approved tests successful approval.
+// TestWorkerServer_ReportReviewVerdict_Approved tests successful approval in v2.
 func TestWorkerServer_ReportReviewVerdict_Approved(t *testing.T) {
 	store := newMockMessageStore()
-	callback := newMockStateCallback()
-	callback.setPhase("WORKER.1", events.PhaseReviewing)
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_review_verdict"]
 
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetStateCallback(callback)
-	handler := ws.handlers["report_review_verdict"]
+	// Configure mock to return success
+	tws.V2Handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Review verdict APPROVED submitted",
+	})
 
 	result, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED", "comments": "Code looks great, tests pass"}`))
 	require.NoError(t, err, "Unexpected error")
 
-	// Verify callback was called
-	found := false
-	for _, call := range callback.calls {
-		if call.Method == "OnReviewVerdict" {
-			found = true
-			require.Equal(t, "APPROVED", call.Verdict, "Verdict mismatch")
-			require.Equal(t, "Code looks great, tests pass", call.Comments, "Comments mismatch")
-		}
-	}
-	require.True(t, found, "OnReviewVerdict callback not called")
+	// Verify command was submitted
+	commands := tws.V2Handler.GetCommands()
+	require.Len(t, commands, 1, "Expected 1 command")
+	require.Equal(t, command.CmdReportVerdict, commands[0].Type(), "Expected ReportVerdict command")
 
-	// Verify message was posted
-	require.Len(t, store.appendCalls, 1, "Expected 1 message posted")
-	require.Contains(t, store.appendCalls[0].Content, "Review verdict: APPROVED", "Message should contain verdict")
-
-	// Verify structured response
+	// Verify success result
 	require.NotNil(t, result, "Expected result with content")
 	require.NotEmpty(t, result.Content, "Expected result with content")
+	require.False(t, result.IsError, "Expected success result")
 	require.Contains(t, result.Content[0].Text, "APPROVED", "Response should contain 'APPROVED'")
-	require.Contains(t, result.Content[0].Text, "idle", "Response should contain 'idle' phase")
 }
 
-// TestWorkerServer_ReportReviewVerdict_Denied tests successful denial.
+// TestWorkerServer_ReportReviewVerdict_Denied tests successful denial in v2.
 func TestWorkerServer_ReportReviewVerdict_Denied(t *testing.T) {
 	store := newMockMessageStore()
-	callback := newMockStateCallback()
-	callback.setPhase("WORKER.1", events.PhaseReviewing)
+	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	defer tws.Close()
+	handler := tws.handlers["report_review_verdict"]
 
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetStateCallback(callback)
-	handler := ws.handlers["report_review_verdict"]
+	// Configure mock to return success
+	tws.V2Handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Review verdict DENIED submitted",
+	})
 
 	result, err := handler(context.Background(), json.RawMessage(`{"verdict": "DENIED", "comments": "Missing error handling in line 50"}`))
 	require.NoError(t, err, "Unexpected error")
 
-	// Verify callback was called with DENIED
-	found := false
-	for _, call := range callback.calls {
-		if call.Method == "OnReviewVerdict" && call.Verdict == "DENIED" {
-			found = true
-			require.Contains(t, call.Comments, "Missing error handling", "Comments should be passed correctly")
-		}
-	}
-	require.True(t, found, "OnReviewVerdict callback not called with DENIED")
+	// Verify command was submitted
+	commands := tws.V2Handler.GetCommands()
+	require.Len(t, commands, 1, "Expected 1 command")
+	require.Equal(t, command.CmdReportVerdict, commands[0].Type(), "Expected ReportVerdict command")
 
-	// Verify structured response contains DENIED
+	// Verify success result contains DENIED
+	require.NotNil(t, result)
+	require.False(t, result.IsError, "Expected success result")
 	require.Contains(t, result.Content[0].Text, "DENIED", "Response should contain 'DENIED'")
 }
 
@@ -1182,10 +1151,6 @@ func TestHandlePostReflections_Success(t *testing.T) {
 	require.Equal(t, "perles-abc123", writer.calls[0].TaskID, "TaskID mismatch")
 	require.Contains(t, string(writer.calls[0].Content), "# Worker Reflection", "Content should be markdown")
 	require.Contains(t, string(writer.calls[0].Content), "Implemented feature X", "Content should contain summary")
-
-	// Verify message posted to coordinator
-	require.Len(t, store.appendCalls, 1, "Expected 1 message posted")
-	require.Contains(t, store.appendCalls[0].Content, "Reflection posted for task perles-abc123")
 
 	// Verify structured response
 	require.NotNil(t, result, "Expected result with content")
