@@ -21,6 +21,7 @@ import (
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	"github.com/zjrosen/perles/internal/ui/shared/logoverlay"
 	"github.com/zjrosen/perles/internal/ui/shared/toaster"
@@ -96,6 +97,14 @@ func NewWithConfig(
 		}
 		// Silently ignore watcher init errors - app works fine without auto-refresh
 	}
+
+	// Apply theme colors from config
+	themeCfg := styles.ThemeConfig{
+		Preset: cfg.Theme.Preset,
+		Mode:   cfg.Theme.Mode,
+		Colors: cfg.Theme.FlattenedColors(),
+	}
+	_ = styles.ApplyTheme(themeCfg)
 
 	// Create shared services
 	services := mode.Services{

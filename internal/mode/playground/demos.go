@@ -876,7 +876,7 @@ func Hello() string {
 
 func createMarkdownDemo(width, height int) DemoModel {
 	renderWidth := min(width-4, 70)
-	renderer, err := markdown.New(renderWidth)
+	renderer, err := markdown.New(renderWidth, "dark")
 	var rendered string
 	if err != nil {
 		rendered = "Error creating markdown renderer: " + err.Error()
@@ -909,7 +909,7 @@ func (m *MarkdownDemoModel) SetSize(width, height int) DemoModel {
 	m.height = height
 	// Re-render with new width
 	renderWidth := min(width-4, 70)
-	renderer, err := markdown.New(renderWidth)
+	renderer, err := markdown.New(renderWidth, "dark")
 	if err == nil {
 		m.rendered, _ = renderer.Render(sampleMarkdown)
 	}

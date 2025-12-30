@@ -525,3 +525,94 @@ func TestUIConfig_VimModeZeroValue(t *testing.T) {
 	cfg := UIConfig{}
 	require.False(t, cfg.VimMode)
 }
+
+// Tests for ThemeConfig.FlattenedColors
+
+func TestThemeConfig_FlattenedColors_Nil(t *testing.T) {
+	cfg := ThemeConfig{}
+	result := cfg.FlattenedColors()
+	require.NotNil(t, result)
+	require.Empty(t, result)
+}
+
+func TestThemeConfig_FlattenedColors_FlatKeys(t *testing.T) {
+	// Already flat keys (quoted in YAML) should pass through
+	cfg := ThemeConfig{
+		Colors: map[string]any{
+			"text.primary": "#FF0000",
+			"status.error": "#00FF00",
+		},
+	}
+	result := cfg.FlattenedColors()
+	require.Len(t, result, 2)
+	require.Equal(t, "#FF0000", result["text.primary"])
+	require.Equal(t, "#00FF00", result["status.error"])
+}
+
+func TestThemeConfig_FlattenedColors_NestedKeys(t *testing.T) {
+	// Nested structure (natural YAML) should be flattened
+	cfg := ThemeConfig{
+		Colors: map[string]any{
+			"text": map[string]any{
+				"primary":   "#FF0000",
+				"secondary": "#00FF00",
+			},
+			"status": map[string]any{
+				"error": "#0000FF",
+			},
+		},
+	}
+	result := cfg.FlattenedColors()
+	require.Len(t, result, 3)
+	require.Equal(t, "#FF0000", result["text.primary"])
+	require.Equal(t, "#00FF00", result["text.secondary"])
+	require.Equal(t, "#0000FF", result["status.error"])
+}
+
+func TestThemeConfig_FlattenedColors_DeeplyNested(t *testing.T) {
+	// Deeply nested structure (e.g., button.primary.bg)
+	cfg := ThemeConfig{
+		Colors: map[string]any{
+			"button": map[string]any{
+				"primary": map[string]any{
+					"bg":    "#FF0000",
+					"focus": "#00FF00",
+				},
+			},
+		},
+	}
+	result := cfg.FlattenedColors()
+	require.Len(t, result, 2)
+	require.Equal(t, "#FF0000", result["button.primary.bg"])
+	require.Equal(t, "#00FF00", result["button.primary.focus"])
+}
+
+func TestThemeConfig_FlattenedColors_Mixed(t *testing.T) {
+	// Mix of flat and nested keys
+	cfg := ThemeConfig{
+		Colors: map[string]any{
+			"spinner": "#AABBCC", // Flat (no dots)
+			"text": map[string]any{
+				"primary": "#FF0000",
+			},
+		},
+	}
+	result := cfg.FlattenedColors()
+	require.Len(t, result, 2)
+	require.Equal(t, "#AABBCC", result["spinner"])
+	require.Equal(t, "#FF0000", result["text.primary"])
+}
+
+func TestThemeConfig_FlattenedColors_MapAnyAny(t *testing.T) {
+	// YAML sometimes produces map[any]any - should be handled
+	cfg := ThemeConfig{
+		Colors: map[string]any{
+			"text": map[any]any{
+				"primary": "#FF0000",
+			},
+		},
+	}
+	result := cfg.FlattenedColors()
+	require.Len(t, result, 1)
+	require.Equal(t, "#FF0000", result["text.primary"])
+}

@@ -25,7 +25,7 @@ theme:
 	themeCfg := styles.ThemeConfig{
 		Preset: cfg.Theme.Preset,
 		Mode:   cfg.Theme.Mode,
-		Colors: cfg.Theme.Colors,
+		Colors: cfg.Theme.FlattenedColors(),
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.NoError(t, err)
@@ -38,22 +38,27 @@ theme:
 func TestThemeConfig_WithColorOverrides(t *testing.T) {
 	cfg := Config{
 		Theme: ThemeConfig{
-			Colors: map[string]string{
-				"text.primary": "#FF0000",
-				"status.error": "#00FF00",
+			Colors: map[string]any{
+				"text": map[string]any{
+					"primary": "#FF0000",
+				},
+				"status": map[string]any{
+					"error": "#00FF00",
+				},
 			},
 		},
 	}
 
 	require.NotNil(t, cfg.Theme.Colors)
-	require.Equal(t, "#FF0000", cfg.Theme.Colors["text.primary"])
-	require.Equal(t, "#00FF00", cfg.Theme.Colors["status.error"])
+	flattened := cfg.Theme.FlattenedColors()
+	require.Equal(t, "#FF0000", flattened["text.primary"])
+	require.Equal(t, "#00FF00", flattened["status.error"])
 
 	// Apply theme and verify colors applied
 	themeCfg := styles.ThemeConfig{
 		Preset: cfg.Theme.Preset,
 		Mode:   cfg.Theme.Mode,
-		Colors: cfg.Theme.Colors,
+		Colors: flattened,
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.NoError(t, err)
@@ -63,8 +68,10 @@ func TestThemeConfig_WithColorOverrides(t *testing.T) {
 }
 
 // TestThemeConfig_WithColorOverridesFromYAML tests that dotted color tokens
-// in YAML config files are correctly parsed when using custom viper key delimiter.
+// in YAML config files are correctly parsed. Viper interprets unquoted dotted keys
+// as nested structures, which FlattenedColors() handles correctly.
 func TestThemeConfig_WithColorOverridesFromYAML(t *testing.T) {
+	// Viper treats "text.primary" as nested: text -> primary
 	configYAML := `
 theme:
   colors:
@@ -75,15 +82,18 @@ theme:
 	cfg := loadConfigFromYAML(t, configYAML)
 
 	require.NotNil(t, cfg.Theme.Colors)
-	require.Equal(t, "#FF0000", cfg.Theme.Colors["text.primary"])
-	require.Equal(t, "#00FF00", cfg.Theme.Colors["status.error"])
-	require.Equal(t, "#0000FF", cfg.Theme.Colors["selection.indicator"])
+
+	// Verify flattening produces correct dot-notation keys
+	flattened := cfg.Theme.FlattenedColors()
+	require.Equal(t, "#FF0000", flattened["text.primary"])
+	require.Equal(t, "#00FF00", flattened["status.error"])
+	require.Equal(t, "#0000FF", flattened["selection.indicator"])
 
 	// Apply theme and verify colors applied
 	themeCfg := styles.ThemeConfig{
 		Preset: cfg.Theme.Preset,
 		Mode:   cfg.Theme.Mode,
-		Colors: cfg.Theme.Colors,
+		Colors: flattened,
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.NoError(t, err)
@@ -98,20 +108,23 @@ func TestThemeConfig_PresetWithOverrides(t *testing.T) {
 	cfg := Config{
 		Theme: ThemeConfig{
 			Preset: "dracula",
-			Colors: map[string]string{
-				"text.primary": "#123456",
+			Colors: map[string]any{
+				"text": map[string]any{
+					"primary": "#123456",
+				},
 			},
 		},
 	}
 
 	require.Equal(t, "dracula", cfg.Theme.Preset)
-	require.Equal(t, "#123456", cfg.Theme.Colors["text.primary"])
+	flattened := cfg.Theme.FlattenedColors()
+	require.Equal(t, "#123456", flattened["text.primary"])
 
 	// Apply theme
 	themeCfg := styles.ThemeConfig{
 		Preset: cfg.Theme.Preset,
 		Mode:   cfg.Theme.Mode,
-		Colors: cfg.Theme.Colors,
+		Colors: flattened,
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.NoError(t, err)
@@ -133,7 +146,7 @@ theme:
 	themeCfg := styles.ThemeConfig{
 		Preset: cfg.Theme.Preset,
 		Mode:   cfg.Theme.Mode,
-		Colors: cfg.Theme.Colors,
+		Colors: cfg.Theme.FlattenedColors(),
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.Error(t, err)
@@ -144,8 +157,12 @@ theme:
 func TestThemeConfig_InvalidColorToken(t *testing.T) {
 	cfg := Config{
 		Theme: ThemeConfig{
-			Colors: map[string]string{
-				"invalid.token.name": "#FF0000",
+			Colors: map[string]any{
+				"invalid": map[string]any{
+					"token": map[string]any{
+						"name": "#FF0000",
+					},
+				},
 			},
 		},
 	}
@@ -153,7 +170,7 @@ func TestThemeConfig_InvalidColorToken(t *testing.T) {
 	themeCfg := styles.ThemeConfig{
 		Preset: cfg.Theme.Preset,
 		Mode:   cfg.Theme.Mode,
-		Colors: cfg.Theme.Colors,
+		Colors: cfg.Theme.FlattenedColors(),
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.Error(t, err)
@@ -164,8 +181,10 @@ func TestThemeConfig_InvalidColorToken(t *testing.T) {
 func TestThemeConfig_InvalidHexColor(t *testing.T) {
 	cfg := Config{
 		Theme: ThemeConfig{
-			Colors: map[string]string{
-				"text.primary": "not-a-color",
+			Colors: map[string]any{
+				"text": map[string]any{
+					"primary": "not-a-color",
+				},
 			},
 		},
 	}
@@ -173,7 +192,7 @@ func TestThemeConfig_InvalidHexColor(t *testing.T) {
 	themeCfg := styles.ThemeConfig{
 		Preset: cfg.Theme.Preset,
 		Mode:   cfg.Theme.Mode,
-		Colors: cfg.Theme.Colors,
+		Colors: cfg.Theme.FlattenedColors(),
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.Error(t, err)
@@ -195,7 +214,7 @@ auto_refresh: true
 	themeCfg := styles.ThemeConfig{
 		Preset: cfg.Theme.Preset,
 		Mode:   cfg.Theme.Mode,
-		Colors: cfg.Theme.Colors,
+		Colors: cfg.Theme.FlattenedColors(),
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.NoError(t, err)
@@ -232,12 +251,50 @@ theme:
 			themeCfg := styles.ThemeConfig{
 				Preset: cfg.Theme.Preset,
 				Mode:   cfg.Theme.Mode,
-				Colors: cfg.Theme.Colors,
+				Colors: cfg.Theme.FlattenedColors(),
 			}
 			err := styles.ApplyTheme(themeCfg)
 			require.NoError(t, err, "preset %s should apply without error", preset)
 		})
 	}
+}
+
+// TestThemeConfig_NestedYAMLColorOverrides tests that nested YAML color overrides
+// are properly flattened to dot-notation keys.
+func TestThemeConfig_NestedYAMLColorOverrides(t *testing.T) {
+	configYAML := `
+theme:
+  preset: dracula
+  colors:
+    text:
+      primary: "#FF0000"
+      secondary: "#00FF00"
+    status:
+      error: "#0000FF"
+`
+	cfg := loadConfigFromYAML(t, configYAML)
+
+	require.Equal(t, "dracula", cfg.Theme.Preset)
+	require.NotNil(t, cfg.Theme.Colors)
+
+	// Verify flattening works
+	flattened := cfg.Theme.FlattenedColors()
+	require.Equal(t, "#FF0000", flattened["text.primary"])
+	require.Equal(t, "#00FF00", flattened["text.secondary"])
+	require.Equal(t, "#0000FF", flattened["status.error"])
+
+	// Apply theme and verify colors applied
+	themeCfg := styles.ThemeConfig{
+		Preset: cfg.Theme.Preset,
+		Mode:   cfg.Theme.Mode,
+		Colors: flattened,
+	}
+	err := styles.ApplyTheme(themeCfg)
+	require.NoError(t, err)
+
+	require.Equal(t, "#FF0000", styles.TextPrimaryColor.Dark)
+	require.Equal(t, "#00FF00", styles.TextSecondaryColor.Dark)
+	require.Equal(t, "#0000FF", styles.StatusErrorColor.Dark)
 }
 
 // loadConfigFromYAML is a helper to load config from YAML string.
@@ -250,9 +307,8 @@ func loadConfigFromYAML(t *testing.T, yaml string) Config {
 	err := os.WriteFile(configPath, []byte(yaml), 0644)
 	require.NoError(t, err)
 
-	// Use custom key delimiter "::" to allow dotted keys like "text.primary"
-	// in the theme.colors map without viper treating them as nested paths.
-	v := viper.NewWithOptions(viper.KeyDelimiter("::"))
+	// Reset viper for each test
+	v := viper.New()
 	v.SetConfigFile(configPath)
 	err = v.ReadInConfig()
 	require.NoError(t, err)

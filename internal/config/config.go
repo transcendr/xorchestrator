@@ -55,8 +55,49 @@ type ThemeConfig struct {
 	Mode string `mapstructure:"mode"`
 
 	// Colors allows overriding individual color tokens.
-	// Keys use dot notation: "text.primary", "status.error", etc.
-	Colors map[string]string `mapstructure:"colors"`
+	// Supports both nested YAML structure and dot notation.
+	// Example YAML:
+	//   colors:
+	//     text:
+	//       primary: "#FF0000"
+	// Or quoted dot notation:
+	//   colors:
+	//     "text.primary": "#FF0000"
+	Colors map[string]any `mapstructure:"colors"`
+}
+
+// FlattenedColors returns the Colors map flattened to dot-notation keys.
+// This handles both nested YAML structures and already-flat keys.
+func (t ThemeConfig) FlattenedColors() map[string]string {
+	result := make(map[string]string)
+	flattenColors("", t.Colors, result)
+	return result
+}
+
+// flattenColors recursively flattens a nested map into dot-notation keys.
+func flattenColors(prefix string, m map[string]any, result map[string]string) {
+	for k, v := range m {
+		key := k
+		if prefix != "" {
+			key = prefix + "." + k
+		}
+
+		switch val := v.(type) {
+		case string:
+			result[key] = val
+		case map[string]any:
+			flattenColors(key, val, result)
+		case map[any]any:
+			// YAML sometimes produces map[any]any instead of map[string]any
+			converted := make(map[string]any)
+			for mk, mv := range val {
+				if strKey, ok := mk.(string); ok {
+					converted[strKey] = mv
+				}
+			}
+			flattenColors(key, converted, result)
+		}
+	}
 }
 
 // OrchestrationConfig holds orchestration mode configuration.

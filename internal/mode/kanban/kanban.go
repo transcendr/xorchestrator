@@ -89,14 +89,6 @@ type Model struct {
 
 // New creates a new kanban mode controller.
 func New(services mode.Services) Model {
-	// Apply theme colors from config
-	themeCfg := styles.ThemeConfig{
-		Preset: services.Config.Theme.Preset,
-		Mode:   services.Config.Theme.Mode,
-		Colors: services.Config.Theme.Colors,
-	}
-	_ = styles.ApplyTheme(themeCfg) // Ignore error for now, validation will be added
-
 	// Create board from views (GetViews returns defaults if none configured)
 	clock := services.Clock
 	boardModel := board.NewFromViews(services.Config.GetViews(), services.Executor, clock).
