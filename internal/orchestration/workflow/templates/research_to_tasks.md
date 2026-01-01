@@ -230,10 +230,31 @@ bd create "{Task Title}" -t task --parent {epic-id} -d "
 " --json
 ```
 
-**Step 3: Set Dependencies**
+**Step 3: Set Dependencies (CRITICAL - Do Not Skip)**
+
+Inter-task dependencies MUST be created using `bd dep add`. The `--parent` flag only creates parent-child relationships to the epic, NOT dependencies between tasks.
+
+For each task that depends on another task:
 ```bash
-bd dep add {task-2-id} {task-1-id}  # task-2 depends on task-1
+bd dep add {dependent-task-id} {prerequisite-task-id}
 ```
+
+Example for a 4-task milestone chain:
+```bash
+# If .4 depends on .1, .2, .3 completing first:
+bd dep add {epic}.4 {epic}.1
+bd dep add {epic}.4 {epic}.2
+bd dep add {epic}.4 {epic}.3
+
+# If .5 depends on .4:
+bd dep add {epic}.5 {epic}.4
+```
+
+**After adding all dependencies, verify with:**
+```bash
+bd list --parent {epic-id} --json | jq -r '.[] | "\(.id): \(.status), deps: \(.dependencies | map(select(.dependency_type == \"blocks\")) | length)"'
+```
+This lists all tasks under the epic with their blocking dependency count. Starting tasks should have 0 blocking deps, dependent tasks should have 1+. If ALL tasks show 0 blocking deps, inter-task dependencies were not set correctly.
 
 **Step 4: Document in Plan**
 After creating epic and tasks, use Edit tool to update the plan document under "## Initial Task Breakdown":
@@ -295,6 +316,20 @@ You are the **Implementation Reviewer** for a research-to-tasks planning workflo
 - [ ] No overly complex or under-specified tasks?
 - [ ] Prerequisites and constraints addressed?
 
+**CRITICAL: Verify Dependencies Actually Exist in bd**
+
+Do NOT just read the plan document - verify dependencies were created in bd:
+
+1. List tasks with dependency counts:
+   ```bash
+   bd list --parent {epic-id} --json | jq -r '.[] | "\(.id): deps=\(.dependencies | map(select(.dependency_type == \"blocks\")) | length)"'
+   ```
+2. Starting tasks should show `deps=0`, dependent tasks should show `deps=1` or more
+3. If ALL tasks show `deps=0`, inter-task dependencies are MISSING - this is a blocker
+4. For detailed check: `bd show {task-id} --json | jq '.[] | .dependencies[] | select(.dependency_type == "blocks")'`
+
+If dependencies are missing, your verdict MUST be **CHANGES NEEDED** with specific instruction to run `bd dep add` commands.
+
 **Use Edit tool to update plan under "## Implementation Review (Worker 2)":**
 
 ```markdown
@@ -316,6 +351,12 @@ You are the **Implementation Reviewer** for a research-to-tasks planning workflo
 
 [Repeat for each task]
 
+### Dependency Verification
+**Command run:** `bd list --parent {epic-id} --json | jq ...`
+**Tasks with deps=0 (starting tasks):** [List task IDs]
+**Tasks with deps>=1 (dependent tasks):** [List task IDs]
+**Dependency check:** [PASS - mix of 0 and 1+ deps / FAIL - all tasks show deps=0]
+
 ### Critical Issues
 [List blocking issues that MUST be addressed]
 
@@ -331,6 +372,8 @@ If CHANGES NEEDED:
 ```
 
 Be thorough but constructive. Your goal is to ensure tasks are implementable.
+
+**IMPORTANT:** If all tasks under the epic show `deps=0`, inter-task dependencies are missing. This MUST be flagged as CHANGES NEEDED.
 ```
 
 **Coordinator:** Wait for completion, then proceed to Phase 4.
@@ -685,6 +728,7 @@ The plan document is shared across all workers. To prevent conflicts:
 3. **Oversized tasks** - If it can't be done in one session, split it
 4. **Missing dependencies** - Tasks that need prior work but don't declare it
 5. **Orphan tests** - Tests without corresponding implementation
+6. **Flat task structure** - Using only `--parent` creates parent-child links, NOT inter-task dependencies. You MUST use `bd dep add` for task ordering. Verify with `bd list --parent {epic-id}` - if all tasks show deps=0, inter-task dependencies are missing.
 
 ### Process Pitfalls
 1. **Skipping reviews** - Both reviewers must approve
@@ -701,7 +745,8 @@ A successful planning session produces:
 - [ ] Plan document with full audit trail
 - [ ] Beads epic with clear description
 - [ ] Tasks with specific test requirements (not deferred)
-- [ ] Proper dependencies between tasks
+- [ ] Proper inter-task dependencies via `bd dep add` (not just parent-child)
+- [ ] Dependency verification passed (starting tasks have deps=0, dependent tasks have deps>=1)
 - [ ] Both reviewers approved
 - [ ] Mediator summary confirms readiness
 
