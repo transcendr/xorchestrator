@@ -1,28 +1,28 @@
 ╭────────────────────────────╮  ╭─ Theme Tokens ───────────────────────────────────────────────────╮
-│ Components                 │  │ Text                                                             │
-│ ────────────────────────── │  │    text.primary #CCCCCC                                          │
-│   vimtextarea              │  │    text.secondary #BBBBBB                                        │
-│   modal                    │  │    text.muted #696969                                            │
-│   formmodal                │  │    text.description #999999                                      │
-│   panes                    │  │    text.placeholder #777777                                      │
-│   scrollpane               │  │                                                                  │
-│   colorpicker              │  │ Borders                                                          │
-│   picker                   │  │    border.default #696969                                        │
-│   toaster                  │  │    border.focus #FFF                                             │
-│   logoverlay               │  │    border.highlight #54A0FF                                      │
-│   markdown                 │  │                                                                  │
-│   chainart                 │  │ Status                                                           │
-│   issuebadge               │  │    status.success #73F59F                                        │
-│ ● Theme Tokens             │  │    status.warning #FECA57                                        │
-│                            │  │    status.error #FF8787                                          │
+│ Components                 │  │ Token                        default        catppuccin     catpp │
+│ ────────────────────────── │  │ ──────────────────────────────────────────────────────────────── │
+│   vimtextarea              │  │ Text                                                             │
+│   modal                    │  │ text.primary                    #CCCCCC        #CDD6F4        #4 │
+│   formmodal                │  │ text.secondary                  #BBBBBB        #BAC2DE        #5 │
+│   panes                    │  │ text.muted                      #696969        #6C7086        #9 │
+│   scrollpane               │  │ text.description                #999999        #A6ADC8        #6 │
+│   colorpicker              │  │ text.placeholder                #777777        #585B70        #A │
+│   picker                   │  │                                                                  │
+│   toaster                  │  │ Borders                                                          │
+│   logoverlay               │  │ border.default                  #696969        #6C7086        #9 │
+│   markdown                 │  │ border.focus                    #FFFFFF        #CDD6F4        #4 │
+│   chainart                 │  │ border.highlight                #54A0FF        #89B4FA        #1 │
+│   issuebadge               │  │                                                                  │
+│ ● Theme Tokens             │  │ Status                                                           │
+│                            │  │ status.success                  #73F59F        #A6E3A1        #4 │
+│                            │  │ status.warning                  #FECA57        #F9E2AF        #D │
+│                            │  │ status.error                    #FF8787        #F38BA8        #D │
 │                            │  │                                                                  │
 │                            │  │ Selection                                                        │
-│                            │  │    selection.indicator #FFFFFF                                   │
+│                            │  │ selection.indicator             #FFFFFF        #CDD6F4        #4 │
 │                            │  │                                                                  │
 │                            │  │ Buttons                                                          │
-│                            │  │    button.text #FFFFFF                                           │
-│                            │  │    button.primary.bg #1A5276                                     │
-│                            │  │    button.primary.focus #3498DB                                  │
+│                            │  │ button.text                     #FFFFFF        #1E1E2E        #E │
 │                            │  │                                                                  │
 ╰────────────────────────────╯  ╰──────────────────────────────────────────────────────────────────╯
 Tab: Switch panes  │  Ctrl+R: Reset  │  Ctrl+C: Quit                                                

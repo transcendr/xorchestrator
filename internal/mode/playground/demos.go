@@ -1352,13 +1352,14 @@ func ptrBool(b bool) *bool {
 
 // sampleIssues provides examples for the demo, showcasing all issue types and priorities.
 var sampleIssues = []beads.Issue{
-	// All 6 issue types
+	// All 7 issue types
 	{ID: "demo-e01", Type: beads.TypeEpic, Priority: 1, TitleText: "Epic: User Authentication System"},
 	{ID: "demo-t02", Type: beads.TypeTask, Priority: 2, TitleText: "Task: Implement login form validation"},
 	{ID: "demo-f03", Type: beads.TypeFeature, Priority: 1, TitleText: "Feature: Add dark mode support"},
 	{ID: "demo-b04", Type: beads.TypeBug, Priority: 0, TitleText: "Bug: Fix memory leak in cache"},
 	{ID: "demo-c05", Type: beads.TypeChore, Priority: 3, TitleText: "Chore: Update dependencies"},
 	{ID: "demo-m06", Type: beads.TypeMolecule, Priority: 2, TitleText: "Molecule: Reusable auth component"},
+	{ID: "demo-v07", Type: beads.TypeConvoy, Priority: 2, TitleText: "Convoy: Batch deployment pipeline"},
 	// All 5 priority levels
 	{ID: "demo-p0", Type: beads.TypeBug, Priority: 0, TitleText: "P0 Critical: Security vulnerability"},
 	{ID: "demo-p1", Type: beads.TypeFeature, Priority: 1, TitleText: "P1 High: Core feature request"},
@@ -1412,9 +1413,9 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n\n")
 
 	// Section 1: Issue Types
-	sb.WriteString(sectionStyle.Render("Issue Types (E/T/F/B/C/M):"))
+	sb.WriteString(sectionStyle.Render("Issue Types (E/T/F/B/C/M/🚚):"))
 	sb.WriteString("\n")
-	for i := range 6 {
+	for i := range 7 {
 		issue := sampleIssues[i]
 		line := issuebadge.Render(issue, issuebadge.Config{
 			ShowSelection: true,
@@ -1428,7 +1429,7 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(sectionStyle.Render("Priority Levels (P0-P4):"))
 	sb.WriteString("\n")
-	for i := 6; i < 11; i++ {
+	for i := 7; i < 12; i++ {
 		issue := sampleIssues[i]
 		line := issuebadge.Render(issue, issuebadge.Config{
 			ShowSelection: true,
@@ -1442,10 +1443,10 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(sectionStyle.Render("Title Truncation (MaxWidth=60):"))
 	sb.WriteString("\n")
-	truncatedIssue := sampleIssues[11]
+	truncatedIssue := sampleIssues[12]
 	truncatedLine := issuebadge.Render(truncatedIssue, issuebadge.Config{
 		ShowSelection: true,
-		Selected:      m.selectedIdx == 11,
+		Selected:      m.selectedIdx == 12,
 		MaxWidth:      60,
 	})
 	sb.WriteString(truncatedLine)
@@ -1455,10 +1456,10 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(sectionStyle.Render("Pinned Issue (📌 indicator):"))
 	sb.WriteString("\n")
-	pinnedIssue := sampleIssues[12]
+	pinnedIssue := sampleIssues[13]
 	pinnedLine := issuebadge.Render(pinnedIssue, issuebadge.Config{
 		ShowSelection: true,
-		Selected:      m.selectedIdx == 12,
+		Selected:      m.selectedIdx == 13,
 	})
 	sb.WriteString(pinnedLine)
 	sb.WriteString("\n")
@@ -1467,13 +1468,13 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(sectionStyle.Render("Badge Only (RenderBadge):"))
 	sb.WriteString("\n")
-	for i := range 6 {
+	for i := range 7 {
 		badge := issuebadge.RenderBadge(sampleIssues[i])
 		sb.WriteString(badge)
-		sb.WriteString(" ")
+		sb.WriteString("\n")
 	}
 	// Also show pinned badge
-	sb.WriteString(issuebadge.RenderBadge(sampleIssues[12]))
+	sb.WriteString(issuebadge.RenderBadge(sampleIssues[13]))
 	sb.WriteString("\n")
 
 	return sb.String()
@@ -1549,7 +1550,18 @@ func (m *ThemeTokensDemoModel) Reset() DemoModel {
 
 func (m *ThemeTokensDemoModel) NeedsEscKey() bool { return false }
 
-// renderTokenContent generates the theme token content without a title header.
+// themeOrder defines the display order for theme columns.
+var themeOrder = []string{
+	"default",
+	"catppuccin-mocha",
+	"catppuccin-latte",
+	"dracula",
+	"nord",
+	"gruvbox",
+	"high-contrast",
+}
+
+// renderTokenContent generates the theme token content with columns for each theme.
 func renderTokenContent() string {
 	var sb strings.Builder
 
@@ -1557,24 +1569,57 @@ func renderTokenContent() string {
 
 	categoryStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.StatusInProgressColor)
 	tokenNameStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
-	hexStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.TextPrimaryColor)
+
+	// Column widths
+	const tokenColWidth = 24
+	const swatchColWidth = 10  // "  " swatch (2) + " " (1) + hex (7)
+	const colSpacing = "     " // spacing between columns
+
+	// Render header row with theme names
+	sb.WriteString(headerStyle.Render(fmt.Sprintf("%-*s", tokenColWidth, "Token")))
+	for _, themeName := range themeOrder {
+		preset := styles.Presets[themeName]
+		shortName := preset.Name
+		if len(shortName) > swatchColWidth {
+			shortName = shortName[:swatchColWidth]
+		}
+		// Align header with swatch column below (colSpacing + swatch "  " + " ")
+		sb.WriteString(colSpacing + headerStyle.Render(fmt.Sprintf("%-*s", swatchColWidth, shortName)))
+	}
+	sb.WriteString("\n")
+
+	// Separator line
+	sb.WriteString(strings.Repeat("─", tokenColWidth+len(themeOrder)*(swatchColWidth+len(colSpacing))))
+	sb.WriteString("\n")
 
 	for i, cat := range categories {
 		if i > 0 {
-			sb.WriteString("\n") // Add spacing between categories, but not before first
+			sb.WriteString("\n")
 		}
 		sb.WriteString(categoryStyle.Render(cat.Name))
 		sb.WriteString("\n")
 
 		for _, token := range cat.Tokens {
-			hex := GetTokenColor(token)
-			swatch := lipgloss.NewStyle().
-				Background(lipgloss.Color(hex)).
-				Render("  ")
-
+			// Token name column
 			tokenName := string(token)
-			line := swatch + " " + tokenNameStyle.Render(tokenName) + " " + hexStyle.Render(hex)
-			sb.WriteString(line)
+			if len(tokenName) > tokenColWidth-1 {
+				tokenName = tokenName[:tokenColWidth-4] + "..."
+			}
+			sb.WriteString(tokenNameStyle.Render(fmt.Sprintf("%-*s", tokenColWidth, tokenName)))
+
+			// Color swatch for each theme
+			for _, themeName := range themeOrder {
+				preset := styles.Presets[themeName]
+				hex := preset.Colors[token]
+				if hex == "" {
+					hex = "#000000"
+				}
+				swatch := lipgloss.NewStyle().
+					Background(lipgloss.Color(hex)).
+					Render("  ")
+				sb.WriteString(fmt.Sprintf("%s%s %s", colSpacing, swatch, hex))
+			}
 			sb.WriteString("\n")
 		}
 	}

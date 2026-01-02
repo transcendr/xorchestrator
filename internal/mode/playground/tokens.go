@@ -118,6 +118,8 @@ func GetTokenColor(token styles.ColorToken) string {
 		return styles.IssueFeatureColor.Dark
 	case styles.TokenTypeMolecule:
 		return styles.IssueMoleculeColor.Dark
+	case styles.TokenTypeConvoy:
+		return styles.IssueConvoyColor.Dark
 
 	// BQL syntax highlighting
 	case styles.TokenBQLKeyword:
@@ -250,6 +252,7 @@ func GetTokenCategories() []TokenCategory {
 				styles.TokenTypeBug,
 				styles.TokenTypeFeature,
 				styles.TokenTypeMolecule,
+				styles.TokenTypeConvoy,
 			},
 		},
 		{

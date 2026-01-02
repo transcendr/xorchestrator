@@ -16,6 +16,7 @@ var Presets = map[string]Preset{
 	"dracula":          DraculaPreset,
 	"nord":             NordPreset,
 	"high-contrast":    HighContrastPreset,
+	"gruvbox":          GruvboxPreset,
 }
 
 // DefaultPreset is the current perles color scheme.
@@ -547,5 +548,92 @@ var HighContrastPreset = Preset{
 
 		// Misc
 		TokenSpinner: "#FFFF00", // yellow for visibility
+	},
+}
+
+// GruvboxPreset - Retro groove color scheme.
+// Based on https://github.com/morhetz/gruvbox
+var GruvboxPreset = Preset{
+	Name:        "gruvbox",
+	Description: "Retro groove color scheme",
+	Colors: map[ColorToken]string{
+		// Text hierarchy
+		TokenTextPrimary:     "#EBDBB2", // fg
+		TokenTextSecondary:   "#D5C4A1", // fg2
+		TokenTextMuted:       "#928374", // gray
+		TokenTextDescription: "#A89984", // gray light
+		TokenTextPlaceholder: "#665C54", // bg4
+
+		// Borders
+		TokenBorderDefault:   "#504945", // bg2
+		TokenBorderFocus:     "#EBDBB2", // fg
+		TokenBorderHighlight: "#83A598", // blue
+
+		// Status indicators
+		TokenStatusSuccess: "#B8BB26", // green
+		TokenStatusWarning: "#FABD2F", // yellow
+		TokenStatusError:   "#FB4934", // red
+
+		// Selection
+		TokenSelectionIndicator: "#EBDBB2", // fg
+
+		// Buttons
+		TokenButtonText:             "#282828", // bg
+		TokenButtonPrimaryBg:        "#458588", // blue
+		TokenButtonPrimaryFocusBg:   "#83A598", // blue bright
+		TokenButtonSecondaryBg:      "#504945", // bg2
+		TokenButtonSecondaryFocusBg: "#665C54", // bg3
+		TokenButtonDangerBg:         "#CC241D", // red
+		TokenButtonDangerFocusBg:    "#FB4934", // red bright
+		TokenButtonDisabledBg:       "#3C3836", // bg1
+
+		// Forms
+		TokenFormBorder:      "#504945", // bg2
+		TokenFormBorderFocus: "#EBDBB2", // fg
+		TokenFormLabel:       "#928374", // gray
+		TokenFormLabelFocus:  "#EBDBB2", // fg
+
+		// Overlays/Modals
+		TokenOverlayTitle:  "#EBDBB2", // fg
+		TokenOverlayBorder: "#504945", // bg2
+
+		// Toast notifications
+		TokenToastSuccess: "#B8BB26", // green
+		TokenToastError:   "#FB4934", // red
+		TokenToastInfo:    "#83A598", // blue
+		TokenToastWarn:    "#FABD2F", // yellow
+
+		// Issue status
+		TokenIssueOpen:       "#B8BB26", // green
+		TokenIssueInProgress: "#83A598", // blue
+		TokenIssueClosed:     "#928374", // gray
+
+		// Issue priority
+		TokenPriorityCritical: "#FB4934", // red bright
+		TokenPriorityHigh:     "#FE8019", // orange bright
+		TokenPriorityMedium:   "#FABD2F", // yellow
+		TokenPriorityLow:      "#928374", // gray
+		TokenPriorityBacklog:  "#665C54", // bg3
+
+		// Issue type
+		TokenTypeTask:     "#83A598", // blue
+		TokenTypeChore:    "#928374", // gray
+		TokenTypeEpic:     "#D3869B", // purple
+		TokenTypeBug:      "#FB4934", // red
+		TokenTypeFeature:  "#B8BB26", // green
+		TokenTypeMolecule: "#FE8019", // orange
+		TokenTypeConvoy:   "#928374", // gray
+
+		// BQL syntax highlighting
+		TokenBQLKeyword:  "#FB4934", // red
+		TokenBQLOperator: "#FE8019", // orange
+		TokenBQLField:    "#8EC07C", // aqua
+		TokenBQLString:   "#B8BB26", // green
+		TokenBQLLiteral:  "#D3869B", // purple
+		TokenBQLParen:    "#83A598", // blue
+		TokenBQLComma:    "#928374", // gray
+
+		// Misc
+		TokenSpinner: "#FABD2F", // yellow
 	},
 }
