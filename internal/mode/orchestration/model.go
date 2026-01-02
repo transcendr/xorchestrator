@@ -126,6 +126,7 @@ type Model struct {
 	// AI client configuration
 	clientType  string // "claude" (default) or "amp"
 	claudeModel string // Claude model: sonnet, opus, haiku
+	codexModel  string // Codex model: gpt-5.2-codex, o4-mini
 	ampModel    string // Amp model: opus, sonnet
 	ampMode     string // Amp mode: free, rush, smart
 
@@ -200,6 +201,8 @@ type Config struct {
 	ClientType string // "claude" (default) or "amp"
 	// Claude-specific settings
 	ClaudeModel string // sonnet (default), opus, haiku
+	// Codex-specific settings
+	CodexModel string
 	// Amp-specific settings
 	AmpModel string // opus (default), sonnet
 	AmpMode  string // free, rush, smart (default)
@@ -233,6 +236,7 @@ func New(cfg Config) Model {
 		fullscreenWorkerIndex: -1,            // No fullscreen by default
 		clientType:            cfg.ClientType,
 		claudeModel:           cfg.ClaudeModel,
+		codexModel:            cfg.CodexModel,
 		ampModel:              cfg.AmpModel,
 		ampMode:               cfg.AmpMode,
 		workflowRegistry:      cfg.WorkflowRegistry,

@@ -116,6 +116,8 @@ func (s *UnifiedProcessSpawnerImpl) generateCoordinatorMCPConfig() (string, erro
 	switch s.client.Type() {
 	case client.ClientAmp:
 		return mcp.GenerateCoordinatorConfigAmp(s.port)
+	case client.ClientCodex:
+		return mcp.GenerateCoordinatorConfigCodex(s.port), nil
 	default:
 		return mcp.GenerateCoordinatorConfigHTTP(s.port)
 	}
@@ -129,6 +131,8 @@ func (s *UnifiedProcessSpawnerImpl) generateMCPConfig(processID string) (string,
 	switch s.client.Type() {
 	case client.ClientAmp:
 		return mcp.GenerateWorkerConfigAmp(s.port, processID)
+	case client.ClientCodex:
+		return mcp.GenerateWorkerConfigCodex(s.port, processID), nil
 	default:
 		return mcp.GenerateWorkerConfigHTTP(s.port, processID)
 	}

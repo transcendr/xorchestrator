@@ -124,7 +124,14 @@ func (s *Server) ServeHTTP() http.Handler {
 		// Handle the request (reuse existing handleRequest logic)
 		response := s.handleRequestBytes(body)
 
-		// Write JSON-RPC response
+		// Per JSON-RPC 2.0 spec: notifications MUST NOT receive a response.
+		// Return 204 No Content for notifications (nil response).
+		if response == nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		// Write JSON-RPC response for requests
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write(response); err != nil {
@@ -173,9 +180,10 @@ func (s *Server) handleRequestBytes(body []byte) []byte {
 		return data
 	}
 
-	// It's a notification - process but don't respond
+	// It's a notification - process but don't respond per JSON-RPC 2.0 spec.
+	// Return nil to signal the HTTP handler to send 204 No Content.
 	s.handleNotification(&req)
-	return []byte("{}")
+	return nil
 }
 
 // Stop gracefully shuts down the server.

@@ -115,3 +115,46 @@ func TestGenerateCoordinatorConfigHTTP(t *testing.T) {
 	expectedURL := "http://localhost:9000/mcp"
 	require.Equal(t, expectedURL, server.URL, "URL mismatch")
 }
+
+func TestGenerateWorkerConfigCodex(t *testing.T) {
+	t.Run("returns correct TOML syntax", func(t *testing.T) {
+		result := GenerateWorkerConfigCodex(8765, "WORKER.1")
+
+		// Verify TOML syntax structure
+		require.Contains(t, result, "mcp_servers.perles-worker=", "Missing mcp_servers prefix")
+		require.Contains(t, result, `{url="`, "Missing inline table syntax")
+		require.Contains(t, result, `"}`, "Missing closing brace and quote")
+	})
+
+	t.Run("port and workerID are correctly interpolated", func(t *testing.T) {
+		result := GenerateWorkerConfigCodex(9000, "worker-5")
+
+		expected := `mcp_servers.perles-worker={url="http://localhost:9000/worker/worker-5"}`
+		require.Equal(t, expected, result, "Config string mismatch")
+	})
+
+	t.Run("URL format matches expected MCP HTTP transport format", func(t *testing.T) {
+		result := GenerateWorkerConfigCodex(8080, "WORKER.test")
+
+		// Verify URL components
+		require.Contains(t, result, "http://localhost:8080", "Port not interpolated correctly")
+		require.Contains(t, result, "/worker/WORKER.test", "WorkerID not interpolated correctly")
+	})
+
+	t.Run("handles different port values", func(t *testing.T) {
+		testCases := []struct {
+			port     int
+			workerID string
+			expected string
+		}{
+			{8765, "WORKER.1", `mcp_servers.perles-worker={url="http://localhost:8765/worker/WORKER.1"}`},
+			{9999, "worker-99", `mcp_servers.perles-worker={url="http://localhost:9999/worker/worker-99"}`},
+			{1234, "test", `mcp_servers.perles-worker={url="http://localhost:1234/worker/test"}`},
+		}
+
+		for _, tc := range testCases {
+			result := GenerateWorkerConfigCodex(tc.port, tc.workerID)
+			require.Equal(t, tc.expected, result, "Mismatch for port=%d, workerID=%s", tc.port, tc.workerID)
+		}
+	})
+}

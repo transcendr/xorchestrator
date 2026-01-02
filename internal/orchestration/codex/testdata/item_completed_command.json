@@ -1,0 +1,1 @@
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"bash -lc ls","status":"completed","aggregated_output":"docs\nexamples\nsdk\nREADME.md","exit_code":0}}

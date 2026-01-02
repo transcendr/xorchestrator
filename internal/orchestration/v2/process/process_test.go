@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
@@ -178,6 +179,38 @@ func TestEventLoop_HandlesOutputEvents(t *testing.T) {
 	require.Contains(t, lines, "Hello from AI")
 
 	// Clean up
+	close(proc.events)
+	<-p.eventDone
+}
+
+func TestEventLoop_HandlesAssistantToolUseBlocks(t *testing.T) {
+	proc := newMockHeadlessProcess()
+	p := New("worker-1", repository.RoleWorker, proc, nil, nil)
+	p.Start()
+
+	proc.events <- client.OutputEvent{
+		Type: client.EventAssistant,
+		Message: &client.MessageContent{
+			Role: "assistant",
+			Content: []client.ContentBlock{
+				{Type: "text", Text: "Let me read that file."},
+				{
+					Type:  "tool_use",
+					ID:    "toolu_123",
+					Name:  "Read",
+					Input: []byte(`{"file_path":"main.go"}`),
+				},
+			},
+		},
+	}
+
+	time.Sleep(20 * time.Millisecond)
+
+	lines := p.Output().Lines()
+	require.Len(t, lines, 2)
+	assert.Contains(t, lines[0], "Let me read that file.")
+	assert.Contains(t, lines[1], "Read")
+
 	close(proc.events)
 	<-p.eventDone
 }
@@ -765,6 +798,48 @@ func TestPublishErrorEvent_PublishesProcessEvent(t *testing.T) {
 	<-p.eventDone
 }
 
+func TestHandleOutputEvent_ErrorEvent(t *testing.T) {
+	// Test that EventError events (turn.failed, error) are properly handled
+	proc := newMockHeadlessProcess()
+	eventBus := pubsub.NewBroker[any]()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := eventBus.Subscribe(ctx)
+
+	p := New("coordinator", repository.RoleCoordinator, proc, nil, eventBus)
+	p.Start()
+
+	// Send error event (like turn.failed from Codex)
+	proc.events <- client.OutputEvent{
+		Type: client.EventError,
+		Error: &client.ErrorInfo{
+			Message: "You've hit your usage limit. Try again at 6:55 PM.",
+		},
+	}
+
+	// Should receive ProcessError event
+	select {
+	case evt := <-sub:
+		require.NotNil(t, evt.Payload)
+		pe, ok := evt.Payload.(events.ProcessEvent)
+		require.True(t, ok, "expected ProcessEvent")
+		assert.Equal(t, events.ProcessError, pe.Type)
+		assert.Contains(t, pe.Error.Error(), "usage limit")
+	case <-time.After(500 * time.Millisecond):
+		require.FailNow(t, "did not receive error event")
+	}
+
+	// Error should also appear in output buffer
+	time.Sleep(20 * time.Millisecond)
+	lines := p.Output().Lines()
+	require.Len(t, lines, 1)
+	assert.Contains(t, lines[0], "⚠️ Error:")
+	assert.Contains(t, lines[0], "usage limit")
+
+	close(proc.events)
+	<-p.eventDone
+}
+
 func TestEventLoop_ExtractsSessionIDFromInitEvent(t *testing.T) {
 	proc := newMockHeadlessProcess()
 	p := New("worker-1", repository.RoleWorker, proc, nil, nil)
@@ -804,6 +879,86 @@ func TestEventLoop_HandlesToolResults(t *testing.T) {
 	require.Len(t, lines, 1)
 	assert.Contains(t, lines[0], "[Bash]")
 	assert.Contains(t, lines[0], "command output here")
+
+	close(proc.events)
+	<-p.eventDone
+}
+
+func TestEventLoop_HandlesToolUseEvents(t *testing.T) {
+	// Codex emits tool calls as EventToolUse with Message.Content containing tool_use blocks
+	// This verifies tool calls are displayed in the UI for Codex-style events
+	proc := newMockHeadlessProcess()
+	eventBus := pubsub.NewBroker[any]()
+	p := New("worker-1", repository.RoleWorker, proc, nil, eventBus)
+	p.Start()
+
+	// Send tool_use event (Codex style - separate from assistant message)
+	proc.events <- client.OutputEvent{
+		Type: client.EventToolUse,
+		Tool: &client.ToolContent{
+			ID:    "item_1",
+			Name:  "signal_ready",
+			Input: []byte(`{}`),
+		},
+		Message: &client.MessageContent{
+			ID:   "item_1",
+			Role: "assistant",
+			Content: []client.ContentBlock{
+				{
+					Type:  "tool_use",
+					ID:    "item_1",
+					Name:  "signal_ready",
+					Input: []byte(`{}`),
+				},
+			},
+		},
+	}
+
+	time.Sleep(20 * time.Millisecond)
+
+	// Tool call should appear in output buffer
+	lines := p.Output().Lines()
+	require.Len(t, lines, 1, "Expected tool call to be added to output buffer")
+	assert.Contains(t, lines[0], "signal_ready", "Tool name should appear in output")
+
+	close(proc.events)
+	<-p.eventDone
+}
+
+func TestEventLoop_HandlesToolUseWithArguments(t *testing.T) {
+	// Test tool_use event with arguments (like MCP tool calls in Codex)
+	proc := newMockHeadlessProcess()
+	eventBus := pubsub.NewBroker[any]()
+	p := New("worker-1", repository.RoleWorker, proc, nil, eventBus)
+	p.Start()
+
+	// Send tool_use event with arguments
+	proc.events <- client.OutputEvent{
+		Type: client.EventToolUse,
+		Tool: &client.ToolContent{
+			ID:    "item_2",
+			Name:  "post_message",
+			Input: []byte(`{"to":"COORDINATOR","content":"Task completed"}`),
+		},
+		Message: &client.MessageContent{
+			ID:   "item_2",
+			Role: "assistant",
+			Content: []client.ContentBlock{
+				{
+					Type:  "tool_use",
+					ID:    "item_2",
+					Name:  "post_message",
+					Input: []byte(`{"to":"COORDINATOR","content":"Task completed"}`),
+				},
+			},
+		},
+	}
+
+	time.Sleep(20 * time.Millisecond)
+
+	lines := p.Output().Lines()
+	require.Len(t, lines, 1)
+	assert.Contains(t, lines[0], "post_message")
 
 	close(proc.events)
 	<-p.eventDone

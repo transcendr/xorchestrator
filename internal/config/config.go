@@ -37,10 +37,10 @@ type Config struct {
 
 // UIConfig holds user interface configuration options.
 type UIConfig struct {
-	ShowCounts      bool   `mapstructure:"show_counts"`
-	ShowStatusBar   bool   `mapstructure:"show_status_bar"`
-	MarkdownStyle   string `mapstructure:"markdown_style"` // "dark" (default) or "light"
-	VimMode       bool `mapstructure:"vim_mode"` // Enable vim keybindings in text input areas
+	ShowCounts    bool   `mapstructure:"show_counts"`
+	ShowStatusBar bool   `mapstructure:"show_status_bar"`
+	MarkdownStyle string `mapstructure:"markdown_style"` // "dark" (default) or "light"
+	VimMode       bool   `mapstructure:"vim_mode"`       // Enable vim keybindings in text input areas
 }
 
 // ThemeConfig holds all theme customization options.
@@ -104,6 +104,7 @@ func flattenColors(prefix string, m map[string]any, result map[string]string) {
 type OrchestrationConfig struct {
 	Client    string             `mapstructure:"client"` // "claude" (default) or "amp"
 	Claude    ClaudeClientConfig `mapstructure:"claude"`
+	Codex     CodexClientConfig  `mapstructure:"codex"`
 	Amp       AmpClientConfig    `mapstructure:"amp"`
 	Workflows []WorkflowConfig   `mapstructure:"workflows"` // Workflow template configurations
 }
@@ -111,6 +112,11 @@ type OrchestrationConfig struct {
 // ClaudeClientConfig holds Claude-specific settings.
 type ClaudeClientConfig struct {
 	Model string `mapstructure:"model"` // sonnet (default), opus, haiku
+}
+
+// CodexClientConfig holds Claude-specific settings.
+type CodexClientConfig struct {
+	Model string `mapstructure:"model"` // gpt-5.2-codex (default), o4-mini
 }
 
 // AmpClientConfig holds Amp-specific settings.
@@ -222,8 +228,8 @@ func ValidateViews(views []ViewConfig) error {
 // Returns nil if the configuration is valid (empty values use defaults).
 func ValidateOrchestration(orch OrchestrationConfig) error {
 	// Validate client type
-	if orch.Client != "" && orch.Client != "claude" && orch.Client != "amp" {
-		return fmt.Errorf("orchestration.client must be \"claude\" or \"amp\", got %q", orch.Client)
+	if orch.Client != "" && orch.Client != "claude" && orch.Client != "amp" && orch.Client != "codex" {
+		return fmt.Errorf("orchestration.client must be \"claude\", \"amp\", or \"codex\", got %q", orch.Client)
 	}
 
 	// Validate Amp mode
@@ -412,12 +418,16 @@ views:
 # Orchestration mode settings
 # Configure which AI client to use when entering orchestration mode
 orchestration:
-  # AI client provider: "claude" (default) or "amp"
+  # AI client provider: "claude" (default) or "amp" or "codex"
   client: claude
 
   # Claude-specific settings (only used when client: claude)
   claude:
     model: sonnet  # sonnet (default), opus, or haiku
+
+  # Codex-specific settings (only used when client: codex)
+  codex:
+	model: gpt-5.2-codex  # gpt-5.2-codex (default)
 
   # Amp-specific settings (only used when client: amp)
   amp:

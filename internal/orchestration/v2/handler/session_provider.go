@@ -73,6 +73,8 @@ func (p *ProcessRegistrySessionProvider) generateCoordinatorMCPConfig() (string,
 	switch p.client.Type() {
 	case client.ClientAmp:
 		return mcp.GenerateCoordinatorConfigAmp(p.port)
+	case client.ClientCodex:
+		return mcp.GenerateCoordinatorConfigCodex(p.port), nil
 	default:
 		return mcp.GenerateCoordinatorConfigHTTP(p.port)
 	}
@@ -86,6 +88,8 @@ func (p *ProcessRegistrySessionProvider) generateWorkerMCPConfig(workerID string
 	switch p.client.Type() {
 	case client.ClientAmp:
 		return mcp.GenerateWorkerConfigAmp(p.port, workerID)
+	case client.ClientCodex:
+		return mcp.GenerateWorkerConfigCodex(p.port, workerID), nil
 	default:
 		return mcp.GenerateWorkerConfigHTTP(p.port, workerID)
 	}

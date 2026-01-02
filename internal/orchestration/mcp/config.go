@@ -63,6 +63,12 @@ func GenerateCoordinatorConfigAmp(port int) (string, error) {
 	return string(data), nil
 }
 
+// GenerateCoordinatorConfigCodex creates an MCP config for Codex CLI.
+// Codex expects TOML syntax for the -c flag: mcp_servers.perles-orchestrator={url="http://localhost:PORT/mcp"}
+func GenerateCoordinatorConfigCodex(port int) string {
+	return fmt.Sprintf(`mcp_servers.perles-orchestrator={url="http://localhost:%d/mcp"}`, port)
+}
+
 // GenerateWorkerConfigHTTP creates an MCP config for a worker that connects to the
 // shared HTTP MCP server. This allows workers to share the same message store as
 // the coordinator, solving the in-memory cache isolation problem in prompt mode.
@@ -98,6 +104,12 @@ func GenerateWorkerConfigAmp(port int, workerID string) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+// GenerateWorkerConfigCodex creates an MCP config for a worker using Codex CLI format.
+// Codex expects TOML syntax for the -c flag: mcp_servers.perles-worker={url="http://localhost:PORT/worker/ID"}
+func GenerateWorkerConfigCodex(port int, workerID string) string {
+	return fmt.Sprintf(`mcp_servers.perles-worker={url="http://localhost:%d/worker/%s"}`, port, workerID)
 }
 
 // GenerateWorkerConfig creates the MCP config JSON for a worker agent.

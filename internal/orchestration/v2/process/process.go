@@ -161,6 +161,16 @@ func (p *Process) handleOutputEvent(event *client.OutputEvent) {
 		p.setSessionID(event.SessionID)
 	}
 
+	// Handle error events (e.g., turn.failed, error from Codex)
+	if event.Type == client.EventError {
+		errMsg := event.GetErrorMessage()
+		// Write error to output buffer so it appears in process pane
+		p.output.Append("⚠️ Error: " + errMsg)
+		// Also emit as error event for tracking
+		p.handleError(fmt.Errorf("process error: %s", errMsg))
+		return
+	}
+
 	// Handle result events - may include errors (e.g., "Prompt is too long")
 	if event.IsResult() {
 		// Check for error results first (e.g., context window exceeded)
@@ -210,6 +220,19 @@ func (p *Process) handleOutputEvent(event *client.OutputEvent) {
 			block := &event.Message.Content[i]
 			if block.Type == "tool_use" && block.Name != "" {
 				toolMsg := claude.FormatToolDisplay(block)
+				p.output.Append(toolMsg)
+				p.publishOutputEvent(toolMsg, nil)
+			}
+		}
+	}
+
+	// Handle tool_use events (Codex emits these separately from assistant messages)
+	if event.IsToolUse() && event.Message != nil {
+		for i := range event.Message.Content {
+			block := &event.Message.Content[i]
+			if block.Type == "tool_use" && block.Name != "" {
+				toolMsg := claude.FormatToolDisplay(block)
+				p.output.Append(toolMsg)
 				p.publishOutputEvent(toolMsg, nil)
 			}
 		}

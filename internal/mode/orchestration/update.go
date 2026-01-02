@@ -219,7 +219,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					// Fallback if no initializer or listener (e.g., in tests) - restart initialization
 					m.Cleanup()
 					return m, func() tea.Msg { return StartCoordinatorMsg{} }
-				case key.Matches(msg, keys.Quit) || msg.Type == tea.KeyCtrlC:
+				case key.Matches(msg, keys.Quit) || msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyEsc:
 					return m, func() tea.Msg { return QuitMsg{} }
 				}
 				return m, nil // Ignore all other keys in error/timeout state
@@ -672,7 +672,8 @@ func (m Model) handleCoordinatorProcessEvent(evt events.ProcessEvent) Model {
 			"subsystem", "update",
 			"processID", evt.ProcessID,
 			"error", evt.Error)
-		if evt.Error != nil {
+		// Only show error modal when past initialization - init screen shows errors inline
+		if evt.Error != nil && m.getInitPhase() == InitReady {
 			m = m.SetError(evt.Error.Error())
 		}
 
@@ -942,15 +943,23 @@ func (m Model) handleStartCoordinator() (Model, tea.Cmd) {
 	// Blur input during initialization - it will be re-focused when InitReady
 	m.input.Blur()
 
+	// Determine timeout based on client type.
+	// Codex workers take longer to boot due to more reasoning steps.
+	timeout := 20 * time.Second
+	if m.clientType == "codex" {
+		timeout = 60 * time.Second
+	}
+
 	// Create and start the Initializer
 	m.initializer = NewInitializer(InitializerConfig{
 		WorkDir:         m.workDir,
 		ClientType:      m.clientType,
 		ClaudeModel:     m.claudeModel,
+		CodexModel:      m.codexModel,
 		AmpModel:        m.ampModel,
 		AmpMode:         m.ampMode,
 		ExpectedWorkers: 4,
-		Timeout:         20 * time.Second,
+		Timeout:         timeout,
 	})
 
 	// Create context for subscriptions

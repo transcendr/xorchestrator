@@ -15,6 +15,7 @@ import (
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/amp"
 	"github.com/zjrosen/perles/internal/orchestration/client"
+	_ "github.com/zjrosen/perles/internal/orchestration/codex" // Register codex client
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -52,6 +53,7 @@ type InitializerEvent struct {
 type InitializerConfig struct {
 	WorkDir         string
 	ClientType      string
+	CodexModel      string
 	ClaudeModel     string
 	AmpModel        string
 	AmpMode         string
@@ -409,6 +411,10 @@ func (i *Initializer) createAIClient() (*AIClientResult, error) {
 		if i.cfg.ClaudeModel != "" {
 			extensions[client.ExtClaudeModel] = i.cfg.ClaudeModel
 		}
+	case client.ClientCodex:
+		if i.cfg.CodexModel != "" {
+			extensions[client.ExtCodexModel] = i.cfg.CodexModel
+		}
 	case client.ClientAmp:
 		if i.cfg.AmpModel != "" {
 			extensions[client.ExtAmpModel] = i.cfg.AmpModel
@@ -719,6 +725,19 @@ func (i *Initializer) handleCoordinatorProcessEvent(payload events.ProcessEvent)
 	phase := i.phase
 	i.mu.Unlock()
 
+	// Handle error events (e.g., turn.failed from Codex with usage limit errors)
+	if payload.Type == events.ProcessError {
+		log.Debug(log.CatOrch, "coordinator error during init",
+			"subsystem", "init",
+			"error", payload.Error)
+		if payload.Error != nil {
+			i.fail(payload.Error)
+		} else {
+			i.fail(fmt.Errorf("coordinator process error"))
+		}
+		return
+	}
+
 	// Detect first coordinator message for phase transition
 	// ProcessOutput is equivalent to the legacy CoordinatorChat event
 	if phase == InitAwaitingFirstMessage && payload.Type == events.ProcessOutput {
@@ -802,8 +821,14 @@ func (i *Initializer) transitionTo(phase InitPhase) {
 }
 
 // fail transitions to failed state and publishes a failed event.
+// If already failed, this is a no-op to preserve the original failure phase.
 func (i *Initializer) fail(err error) {
 	i.mu.Lock()
+	// Don't overwrite if already failed - preserve original failure phase
+	if i.phase == InitFailed || i.phase == InitTimedOut {
+		i.mu.Unlock()
+		return
+	}
 	i.failedAtPhase = i.phase
 	i.phase = InitFailed
 	i.err = err

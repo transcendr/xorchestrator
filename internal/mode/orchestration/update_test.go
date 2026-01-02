@@ -2233,9 +2233,11 @@ func TestHandleCoordinatorProcessEvent_ProcessTokenUsage_NilMetrics(t *testing.T
 }
 
 func TestHandleCoordinatorProcessEvent_ProcessError(t *testing.T) {
-	// Test ProcessError (coordinator) shows error modal
+	// Test ProcessError (coordinator) shows error modal when init is ready
 	m := New(Config{})
 	m = m.SetSize(120, 40)
+	// Set up initializer in ready state so error modal is shown
+	m.initializer = newTestInitializer(InitReady, nil)
 
 	evt := events.ProcessEvent{
 		Type:      events.ProcessError,
@@ -2246,7 +2248,26 @@ func TestHandleCoordinatorProcessEvent_ProcessError(t *testing.T) {
 
 	m = m.handleCoordinatorProcessEvent(evt)
 
-	require.NotNil(t, m.errorModal, "error modal should be shown")
+	require.NotNil(t, m.errorModal, "error modal should be shown when init is ready")
+}
+
+func TestHandleCoordinatorProcessEvent_ProcessError_DuringInit(t *testing.T) {
+	// Test ProcessError during initialization does NOT show modal (init screen shows error inline)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	// Set up initializer in loading state
+	m.initializer = newTestInitializer(InitSpawningCoordinator, nil)
+
+	evt := events.ProcessEvent{
+		Type:      events.ProcessError,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
+		Error:     errors.New("coordinator error occurred"),
+	}
+
+	m = m.handleCoordinatorProcessEvent(evt)
+
+	require.Nil(t, m.errorModal, "error modal should NOT be shown during init - init screen handles errors")
 }
 
 func TestHandleCoordinatorProcessEvent_ProcessError_NilError(t *testing.T) {

@@ -50,9 +50,16 @@ const (
 	ExtAmpThreadID = "amp.thread_id"
 	// ExtAmpModel specifies the Amp model selection (string).
 	ExtAmpModel = "amp.model"
+
+	// ExtCodexModel specifies the Codex model (string).
+	ExtCodexModel = "codex.model"
+	// ExtCodexSandbox specifies the sandbox mode (string: "read-only", "workspace-write", "danger-full-access").
+	ExtCodexSandbox = "codex.sandbox"
+	// ExtCodexSkipGitCheck allows running outside git repos (bool).
+	ExtCodexSkipGitCheck = "codex.skip_git_check"
 )
 
-// ClaudeModel returns the Claude model from Extensions, or "sonnet" as default.
+// ClaudeModel returns the Claude model from Extensions, or "opus" as default.
 func (c *Config) ClaudeModel() string {
 	if c.Extensions == nil {
 		return "opus"
@@ -61,6 +68,17 @@ func (c *Config) ClaudeModel() string {
 		return v
 	}
 	return "opus"
+}
+
+// CodexModel returns the Codex model from Extensions, or "gpt-5.2-codex" as default.
+func (c *Config) CodexModel() string {
+	if c.Extensions == nil {
+		return "gpt-5.2-codex"
+	}
+	if v, ok := c.Extensions[ExtCodexModel].(string); ok && v != "" {
+		return v
+	}
+	return "gpt-5.2-codex"
 }
 
 // SetExtension sets a provider-specific extension value.

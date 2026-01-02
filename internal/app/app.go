@@ -247,6 +247,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			WorkDir:          m.services.WorkDir,
 			ClientType:       orchConfig.Client,
 			ClaudeModel:      orchConfig.Claude.Model,
+			CodexModel:       orchConfig.Codex.Model,
 			AmpModel:         orchConfig.Amp.Model,
 			AmpMode:          orchConfig.Amp.Mode,
 			WorkflowRegistry: workflowRegistry,

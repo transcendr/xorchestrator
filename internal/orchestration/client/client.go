@@ -13,6 +13,8 @@ const (
 	ClientClaude ClientType = "claude"
 	// ClientAmp is the Amp CLI client.
 	ClientAmp ClientType = "amp"
+	// ClientCodex is the OpenAI Codex CLI client.
+	ClientCodex ClientType = "codex"
 	// ClientMock is a mock client for testing.
 	ClientMock ClientType = "mock"
 )
@@ -52,4 +54,19 @@ func NewClient(clientType ClientType) (HeadlessClient, error) {
 		return nil, fmt.Errorf("%w: %s", ErrUnknownClientType, clientType)
 	}
 	return factory(), nil
+}
+
+// RegisteredClients returns a slice of all registered client types.
+func RegisteredClients() []ClientType {
+	types := make([]ClientType, 0, len(clientRegistry))
+	for t := range clientRegistry {
+		types = append(types, t)
+	}
+	return types
+}
+
+// IsRegistered returns true if the given client type has been registered.
+func IsRegistered(clientType ClientType) bool {
+	_, ok := clientRegistry[clientType]
+	return ok
 }

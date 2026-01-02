@@ -1,0 +1,1 @@
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"bash -lc 'cat nonexistent.txt'","status":"completed","aggregated_output":"cat: nonexistent.txt: No such file or directory","exit_code":1}}
