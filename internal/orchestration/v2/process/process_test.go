@@ -361,6 +361,87 @@ func TestHandleError_DoesNotCrash(t *testing.T) {
 	<-p.eventDone
 }
 
+func TestHandleProcessComplete_RestoresPreviousSessionIDOnFailure(t *testing.T) {
+	proc := newMockHeadlessProcess()
+	proc.status = client.StatusFailed
+	submitter := &mockCommandSubmitter{}
+
+	p := New("worker-1", repository.RoleWorker, proc, submitter, nil)
+	// Set a known good session ID (simulating a previous successful turn)
+	p.setSessionID("valid-session-123")
+	p.Start()
+
+	// Simulate init event with a new (invalid) session ID
+	// This happens when Claude can't find the session and creates a new one before failing
+	proc.events <- client.OutputEvent{
+		Type:      client.EventSystem,
+		SubType:   "init",
+		SessionID: "invalid-new-session-456",
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	// During event processing, the new session ID is set
+	assert.Equal(t, "invalid-new-session-456", p.SessionID())
+
+	// Now close events to trigger handleProcessComplete
+	close(proc.events)
+	<-p.eventDone
+
+	// After process failure, the previous valid session ID should be restored
+	assert.Equal(t, "valid-session-123", p.SessionID())
+}
+
+func TestHandleProcessComplete_ClearsSessionIDOnFailureWithNoPrevious(t *testing.T) {
+	proc := newMockHeadlessProcess()
+	proc.status = client.StatusFailed
+	submitter := &mockCommandSubmitter{}
+
+	p := New("worker-1", repository.RoleWorker, proc, submitter, nil)
+	// No previous session ID - this is a fresh worker
+	p.Start()
+
+	// Simulate init event with a new session ID that will be invalid
+	proc.events <- client.OutputEvent{
+		Type:      client.EventSystem,
+		SubType:   "init",
+		SessionID: "invalid-session-from-failed-start",
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	// During event processing, the new session ID is set
+	assert.Equal(t, "invalid-session-from-failed-start", p.SessionID())
+
+	// Now close events to trigger handleProcessComplete
+	close(proc.events)
+	<-p.eventDone
+
+	// After process failure with no previous session, the session ID should be cleared
+	assert.Empty(t, p.SessionID())
+}
+
+func TestHandleProcessComplete_KeepsSessionIDOnSuccess(t *testing.T) {
+	proc := newMockHeadlessProcess()
+	proc.status = client.StatusCompleted
+	submitter := &mockCommandSubmitter{}
+
+	p := New("worker-1", repository.RoleWorker, proc, submitter, nil)
+	p.Start()
+
+	// Simulate init event with a valid session ID
+	proc.events <- client.OutputEvent{
+		Type:      client.EventSystem,
+		SubType:   "init",
+		SessionID: "valid-session-from-success",
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	close(proc.events)
+	<-p.eventDone
+
+	// On success, the session ID should be kept
+	assert.Equal(t, "valid-session-from-success", p.SessionID())
+}
+
 // ===========================================================================
 // State Access Tests
 // ===========================================================================

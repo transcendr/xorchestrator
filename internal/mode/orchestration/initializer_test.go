@@ -16,7 +16,6 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/amp"
 	"github.com/zjrosen/perles/internal/orchestration/client"
 	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 	"github.com/zjrosen/perles/internal/pubsub"
 )
@@ -1127,77 +1126,11 @@ func TestInitializer_CreateMCPServer_RequiresMsgRepo(t *testing.T) {
 }
 
 // ===========================================================================
-// handleMessageEvent Tests (Task perles-oph9.11)
+// handleWorkerReady Tests (ProcessReady-based worker confirmation)
 // ===========================================================================
 
-func TestInitializer_HandleMessageEvent_IgnoresNonReadyEvents(t *testing.T) {
-	// Unit test: handleMessageEvent ignores non-ready events
-	workDir := t.TempDir()
-
-	init := NewInitializer(InitializerConfig{
-		WorkDir:         workDir,
-		ClientType:      "claude",
-		ExpectedWorkers: 2,
-	})
-
-	// Set phase to a state where we'd accept ready messages
-	init.mu.Lock()
-	init.phase = InitWorkersReady
-	init.mu.Unlock()
-
-	// Create a non-ready event (MessageInfo instead of MessageWorkerReady)
-	event := pubsub.Event[message.Event]{
-		Payload: message.Event{
-			Type: message.EventPosted,
-			Entry: message.Entry{
-				Type: message.MessageInfo, // Not MessageWorkerReady
-				From: "WORKER.1",
-			},
-		},
-	}
-
-	// handleMessageEvent should not track non-ready events
-	init.handleMessageEvent(event)
-
-	// Verify no workers were confirmed
-	require.Equal(t, 0, init.workerConfirmation.Count(), "no workers should be confirmed")
-}
-
-func TestInitializer_HandleMessageEvent_IgnoresNonPostedEvents(t *testing.T) {
-	// Verify handleMessageEvent ignores events that aren't EventPosted
-	workDir := t.TempDir()
-
-	init := NewInitializer(InitializerConfig{
-		WorkDir:         workDir,
-		ClientType:      "claude",
-		ExpectedWorkers: 2,
-	})
-
-	// Set phase to WorkersReady
-	init.mu.Lock()
-	init.phase = InitWorkersReady
-	init.mu.Unlock()
-
-	// Create an event with wrong event type (not EventPosted)
-	event := pubsub.Event[message.Event]{
-		Payload: message.Event{
-			Type: "not-posted", // Not EventPosted
-			Entry: message.Entry{
-				Type: message.MessageWorkerReady,
-				From: "WORKER.1",
-			},
-		},
-	}
-
-	// handleMessageEvent should not track non-posted events
-	init.handleMessageEvent(event)
-
-	// Verify no workers were confirmed
-	require.Equal(t, 0, init.workerConfirmation.Count(), "no workers should be confirmed")
-}
-
-func TestInitializer_HandleMessageEvent_ConfirmsValidReadyEvents(t *testing.T) {
-	// Unit test: handleMessageEvent confirms valid ready events
+func TestInitializer_HandleWorkerReady_ConfirmsWorker(t *testing.T) {
+	// Unit test: handleWorkerReady confirms worker on ProcessReady event
 	workDir := t.TempDir()
 
 	init := NewInitializer(InitializerConfig{
@@ -1211,39 +1144,33 @@ func TestInitializer_HandleMessageEvent_ConfirmsValidReadyEvents(t *testing.T) {
 	init.phase = InitWorkersReady
 	init.mu.Unlock()
 
-	// Create valid ready event for first worker
-	event1 := pubsub.Event[message.Event]{
-		Payload: message.Event{
-			Type: message.EventPosted,
-			Entry: message.Entry{
-				Type: message.MessageWorkerReady,
-				From: "WORKER.1",
-			},
-		},
+	// Create ProcessReady event for first worker
+	event1 := events.ProcessEvent{
+		Type:      events.ProcessReady,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Status:    events.ProcessStatusReady,
 	}
 
 	// Handle first event
-	init.handleMessageEvent(event1)
+	init.handleWorkerReady(event1)
 	require.Equal(t, 1, init.workerConfirmation.Count(), "one worker should be confirmed")
 
-	// Create valid ready event for second worker
-	event2 := pubsub.Event[message.Event]{
-		Payload: message.Event{
-			Type: message.EventPosted,
-			Entry: message.Entry{
-				Type: message.MessageWorkerReady,
-				From: "WORKER.2",
-			},
-		},
+	// Create ProcessReady event for second worker
+	event2 := events.ProcessEvent{
+		Type:      events.ProcessReady,
+		ProcessID: "worker-2",
+		Role:      events.RoleWorker,
+		Status:    events.ProcessStatusReady,
 	}
 
 	// Handle second event
-	init.handleMessageEvent(event2)
+	init.handleWorkerReady(event2)
 	require.Equal(t, 2, init.workerConfirmation.Count(), "two workers should be confirmed")
 }
 
-func TestInitializer_HandleMessageEvent_ClosesChannelWhenAllReady(t *testing.T) {
-	// Unit test: handleMessageEvent closes Done() channel when all workers ready
+func TestInitializer_HandleWorkerReady_ClosesChannelWhenAllReady(t *testing.T) {
+	// Unit test: handleWorkerReady closes Done() channel when all workers ready
 	workDir := t.TempDir()
 
 	init := NewInitializer(InitializerConfig{
@@ -1258,16 +1185,13 @@ func TestInitializer_HandleMessageEvent_ClosesChannelWhenAllReady(t *testing.T) 
 	init.mu.Unlock()
 
 	// First worker ready
-	event1 := pubsub.Event[message.Event]{
-		Payload: message.Event{
-			Type: message.EventPosted,
-			Entry: message.Entry{
-				Type: message.MessageWorkerReady,
-				From: "WORKER.1",
-			},
-		},
+	event1 := events.ProcessEvent{
+		Type:      events.ProcessReady,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Status:    events.ProcessStatusReady,
 	}
-	init.handleMessageEvent(event1)
+	init.handleWorkerReady(event1)
 
 	// Done channel should NOT be closed yet (only 1/2 workers)
 	select {
@@ -1278,16 +1202,13 @@ func TestInitializer_HandleMessageEvent_ClosesChannelWhenAllReady(t *testing.T) 
 	}
 
 	// Second worker ready (last one)
-	event2 := pubsub.Event[message.Event]{
-		Payload: message.Event{
-			Type: message.EventPosted,
-			Entry: message.Entry{
-				Type: message.MessageWorkerReady,
-				From: "WORKER.2",
-			},
-		},
+	event2 := events.ProcessEvent{
+		Type:      events.ProcessReady,
+		ProcessID: "worker-2",
+		Role:      events.RoleWorker,
+		Status:    events.ProcessStatusReady,
 	}
-	init.handleMessageEvent(event2)
+	init.handleWorkerReady(event2)
 
 	// Done channel should now be closed
 	select {
@@ -1302,7 +1223,7 @@ func TestInitializer_HandleMessageEvent_ClosesChannelWhenAllReady(t *testing.T) 
 	require.Equal(t, 2, init.workerConfirmation.Count())
 }
 
-func TestInitializer_HandleMessageEvent_IdempotentConfirmation(t *testing.T) {
+func TestInitializer_HandleWorkerReady_IdempotentConfirmation(t *testing.T) {
 	// Verify duplicate confirmations from same worker are handled correctly
 	workDir := t.TempDir()
 
@@ -1317,29 +1238,26 @@ func TestInitializer_HandleMessageEvent_IdempotentConfirmation(t *testing.T) {
 	init.phase = InitWorkersReady
 	init.mu.Unlock()
 
-	// Create ready event for WORKER.1
-	event := pubsub.Event[message.Event]{
-		Payload: message.Event{
-			Type: message.EventPosted,
-			Entry: message.Entry{
-				Type: message.MessageWorkerReady,
-				From: "WORKER.1",
-			},
-		},
+	// Create ProcessReady event for worker-1
+	event := events.ProcessEvent{
+		Type:      events.ProcessReady,
+		ProcessID: "worker-1",
+		Role:      events.RoleWorker,
+		Status:    events.ProcessStatusReady,
 	}
 
 	// Handle first confirmation
-	init.handleMessageEvent(event)
+	init.handleWorkerReady(event)
 	require.Equal(t, 1, init.workerConfirmation.Count())
 
 	// Handle duplicate confirmation from same worker
-	init.handleMessageEvent(event)
+	init.handleWorkerReady(event)
 	require.Equal(t, 1, init.workerConfirmation.Count(), "duplicate should not increase count")
 
 	// Confirmed workers should only have one entry
 	confirmed := init.workerConfirmation.ConfirmedWorkers()
 	require.Len(t, confirmed, 1)
-	require.True(t, confirmed["WORKER.1"])
+	require.True(t, confirmed["worker-1"])
 }
 
 func TestInitializer_SpinnerData_UsesWorkerConfirmation(t *testing.T) {

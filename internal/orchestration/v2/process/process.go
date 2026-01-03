@@ -44,12 +44,13 @@ type Process struct {
 	cancel    context.CancelFunc
 	eventDone chan struct{} // Closed when eventLoop completes
 
-	mu                sync.RWMutex
-	sessionID         string
-	metrics           *metrics.TokenMetrics
-	cumulativeCostUSD float64 // Running total cost across all turns
-	taskID            string  // Worker-specific: current task ID
-	isRetired         bool    // Whether this process has been retired
+	mu                   sync.RWMutex
+	sessionID            string
+	sessionIDAtTurnStart string // Session ID at start of current turn (for rollback on failure)
+	metrics              *metrics.TokenMetrics
+	cumulativeCostUSD    float64 // Running total cost across all turns
+	taskID               string  // Worker-specific: current task ID
+	isRetired            bool    // Whether this process has been retired
 }
 
 // New creates a Process. Call Start() to begin the event loop.
@@ -121,9 +122,13 @@ func (p *Process) Resume(proc client.HeadlessProcess) {
 func (p *Process) eventLoop() {
 	defer close(p.eventDone)
 
-	p.mu.RLock()
+	p.mu.Lock()
 	proc := p.proc
-	p.mu.RUnlock()
+	// Capture session ID at turn start for rollback on failure.
+	// If Claude can't find the session, it emits init with a new session ID
+	// then exits with error. We need to rollback to the previous valid session.
+	p.sessionIDAtTurnStart = p.sessionID
+	p.mu.Unlock()
 
 	if proc == nil {
 		return
@@ -262,6 +267,7 @@ func (p *Process) handleProcessComplete() {
 	p.mu.RLock()
 	proc := p.proc
 	m := p.metrics
+	sessionIDAtStart := p.sessionIDAtTurnStart
 	p.mu.RUnlock()
 
 	if proc == nil {
@@ -278,6 +284,19 @@ func (p *Process) handleProcessComplete() {
 		succeeded = true
 	default:
 		succeeded = false
+		// If process failed, the session ID we captured from init may be invalid.
+		// This happens when Claude can't find the session to resume - it emits an init
+		// with a new session ID, but then immediately exits with error.
+		// Restore the session ID from turn start to avoid using the invalid new one.
+		p.mu.Lock()
+		if sessionIDAtStart != "" {
+			// Restore the known-good session ID from before this turn
+			p.sessionID = sessionIDAtStart
+		} else {
+			// No previous session - clear the invalid one from this failed turn
+			p.sessionID = ""
+		}
+		p.mu.Unlock()
 	}
 
 	// Submit unified command - handler routes based on process ID

@@ -679,8 +679,14 @@ func (h *SpawnProcessHandler) Handle(ctx context.Context, cmd command.Command) (
 		}
 	}
 
-	// Update status to Ready (spawner success or no spawner = ready for tests)
-	proc.Status = repository.StatusReady
+	// Update status to Working if we spawned a live process (it's running its first turn).
+	// Status transitions to Ready when the first turn completes via ProcessTurnCompleteHandler.
+	// If no spawner (tests), set to Ready for backward compatibility.
+	if liveProcess != nil {
+		proc.Status = repository.StatusWorking
+	} else {
+		proc.Status = repository.StatusReady
+	}
 	_ = h.processRepo.Save(proc)
 
 	// Emit ProcessSpawned event

@@ -18,7 +18,6 @@ import (
 	_ "github.com/zjrosen/perles/internal/orchestration/codex" // Register codex client
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
-	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/session"
 	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
 	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
@@ -309,9 +308,8 @@ func (i *Initializer) run() {
 
 	// Phase 3+: Event-driven phases
 	// Subscribe to v2EventBus for all process events (coordinator and workers)
-	// Coordinator events flow through v2EventBus as ProcessEvent with Role=RoleCoordinator
+	// ProcessReady events drive confirmation for both coordinator and workers
 	v2Sub := i.v2Infra.Core.EventBus.Subscribe(i.ctx)
-	msgSub := i.messageRepo.Broker().Subscribe(i.ctx)
 
 	// Transition to awaiting first message
 	i.transitionTo(InitAwaitingFirstMessage)
@@ -341,17 +339,11 @@ func (i *Initializer) run() {
 			if !ok {
 				return
 			}
-			// Process events drive phase transitions (coordinator output, worker spawns)
-			// but don't handle completion - that's done via workerConfirmation.Done()
+			// Process events drive phase transitions:
+			// - Coordinator ProcessReady triggers worker spawning
+			// - Worker ProcessSpawned tracks spawn count
+			// - Worker ProcessReady confirms workers as ready
 			i.handleV2Event(event)
-
-		case event, ok := <-msgSub:
-			if !ok {
-				return
-			}
-			// Message events track worker confirmations via workerConfirmation tracker
-			// Completion is signaled via workerConfirmation.Done() channel
-			i.handleMessageEvent(event)
 		}
 	}
 }
@@ -700,9 +692,10 @@ func (i *Initializer) spawnWorkers() {
 }
 
 // handleV2Event processes v2 orchestration events from the unified v2EventBus.
-// This drives phase transitions (coordinator output triggers worker spawning,
-// worker spawns trigger phase changes). Completion is handled separately via
-// workerConfirmation.Done() channel in run().
+// This drives phase transitions based on ProcessReady events:
+// - Coordinator's first turn completing (ProcessReady) triggers worker spawning
+// - Workers' first turn completing (ProcessReady) confirms them as ready
+// Completion is handled via workerConfirmation.Done() channel in run().
 func (i *Initializer) handleV2Event(event pubsub.Event[any]) {
 	if payload, ok := event.Payload.(events.ProcessEvent); ok {
 		if payload.Role == events.RoleCoordinator {
@@ -714,13 +707,17 @@ func (i *Initializer) handleV2Event(event pubsub.Event[any]) {
 		switch payload.Type {
 		case events.ProcessSpawned:
 			i.handleProcessSpawned(payload)
+		case events.ProcessReady:
+			// Worker's first turn completed - use this for confirmation
+			i.handleWorkerReady(payload)
 		}
 	}
 }
 
 // handleCoordinatorProcessEvent processes coordinator events from the v2EventBus.
-// This replaces the legacy handleCoordinatorEvent function that used CoordinatorEvent type.
-// Drives phase transitions when coordinator sends first message.
+// Drives phase transitions when coordinator's first turn completes (ProcessReady).
+// This is more reliable than waiting for ProcessOutput because it's triggered by
+// the authoritative status transition, not dependent on LLM generating output.
 func (i *Initializer) handleCoordinatorProcessEvent(payload events.ProcessEvent) {
 	i.mu.Lock()
 	phase := i.phase
@@ -739,10 +736,11 @@ func (i *Initializer) handleCoordinatorProcessEvent(payload events.ProcessEvent)
 		return
 	}
 
-	// Detect first coordinator message for phase transition
-	// ProcessOutput is equivalent to the legacy CoordinatorChat event
-	if phase == InitAwaitingFirstMessage && payload.Type == events.ProcessOutput {
-		log.Debug(log.CatOrch, "first coordinator message received, spawning workers", "subsystem", "init")
+	// Detect coordinator's first turn completing for phase transition
+	// ProcessReady is emitted when ProcessTurnCompleteHandler transitions status to Ready
+	// This is authoritative - the coordinator's first turn has fully completed
+	if phase == InitAwaitingFirstMessage && payload.Type == events.ProcessReady {
+		log.Debug(log.CatOrch, "coordinator first turn complete (ProcessReady), spawning workers", "subsystem", "init")
 		i.transitionTo(InitSpawningWorkers)
 
 		// Spawn workers programmatically (don't rely on coordinator LLM)
@@ -752,7 +750,6 @@ func (i *Initializer) handleCoordinatorProcessEvent(payload events.ProcessEvent)
 
 // handleProcessSpawned processes unified ProcessSpawned events for workers.
 // Tracks spawn count and transitions to InitWorkersReady when all workers spawned.
-// Note: Worker confirmation happens via MessageWorkerReady in handleMessageEvent,
 // and completion is signaled via workerConfirmation.Done() channel in run().
 func (i *Initializer) handleProcessSpawned(payload events.ProcessEvent) {
 	i.mu.Lock()
@@ -776,32 +773,20 @@ func (i *Initializer) handleProcessSpawned(payload events.ProcessEvent) {
 	}
 }
 
-// handleMessageEvent processes message events.
-// Tracks worker confirmations via the workerConfirmation tracker.
-// Completion is signaled via workerConfirmation.Done() channel in run().
-func (i *Initializer) handleMessageEvent(event pubsub.Event[message.Event]) {
-	payload := event.Payload
-
-	if payload.Type != message.EventPosted {
-		return
-	}
-
-	entry := payload.Entry
-
-	// Only track worker ready messages
-	if entry.Type != message.MessageWorkerReady {
-		return
-	}
-
+// handleWorkerReady processes ProcessReady events for workers.
+// This is emitted when a worker's first turn completes (status transitions to Ready).
+// This is more reliable than MessageWorkerReady because it's triggered by the
+// authoritative status transition, not dependent on the LLM calling an MCP tool.
+func (i *Initializer) handleWorkerReady(payload events.ProcessEvent) {
 	// Use workerConfirmation tracker for thread-safe confirmation
 	// The tracker handles idempotency (duplicate confirmations are ignored)
 	// When all workers confirm, the Done() channel is closed, which is
 	// handled in the select loop in run()
-	i.workerConfirmation.Confirm(entry.From)
+	i.workerConfirmation.Confirm(payload.ProcessID)
 
-	log.Debug(log.CatOrch, "Worker confirmed",
+	log.Debug(log.CatOrch, "Worker confirmed (ProcessReady)",
 		"subsystem", "init",
-		"workerID", entry.From,
+		"workerID", payload.ProcessID,
 		"confirmed", i.workerConfirmation.Count(),
 		"expected", i.workerConfirmation.Expected())
 }
