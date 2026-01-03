@@ -2929,3 +2929,589 @@ func TestHandleStopProcessCommand_SubmitsCommand(t *testing.T) {
 	require.True(t, ok, "should be a StopProcessCommand")
 	require.Equal(t, command.CmdStopProcess, stopCmd.Type(), "should have correct command type")
 }
+
+// --- Slash Command Router Tests ---
+
+func TestHandleSlashCommand_RoutesStopCommand(t *testing.T) {
+	// Test that /stop is routed through handleSlashCommand
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Send /stop command via handleSlashCommand
+	m, cmd, handled := m.handleSlashCommand("/stop worker-1")
+
+	// Verify command was handled
+	require.True(t, handled, "should return handled=true for known command")
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil command")
+
+	// Verify command was submitted (proves routing worked)
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	stopCmd, ok := commands[0].(*command.StopProcessCommand)
+	require.True(t, ok, "should be a StopProcessCommand")
+	require.Equal(t, "worker-1", stopCmd.ProcessID, "should have correct worker ID")
+}
+
+func TestHandleSlashCommand_UnknownCommandNotHandled(t *testing.T) {
+	// Test that unknown commands return handled=false (fall through to normal routing)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Send an unknown command
+	m, cmd, handled := m.handleSlashCommand("/unknowncmd")
+
+	// Verify command was NOT handled (should fall through)
+	require.False(t, handled, "should return handled=false for unknown command")
+	require.Nil(t, m.errorModal, "should not set error modal for unknown command")
+	require.Nil(t, cmd, "should return nil command")
+}
+
+func TestHandleUserInput_RoutesSlashCommandsToRouter(t *testing.T) {
+	// Test that handleUserInput routes slash commands to handleSlashCommand
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Send /stop command via handleUserInput (target should be ignored for slash commands)
+	m, cmd := m.handleUserInput("/stop worker-1", "some-target")
+
+	// Verify no error modal
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil command")
+
+	// Verify command was submitted (proves routing through handleSlashCommand worked)
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	stopCmd, ok := commands[0].(*command.StopProcessCommand)
+	require.True(t, ok, "should be a StopProcessCommand")
+	require.Equal(t, "worker-1", stopCmd.ProcessID, "should have correct worker ID")
+}
+
+func TestHandleUserInput_NonSlashInputRoutesToTarget(t *testing.T) {
+	// Test that non-slash input is routed to the target (coordinator/worker)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Send a regular message (not starting with /)
+	m, cmd := m.handleUserInput("hello world", "COORDINATOR")
+
+	// Verify no error modal
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil command")
+
+	// Verify a SendToProcess command was submitted to coordinator
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	sendCmd, ok := commands[0].(*command.SendToProcessCommand)
+	require.True(t, ok, "should be a SendToProcessCommand")
+	require.Equal(t, repository.CoordinatorID, sendCmd.ProcessID, "should route to coordinator")
+	require.Equal(t, "hello world", sendCmd.Content, "should have correct message content")
+}
+
+func TestHandleUserInput_UnknownSlashCommandFallsThrough(t *testing.T) {
+	// Test that unknown slash commands fall through to normal message routing
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Send an unknown slash command via handleUserInput
+	m, cmd := m.handleUserInput("/unknowncmd arg1 arg2", "COORDINATOR")
+
+	// Verify no error modal (unknown commands should not error)
+	require.Nil(t, m.errorModal, "should not set error modal for unknown slash command")
+	require.Nil(t, cmd, "should return nil command")
+
+	// Verify the message was sent to coordinator as regular input
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	sendCmd, ok := commands[0].(*command.SendToProcessCommand)
+	require.True(t, ok, "should be a SendToProcessCommand (falls through to normal routing)")
+	require.Equal(t, repository.CoordinatorID, sendCmd.ProcessID, "should route to coordinator")
+	require.Equal(t, "/unknowncmd arg1 arg2", sendCmd.Content, "should preserve original message content")
+}
+
+// --- Spawn Worker Command Tests ---
+
+func TestHandleSpawnWorkerCommand_CreatesCorrectCommand(t *testing.T) {
+	// Test that /spawn creates a SpawnProcessCommand with SourceUser and RoleWorker
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Execute /spawn command
+	m, cmd := m.handleSpawnWorkerCommand("/spawn")
+
+	// Verify no error modal
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify command was submitted with correct parameters
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	spawnCmd, ok := commands[0].(*command.SpawnProcessCommand)
+	require.True(t, ok, "should be a SpawnProcessCommand")
+	require.Equal(t, command.SourceUser, spawnCmd.Source(), "should have SourceUser")
+	require.Equal(t, repository.RoleWorker, spawnCmd.Role, "should have RoleWorker")
+}
+
+func TestHandleSpawnWorkerCommand_SubmitsToSubmitter(t *testing.T) {
+	// Test that /spawn submits command to cmdSubmitter
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Execute /spawn command
+	m, _ = m.handleSpawnWorkerCommand("/spawn")
+
+	// Verify command was submitted
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted exactly one command")
+	require.Equal(t, command.CmdSpawnProcess, commands[0].Type(), "should have correct command type")
+}
+
+func TestHandleSpawnWorkerCommand_ErrorWhenNilSubmitter(t *testing.T) {
+	// Test that /spawn returns error when cmdSubmitter is nil
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Don't set up v2 infrastructure (cmdSubmitter will be nil)
+
+	// Execute /spawn command
+	m, cmd := m.handleSpawnWorkerCommand("/spawn")
+
+	// Verify error was set
+	require.NotNil(t, m.errorModal, "should set error modal when submitter is nil")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+}
+
+func TestHandleSpawnWorkerCommand_ExtraArgsHandledGracefully(t *testing.T) {
+	// Test that /spawn with extra arguments is handled gracefully (ignored)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Execute /spawn command with extra arguments
+	m, cmd := m.handleSpawnWorkerCommand("/spawn extra args here")
+
+	// Verify no error modal - extra args are ignored
+	require.Nil(t, m.errorModal, "should not set error modal for extra arguments")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify command was still submitted correctly
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	spawnCmd, ok := commands[0].(*command.SpawnProcessCommand)
+	require.True(t, ok, "should be a SpawnProcessCommand")
+	require.Equal(t, command.SourceUser, spawnCmd.Source(), "should have SourceUser")
+	require.Equal(t, repository.RoleWorker, spawnCmd.Role, "should have RoleWorker")
+}
+
+func TestHandleSlashCommand_RoutesSpawnCommand(t *testing.T) {
+	// Test that /spawn is routed through handleSlashCommand
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Send /spawn command via handleSlashCommand
+	m, cmd, handled := m.handleSlashCommand("/spawn")
+
+	// Verify command was handled
+	require.True(t, handled, "should return handled=true for /spawn command")
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify command was submitted (proves routing worked)
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	spawnCmd, ok := commands[0].(*command.SpawnProcessCommand)
+	require.True(t, ok, "should be a SpawnProcessCommand")
+	require.Equal(t, repository.RoleWorker, spawnCmd.Role, "should have RoleWorker")
+}
+
+// --- Retire Worker Command Tests ---
+
+// mockV2InfraWithRepo creates a mock v2.Infrastructure with a custom process repository.
+func mockV2InfraWithRepo(submitter process.CommandSubmitter, repo repository.ProcessRepository) *v2.Infrastructure {
+	return &v2.Infrastructure{
+		Core: v2.CoreComponents{
+			CmdSubmitter: submitter,
+		},
+		Repositories: v2.RepositoryComponents{
+			ProcessRepo: repo,
+		},
+	}
+}
+
+func TestHandleRetireWorkerCommand_CreatesCorrectCommand(t *testing.T) {
+	// Test that /retire worker-1 creates a RetireProcessCommand with SourceUser
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure with a worker in the repo
+	mockSubmitter := newMockCommandSubmitter()
+	mockRepo := newMockProcessRepository()
+	_ = mockRepo.Save(&repository.Process{ID: "worker-1", Role: repository.RoleWorker, Status: repository.StatusReady})
+	infra := mockV2InfraWithRepo(mockSubmitter, mockRepo)
+	m = m.SetV2Infra(infra)
+
+	// Execute /retire command
+	m, cmd := m.handleRetireWorkerCommand("/retire worker-1")
+
+	// Verify no error modal
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify command was submitted with correct parameters
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	retireCmd, ok := commands[0].(*command.RetireProcessCommand)
+	require.True(t, ok, "should be a RetireProcessCommand")
+	require.Equal(t, command.SourceUser, retireCmd.Source(), "should have SourceUser")
+	require.Equal(t, "worker-1", retireCmd.ProcessID, "should have correct process ID")
+	require.Equal(t, "user_requested", retireCmd.Reason, "should have default reason")
+}
+
+func TestHandleRetireWorkerCommand_IncludesReasonInCommand(t *testing.T) {
+	// Test that /retire with reason includes the reason in the command
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure with a worker in the repo
+	mockSubmitter := newMockCommandSubmitter()
+	mockRepo := newMockProcessRepository()
+	_ = mockRepo.Save(&repository.Process{ID: "worker-1", Role: repository.RoleWorker, Status: repository.StatusReady})
+	infra := mockV2InfraWithRepo(mockSubmitter, mockRepo)
+	m = m.SetV2Infra(infra)
+
+	// Execute /retire command with reason
+	m, _ = m.handleRetireWorkerCommand("/retire worker-1 context window exceeded")
+
+	// Verify command has the custom reason
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	retireCmd, ok := commands[0].(*command.RetireProcessCommand)
+	require.True(t, ok, "should be a RetireProcessCommand")
+	require.Equal(t, "context window exceeded", retireCmd.Reason, "should have custom reason")
+}
+
+func TestHandleRetireWorkerCommand_UsageErrorWithoutWorkerId(t *testing.T) {
+	// Test that /retire without worker-id shows usage error
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Execute /retire command without arguments
+	m, cmd := m.handleRetireWorkerCommand("/retire")
+
+	// Verify error was set
+	require.NotNil(t, m.errorModal, "should set error modal when missing worker-id")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+}
+
+func TestHandleRetireWorkerCommand_BlocksCoordinatorRetirement(t *testing.T) {
+	// Test that /retire coordinator shows specific error message
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Execute /retire coordinator command
+	m, cmd := m.handleRetireWorkerCommand("/retire coordinator")
+
+	// Verify error was set with coordinator-specific message
+	require.NotNil(t, m.errorModal, "should set error modal when trying to retire coordinator")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify no command was submitted
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 0, "should not have submitted any command")
+}
+
+func TestHandleRetireWorkerCommand_WorkerNotFoundError(t *testing.T) {
+	// Test that /retire nonexistent-worker shows 'not found' error
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure with an empty repo (no workers)
+	mockSubmitter := newMockCommandSubmitter()
+	mockRepo := newMockProcessRepository()
+	infra := mockV2InfraWithRepo(mockSubmitter, mockRepo)
+	m = m.SetV2Infra(infra)
+
+	// Execute /retire command for nonexistent worker
+	m, cmd := m.handleRetireWorkerCommand("/retire nonexistent-worker")
+
+	// Verify error was set
+	require.NotNil(t, m.errorModal, "should set error modal when worker not found")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify no command was submitted
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 0, "should not have submitted any command")
+}
+
+func TestHandleRetireWorkerCommand_ErrorWhenNilSubmitter(t *testing.T) {
+	// Test that /retire returns error when cmdSubmitter is nil
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up infrastructure with nil submitter but valid process repo
+	mockRepo := newMockProcessRepository()
+	_ = mockRepo.Save(&repository.Process{ID: "worker-1", Role: repository.RoleWorker, Status: repository.StatusReady})
+	infra := &v2.Infrastructure{
+		Core: v2.CoreComponents{
+			CmdSubmitter: nil, // nil submitter
+		},
+		Repositories: v2.RepositoryComponents{
+			ProcessRepo: mockRepo,
+		},
+	}
+	m = m.SetV2Infra(infra)
+
+	// Execute /retire command
+	m, cmd := m.handleRetireWorkerCommand("/retire worker-1")
+
+	// Verify error was set
+	require.NotNil(t, m.errorModal, "should set error modal when submitter is nil")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+}
+
+func TestHandleSlashCommand_RoutesRetireCommand(t *testing.T) {
+	// Test that /retire is routed through handleSlashCommand
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure with a worker in the repo
+	mockSubmitter := newMockCommandSubmitter()
+	mockRepo := newMockProcessRepository()
+	_ = mockRepo.Save(&repository.Process{ID: "worker-1", Role: repository.RoleWorker, Status: repository.StatusReady})
+	infra := mockV2InfraWithRepo(mockSubmitter, mockRepo)
+	m = m.SetV2Infra(infra)
+
+	// Send /retire command via handleSlashCommand
+	m, cmd, handled := m.handleSlashCommand("/retire worker-1")
+
+	// Verify command was handled
+	require.True(t, handled, "should return handled=true for /retire command")
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify command was submitted (proves routing worked)
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	retireCmd, ok := commands[0].(*command.RetireProcessCommand)
+	require.True(t, ok, "should be a RetireProcessCommand")
+	require.Equal(t, "worker-1", retireCmd.ProcessID, "should have correct process ID")
+}
+
+// --- /replace command handler tests ---
+
+func TestHandleReplaceWorkerCommand_CreatesCorrectCommand(t *testing.T) {
+	// Test that /replace worker-1 creates a ReplaceProcessCommand with SourceUser
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure with a worker in the repo
+	mockSubmitter := newMockCommandSubmitter()
+	mockRepo := newMockProcessRepository()
+	_ = mockRepo.Save(&repository.Process{ID: "worker-1", Role: repository.RoleWorker, Status: repository.StatusReady})
+	infra := mockV2InfraWithRepo(mockSubmitter, mockRepo)
+	m = m.SetV2Infra(infra)
+
+	// Execute /replace command
+	m, cmd := m.handleReplaceWorkerCommand("/replace worker-1")
+
+	// Verify no error modal
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify command was submitted with correct parameters
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	replaceCmd, ok := commands[0].(*command.ReplaceProcessCommand)
+	require.True(t, ok, "should be a ReplaceProcessCommand")
+	require.Equal(t, command.SourceUser, replaceCmd.Source(), "should have SourceUser")
+	require.Equal(t, "worker-1", replaceCmd.ProcessID, "should have correct process ID")
+	require.Equal(t, "user_requested", replaceCmd.Reason, "should have default reason")
+}
+
+func TestHandleReplaceWorkerCommand_IncludesReasonInCommand(t *testing.T) {
+	// Test that /replace with reason includes the reason in the command
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure with a worker in the repo
+	mockSubmitter := newMockCommandSubmitter()
+	mockRepo := newMockProcessRepository()
+	_ = mockRepo.Save(&repository.Process{ID: "worker-1", Role: repository.RoleWorker, Status: repository.StatusReady})
+	infra := mockV2InfraWithRepo(mockSubmitter, mockRepo)
+	m = m.SetV2Infra(infra)
+
+	// Execute /replace command with reason
+	m, _ = m.handleReplaceWorkerCommand("/replace worker-1 context window exceeded")
+
+	// Verify command has the custom reason
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	replaceCmd, ok := commands[0].(*command.ReplaceProcessCommand)
+	require.True(t, ok, "should be a ReplaceProcessCommand")
+	require.Equal(t, "context window exceeded", replaceCmd.Reason, "should have custom reason")
+}
+
+func TestHandleReplaceWorkerCommand_UsageErrorWithoutWorkerId(t *testing.T) {
+	// Test that /replace without worker-id shows usage error
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
+
+	// Execute /replace command without arguments
+	m, cmd := m.handleReplaceWorkerCommand("/replace")
+
+	// Verify error was set
+	require.NotNil(t, m.errorModal, "should set error modal when missing worker-id")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+}
+
+func TestHandleReplaceWorkerCommand_CoordinatorIsAllowed(t *testing.T) {
+	// Test that /replace coordinator IS allowed (unlike /retire)
+	// This is equivalent to Ctrl+R for coordinator replacement
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure with coordinator in the repo
+	mockSubmitter := newMockCommandSubmitter()
+	mockRepo := newMockProcessRepository()
+	_ = mockRepo.Save(&repository.Process{ID: "coordinator", Role: repository.RoleCoordinator, Status: repository.StatusReady})
+	infra := mockV2InfraWithRepo(mockSubmitter, mockRepo)
+	m = m.SetV2Infra(infra)
+
+	// Execute /replace coordinator command
+	m, cmd := m.handleReplaceWorkerCommand("/replace coordinator")
+
+	// Verify no error modal (coordinator replacement is allowed)
+	require.Nil(t, m.errorModal, "should NOT set error modal for /replace coordinator")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify command was submitted
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	replaceCmd, ok := commands[0].(*command.ReplaceProcessCommand)
+	require.True(t, ok, "should be a ReplaceProcessCommand")
+	require.Equal(t, "coordinator", replaceCmd.ProcessID, "should have correct process ID")
+}
+
+func TestHandleReplaceWorkerCommand_WorkerNotFoundError(t *testing.T) {
+	// Test that /replace nonexistent-worker shows 'not found' error
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure with an empty repo (no workers)
+	mockSubmitter := newMockCommandSubmitter()
+	mockRepo := newMockProcessRepository()
+	infra := mockV2InfraWithRepo(mockSubmitter, mockRepo)
+	m = m.SetV2Infra(infra)
+
+	// Execute /replace command for nonexistent worker
+	m, cmd := m.handleReplaceWorkerCommand("/replace nonexistent-worker")
+
+	// Verify error was set
+	require.NotNil(t, m.errorModal, "should set error modal when worker not found")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify no command was submitted
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 0, "should not have submitted any command")
+}
+
+func TestHandleReplaceWorkerCommand_ErrorWhenNilSubmitter(t *testing.T) {
+	// Test that /replace returns error when cmdSubmitter is nil
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up infrastructure with nil submitter but valid process repo
+	mockRepo := newMockProcessRepository()
+	_ = mockRepo.Save(&repository.Process{ID: "worker-1", Role: repository.RoleWorker, Status: repository.StatusReady})
+	infra := &v2.Infrastructure{
+		Core: v2.CoreComponents{
+			CmdSubmitter: nil, // nil submitter
+		},
+		Repositories: v2.RepositoryComponents{
+			ProcessRepo: mockRepo,
+		},
+	}
+	m = m.SetV2Infra(infra)
+
+	// Execute /replace command
+	m, cmd := m.handleReplaceWorkerCommand("/replace worker-1")
+
+	// Verify error was set
+	require.NotNil(t, m.errorModal, "should set error modal when submitter is nil")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+}
+
+func TestHandleSlashCommand_RoutesReplaceCommand(t *testing.T) {
+	// Test that /replace is routed through handleSlashCommand
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Set up mock v2 infrastructure with a worker in the repo
+	mockSubmitter := newMockCommandSubmitter()
+	mockRepo := newMockProcessRepository()
+	_ = mockRepo.Save(&repository.Process{ID: "worker-1", Role: repository.RoleWorker, Status: repository.StatusReady})
+	infra := mockV2InfraWithRepo(mockSubmitter, mockRepo)
+	m = m.SetV2Infra(infra)
+
+	// Send /replace command via handleSlashCommand
+	m, cmd, handled := m.handleSlashCommand("/replace worker-1")
+
+	// Verify command was handled
+	require.True(t, handled, "should return handled=true for /replace command")
+	require.Nil(t, m.errorModal, "should not set error modal")
+	require.Nil(t, cmd, "should return nil tea.Cmd")
+
+	// Verify command was submitted (proves routing worked)
+	commands := mockSubmitter.Commands()
+	require.Len(t, commands, 1, "should have submitted one command")
+	replaceCmd, ok := commands[0].(*command.ReplaceProcessCommand)
+	require.True(t, ok, "should be a ReplaceProcessCommand")
+	require.Equal(t, "worker-1", replaceCmd.ProcessID, "should have correct process ID")
+}
