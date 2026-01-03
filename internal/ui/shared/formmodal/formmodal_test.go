@@ -807,6 +807,277 @@ func TestSelectField_CursorPositionFromBelow(t *testing.T) {
 	require.Equal(t, 4, m.fields[0].listCursor, "cursor should be at last item when entering from below")
 }
 
+// --- FieldTypeSelect Value Tests ---
+// These tests verify that FieldTypeSelect returns the selected item's value,
+// not the cursor position, fixing the bug where tabbing through fields
+// would return incorrect values.
+
+func TestSelectField_ValueReturnsSelectedNotCursor(t *testing.T) {
+	// This test verifies the core fix: value() returns the item with selected=true,
+	// not the item at listCursor position.
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:   "priority",
+				Type:  FieldTypeSelect,
+				Label: "Priority",
+				Options: []ListOption{
+					{Label: "P0", Value: "0"},
+					{Label: "P1", Value: "1"},
+					{Label: "P2", Value: "2", Selected: true}, // P2 is selected
+					{Label: "P3", Value: "3"},
+					{Label: "P4", Value: "4"},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Initial value should be P2 (the selected one)
+	values := getValues(m)
+	require.Equal(t, "2", values["priority"], "initial value should be P2")
+
+	// Move cursor without changing selection (j navigates, doesn't select)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}) // cursor to P3
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}) // cursor to P4
+
+	// Value should STILL be P2 (cursor moved but selection didn't change)
+	values = getValues(m)
+	require.Equal(t, "2", values["priority"], "value should still be P2 after cursor movement")
+
+	// Verify cursor is at P4 but selection is at P2
+	require.Equal(t, 4, m.fields[0].listCursor, "cursor should be at P4")
+	require.True(t, m.fields[0].listItems[2].selected, "P2 should still be selected")
+	require.False(t, m.fields[0].listItems[4].selected, "P4 should not be selected")
+}
+
+func TestSelectField_SpaceChangesSelection(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:   "status",
+				Type:  FieldTypeSelect,
+				Label: "Status",
+				Options: []ListOption{
+					{Label: "Open", Value: "open", Selected: true},
+					{Label: "In Progress", Value: "in_progress"},
+					{Label: "Closed", Value: "closed"},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Initial value is "open"
+	values := getValues(m)
+	require.Equal(t, "open", values["status"])
+
+	// Navigate to "In Progress" and press Space to select
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+
+	// Value should now be "in_progress"
+	values = getValues(m)
+	require.Equal(t, "in_progress", values["status"], "value should change after Space")
+
+	// Verify selection state
+	require.False(t, m.fields[0].listItems[0].selected, "open should be deselected")
+	require.True(t, m.fields[0].listItems[1].selected, "in_progress should be selected")
+}
+
+func TestSelectField_ValuePersistsAfterTabbing(t *testing.T) {
+	// This is the exact bug scenario: tabbing to another field and back
+	// should not change the selected value.
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:   "priority",
+				Type:  FieldTypeSelect,
+				Label: "Priority",
+				Options: []ListOption{
+					{Label: "P0", Value: "0"},
+					{Label: "P1", Value: "1"},
+					{Label: "P2", Value: "2", Selected: true},
+					{Label: "P3", Value: "3"},
+					{Label: "P4", Value: "4"},
+				},
+			},
+			{
+				Key:   "status",
+				Type:  FieldTypeSelect,
+				Label: "Status",
+				Options: []ListOption{
+					{Label: "Open", Value: "open"},
+					{Label: "Closed", Value: "closed", Selected: true},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Initial values
+	values := getValues(m)
+	require.Equal(t, "2", values["priority"], "initial priority should be P2")
+	require.Equal(t, "closed", values["status"], "initial status should be closed")
+
+	// Tab to status field (this should NOT change priority)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, 1, m.focusedIndex, "should be on status field")
+
+	// Navigate within status (cursor moves but we don't press Space)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}) // cursor to Open
+
+	// Tab to buttons
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Values should be unchanged (cursor moved but no Space pressed)
+	values = getValues(m)
+	require.Equal(t, "2", values["priority"], "priority should still be P2")
+	require.Equal(t, "closed", values["status"], "status should still be closed")
+}
+
+func TestSelectField_MultipleFieldsIndependent(t *testing.T) {
+	// Verify that multiple FieldTypeSelect fields don't interfere with each other
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:   "priority",
+				Type:  FieldTypeSelect,
+				Label: "Priority",
+				Options: []ListOption{
+					{Label: "P0", Value: "0", Selected: true},
+					{Label: "P1", Value: "1"},
+					{Label: "P2", Value: "2"},
+				},
+			},
+			{
+				Key:   "status",
+				Type:  FieldTypeSelect,
+				Label: "Status",
+				Options: []ListOption{
+					{Label: "Open", Value: "open"},
+					{Label: "Closed", Value: "closed", Selected: true},
+				},
+			},
+			{
+				Key:   "type",
+				Type:  FieldTypeSelect,
+				Label: "Type",
+				Options: []ListOption{
+					{Label: "Bug", Value: "bug"},
+					{Label: "Feature", Value: "feature", Selected: true},
+					{Label: "Task", Value: "task"},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Change priority to P2
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}) // P1
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}) // P2
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})                     // select P2
+
+	// Tab to status, change to Open (cursor starts at 0 = Open)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace}) // select Open (cursor is already there)
+
+	// Tab to type, leave as Feature (don't change)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Verify all values
+	values := getValues(m)
+	require.Equal(t, "2", values["priority"], "priority should be P2")
+	require.Equal(t, "open", values["status"], "status should be open")
+	require.Equal(t, "feature", values["type"], "type should still be feature")
+}
+
+func TestSelectField_CursorPositionOnFocus(t *testing.T) {
+	// When tabbing into a FieldTypeSelect, cursor starts at first item
+	// but value() still returns the selected item
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "name", Type: FieldTypeText, Label: "Name"},
+			{
+				Key:   "priority",
+				Type:  FieldTypeSelect,
+				Label: "Priority",
+				Options: []ListOption{
+					{Label: "P0", Value: "0"},
+					{Label: "P1", Value: "1"},
+					{Label: "P2", Value: "2", Selected: true}, // P2 selected
+					{Label: "P3", Value: "3"},
+					{Label: "P4", Value: "4"},
+				},
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Tab to select field
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, 1, m.focusedIndex)
+
+	// Cursor is at first item (standard behavior)
+	require.Equal(t, 0, m.fields[1].listCursor, "cursor starts at first item")
+
+	// But value() returns the selected item P2
+	values := getValues(m)
+	require.Equal(t, "2", values["priority"], "value should be P2 (selected), not P0 (cursor)")
+}
+
+func TestSelectField_SubmitReturnsCorrectValue(t *testing.T) {
+	var submittedValues map[string]any
+
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:   "priority",
+				Type:  FieldTypeSelect,
+				Label: "Priority",
+				Options: []ListOption{
+					{Label: "P0", Value: "0"},
+					{Label: "P1", Value: "1"},
+					{Label: "P2", Value: "2", Selected: true},
+				},
+			},
+			{
+				Key:   "status",
+				Type:  FieldTypeSelect,
+				Label: "Status",
+				Options: []ListOption{
+					{Label: "Open", Value: "open", Selected: true},
+					{Label: "Closed", Value: "closed"},
+				},
+			},
+		},
+		OnSubmit: func(values map[string]any) tea.Msg {
+			submittedValues = values
+			return SubmitMsg{Values: values}
+		},
+	}
+	m := New(cfg)
+
+	// Form starts on first field (priority), tab through to buttons
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to status
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to submit button
+
+	// Press Enter to submit
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	cmd() // Execute the command
+
+	// Verify submitted values match the selected items
+	require.Equal(t, "2", submittedValues["priority"], "submitted priority should be P2")
+	require.Equal(t, "open", submittedValues["status"], "submitted status should be open")
+}
+
 func TestListField_NavigationFlow_FromAboveToBelow(t *testing.T) {
 	// Test the full navigation flow: text1 -> list (at top) -> through list -> text2 -> back to list (at bottom)
 	cfg := FormConfig{

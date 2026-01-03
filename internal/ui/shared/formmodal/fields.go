@@ -23,10 +23,10 @@ type fieldState struct {
 	// Text field state
 	textInput textinput.Model
 
-	// Color field state (Phase 3)
+	// Color field state
 	selectedColor string // Current hex color
 
-	// List field state (Phase 4)
+	// List field state
 	listCursor int        // Cursor position within list
 	listItems  []listItem // Items with selection state
 
@@ -141,9 +141,11 @@ func (fs *fieldState) value() any {
 		return selected
 
 	case FieldTypeSelect:
-		// Return single selected value
-		if fs.listCursor >= 0 && fs.listCursor < len(fs.listItems) {
-			return fs.listItems[fs.listCursor].value
+		// Return the selected item's value (not cursor position)
+		for _, item := range fs.listItems {
+			if item.selected {
+				return item.value
+			}
 		}
 		return ""
 

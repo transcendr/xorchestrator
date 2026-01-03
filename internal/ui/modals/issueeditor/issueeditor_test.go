@@ -267,9 +267,11 @@ func TestSaveMsg_PriorityChange(t *testing.T) {
 	// Start with P0 (Critical)
 	m := New("test-123", []string{}, beads.PriorityCritical, beads.StatusOpen)
 
-	// Navigate down in priority list to select P2 (Medium)
+	// Navigate down in priority list to P2 (Medium)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}) // P1
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}) // P2
+	// Press Space to confirm selection
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 
 	// Tab to Status -> Labels -> Add Label input -> Submit
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -294,8 +296,10 @@ func TestSaveMsg_StatusChange(t *testing.T) {
 	// Tab to Status field
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 
-	// Navigate down in status list to select In Progress
+	// Navigate down in status list to In Progress
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	// Press Space to confirm selection
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 
 	// Tab to Labels -> Add Label input -> Submit
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
