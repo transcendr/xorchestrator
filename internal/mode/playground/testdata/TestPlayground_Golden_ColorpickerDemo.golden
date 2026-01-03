@@ -8,13 +8,13 @@
 │   scrollpane               │  │ │                                                          │     │
 │   colorpicker              │  │ │                                                          │     │
 │   picker                   │  │ │                                                          │     │
+│   commandpalette           │  │ │                                                          │     │
 │   toaster                  │  │ │                                                          │     │
-│   logoverlay               │  │ │                                                          │     │
-│   markdown                 │  │ ╰─ Bottom Left ───────────────────────────── Bottom Right ─╯     │
+│   logoverlay               │  │ ╰─ Bottom Left ───────────────────────────── Bottom Right ─╯     │
+│   markdown                 │  │                                                                  │
 │   chainart                 │  │                                                                  │
 │   issuebadge               │  │                                                                  │
 │   Theme Tokens             │  │                                                                  │
-│                            │  │                                                                  │
 │                            │  │                                                                  │
 │                            │  │                                                                  │
 │                            │  │                                                                  │

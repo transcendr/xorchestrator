@@ -14,6 +14,7 @@ import (
 	"github.com/zjrosen/perles/internal/bql"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/shared/chainart"
 	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
 	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
@@ -83,6 +84,11 @@ func GetComponentDemos() []ComponentDemo {
 			Create:      createPickerDemo,
 		},
 		{
+			Name:        "commandpalette",
+			Description: "Searchable picker with filtering",
+			Create:      createCommandPaletteDemo,
+		},
+		{
 			Name:        "toaster",
 			Description: "Toast notification component",
 			Create:      createToasterDemo,
@@ -114,6 +120,74 @@ func GetComponentDemos() []ComponentDemo {
 		},
 	}
 }
+
+// CommandPaletteDemoModel wraps the command palette component for demonstration.
+type CommandPaletteDemoModel struct {
+	commandpalette commandpalette.Model
+	lastAction     string
+	width          int
+	height         int
+}
+
+func createCommandPaletteDemo(width, height int) DemoModel {
+	items := []commandpalette.Item{
+		{ID: "1", Name: "Create Issue", Description: "Open a new issue in the tracker"},
+		{ID: "2", Name: "Search Files", Description: "Find files by name or content"},
+		{ID: "3", Name: "Run Tests", Description: "Execute the test suite", Color: styles.StatusSuccessColor},
+		{ID: "4", Name: "Build Project", Description: "Compile the project"},
+		{ID: "5", Name: "Deploy", Description: "Deploy to staging environment", Color: styles.StatusInProgressColor},
+		{ID: "6", Name: "View Logs", Description: "Open log viewer overlay"},
+		{ID: "7", Name: "Settings", Description: "Configure application preferences"},
+		{ID: "8", Name: "Help", Description: "Show keyboard shortcuts and documentation"},
+	}
+
+	cp := commandpalette.New(commandpalette.Config{
+		Title:           "Demo Commands",
+		Placeholder:     "Search commands...",
+		Items:           items,
+		MaxVisibleItems: 5,
+	}).SetSize(width, height)
+
+	return &CommandPaletteDemoModel{
+		commandpalette: cp,
+		lastAction:     "Type to filter, Enter to select",
+		width:          width,
+		height:         height,
+	}
+}
+
+func (m *CommandPaletteDemoModel) Update(msg tea.Msg) (DemoModel, tea.Cmd, string) {
+	// Handle command palette result messages
+	switch result := msg.(type) {
+	case commandpalette.SelectMsg:
+		m.lastAction = "Selected: " + result.Item.Name
+		return m, nil, m.lastAction
+	case commandpalette.CancelMsg:
+		m.lastAction = "Cancelled"
+		return m, nil, m.lastAction
+	}
+
+	var cmd tea.Cmd
+	m.commandpalette, cmd = m.commandpalette.Update(msg)
+	return m, cmd, ""
+}
+
+func (m *CommandPaletteDemoModel) View() string {
+	return m.commandpalette.View()
+}
+
+func (m *CommandPaletteDemoModel) SetSize(width, height int) DemoModel {
+	m.width = width
+	m.height = height
+	m.commandpalette = m.commandpalette.SetSize(width, height)
+	return m
+}
+
+func (m *CommandPaletteDemoModel) Reset() DemoModel {
+	return createCommandPaletteDemo(m.width, m.height)
+}
+
+func (m *CommandPaletteDemoModel) NeedsEscKey() bool { return false }
 
 // PickerDemoModel wraps the picker component for demonstration.
 type PickerDemoModel struct {

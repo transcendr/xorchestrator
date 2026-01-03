@@ -202,6 +202,16 @@ func TestPlayground_Golden_IssuebadgeDemo(t *testing.T) {
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 
+func TestPlayground_Golden_CommandPaletteDemo(t *testing.T) {
+	m := createGoldenTestModel(t)
+
+	// Select commandpalette demo (index 7)
+	m = selectComponent(t, m, 7)
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
 // Unit tests
 
 func TestGetTokenColor(t *testing.T) {
@@ -234,8 +244,8 @@ func TestGetTokenCategories(t *testing.T) {
 func TestComponentRegistry(t *testing.T) {
 	demos := GetComponentDemos()
 
-	// Should have 13 demos (including theme tokens and issuebadge)
-	require.Len(t, demos, 13, "Should have 13 component demos")
+	// Should have 14 demos (including theme tokens, issuebadge, and commandpalette)
+	require.Len(t, demos, 14, "Should have 14 component demos")
 
 	// Each demo should have valid Create function
 	for _, demo := range demos {

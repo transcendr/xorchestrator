@@ -1,28 +1,28 @@
-╭────────────────────────────╮  ╭─ Theme Tokens ───────────────────────────────────────────────────╮
-│ Components                 │  │ Token                        default        catppuccin     catpp │
-│ ────────────────────────── │  │ ──────────────────────────────────────────────────────────────── │
-│   vimtextarea              │  │ Text                                                             │
-│   modal                    │  │ text.primary                    #CCCCCC        #CDD6F4        #4 │
-│   formmodal                │  │ text.secondary                  #BBBBBB        #BAC2DE        #5 │
-│   panes                    │  │ text.muted                      #696969        #6C7086        #9 │
-│   scrollpane               │  │ text.description                #999999        #A6ADC8        #6 │
-│   colorpicker              │  │ text.placeholder                #777777        #585B70        #A │
-│   picker                   │  │                                                                  │
-│   toaster                  │  │ Borders                                                          │
-│   logoverlay               │  │ border.default                  #696969        #6C7086        #9 │
-│   markdown                 │  │ border.focus                    #FFFFFF        #CDD6F4        #4 │
-│   chainart                 │  │ border.highlight                #54A0FF        #89B4FA        #1 │
-│   issuebadge               │  │                                                                  │
-│ ● Theme Tokens             │  │ Status                                                           │
-│                            │  │ status.success                  #73F59F        #A6E3A1        #4 │
-│                            │  │ status.warning                  #FECA57        #F9E2AF        #D │
-│                            │  │ status.error                    #FF8787        #F38BA8        #D │
+╭────────────────────────────╮  ╭─ issuebadge ─────────────────────────────────────────────────────╮
+│ Components                 │  │ Issue Badge Component Demo                                       │
+│ ────────────────────────── │  │ Use j/k to move selection                                        │
+│   vimtextarea              │  │                                                                  │
+│   modal                    │  │                                                                  │
+│   formmodal                │  │ Issue Types (E/T/F/B/C/M/🚚/👨‍💼):                                 │
+│   panes                    │  │ >[E][P1][demo-e01] Epic: User Authentication System              │
+│   scrollpane               │  │  [T][P2][demo-t02] Task: Implement login form validation         │
+│   colorpicker              │  │  [F][P1][demo-f03] Feature: Add dark mode support                │
+│   picker                   │  │  [B][P0][demo-b04] Bug: Fix memory leak in cache                 │
+│   commandpalette           │  │  [C][P3][demo-c05] Chore: Update dependencies                    │
+│   toaster                  │  │  [M][P2][demo-m06] Molecule: Reusable auth component             │
+│   logoverlay               │  │  [🚚][P2][demo-v07] Convoy: Batch deployment pipeline            │
+│   markdown                 │  │  [👨‍💼][P2][demo-a08] Agent: AI-assisted task automation           │
+│   chainart                 │  │                                                                  │
+│ ● issuebadge               │  │                                                                  │
+│   Theme Tokens             │  │ Priority Levels (P0-P4):                                         │
+│                            │  │  [B][P0][demo-p0] P0 Critical: Security vulnerability            │
+│                            │  │  [F][P1][demo-p1] P1 High: Core feature request                  │
+│                            │  │  [T][P2][demo-p2] P2 Medium: Standard work item                  │
+│                            │  │  [C][P3][demo-p3] P3 Low: Nice to have improvement               │
+│                            │  │  [T][P4][demo-p4] P4 Backlog: Future consideration               │
 │                            │  │                                                                  │
-│                            │  │ Selection                                                        │
-│                            │  │ selection.indicator             #FFFFFF        #CDD6F4        #4 │
 │                            │  │                                                                  │
-│                            │  │ Buttons                                                          │
-│                            │  │ button.text                     #FFFFFF        #1E1E2E        #E │
-│                            │  │                                                                  │
+│                            │  │ Title Truncation (MaxWidth=60):                                  │
+│                            │  │  [F][P2][demo-long] This is a very long title that will b...     │
 ╰────────────────────────────╯  ╰──────────────────────────────────────────────────────────────────╯
 Tab: Switch panes  │  Ctrl+R: Reset  │  Ctrl+C: Quit                                                

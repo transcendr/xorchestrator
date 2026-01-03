@@ -8,13 +8,13 @@
 │   scrollpane               │  │ │>   Red             Lime            Crimson         White       │
 │ ● colorpicker              │  ││                                                                 │
 │   picker                   │  │ │    Green           Cyan            Tomato          Gray 1      │
-│   toaster                  │  ││                                                                 │
-│   logoverlay               │  │ │    Blue            Magenta         Gold            Gray 2      │
-│   markdown                 │  ││                                                                 │
-│   chainart                 │  │ │    Purple          Indigo          Olive           Gray 3      │
-│   issuebadge               │  ││                                                                 │
-│   Theme Tokens             │  │ │    Yellow          Rose            Aqua            Gray 4      │
-│                            │  ││                                                                 │
+│   commandpalette           │  ││                                                                 │
+│   toaster                  │  │ │    Blue            Magenta         Gold            Gray 2      │
+│   logoverlay               │  ││                                                                 │
+│   markdown                 │  │ │    Purple          Indigo          Olive           Gray 3      │
+│   chainart                 │  ││                                                                 │
+│   issuebadge               │  │ │    Yellow          Rose            Aqua            Gray 4      │
+│   Theme Tokens             │  ││                                                                 │
 │                            │  │ │    Orange          Amber           Navy            Gray 5      │
 │                            │  ││                                                                 │
 │                            │  │ │    Teal            Emerald         Plum            Gray 6      │
