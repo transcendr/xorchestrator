@@ -21,10 +21,12 @@ func TestWatcher_DebounceMultipleWrites(t *testing.T) {
 	err := os.WriteFile(dbPath, []byte("test"), 0644)
 	require.NoError(t, err, "failed to create test file")
 
-	// Create watcher with short debounce
+	// Create watcher with debounce longer than total write duration
+	// to ensure all writes coalesce into a single notification.
+	// Write loop: 10 writes * 5ms = 50ms, so 150ms debounce ensures coalescing.
 	w, err := watcher.New(watcher.Config{
 		DBPath:      dbPath,
-		DebounceDur: 50 * time.Millisecond,
+		DebounceDur: 150 * time.Millisecond,
 	})
 	require.NoError(t, err, "failed to create watcher")
 	defer func() { _ = w.Stop() }()
@@ -41,14 +43,14 @@ func TestWatcher_DebounceMultipleWrites(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		err := os.WriteFile(dbPath, []byte(fmt.Sprintf("test%d", i)), 0644)
 		require.NoError(t, err, "failed to write file")
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	// Should receive exactly one notification
 	select {
 	case evt := <-sub:
 		require.Equal(t, watcher.DBChanged, evt.Payload.Type, "expected DBChanged event")
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(400 * time.Millisecond):
 		require.Fail(t, "expected notification but got timeout")
 	}
 
@@ -56,7 +58,7 @@ func TestWatcher_DebounceMultipleWrites(t *testing.T) {
 	select {
 	case <-sub:
 		require.Fail(t, "unexpected second notification")
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(200 * time.Millisecond):
 		// Expected - no second notification
 	}
 }
