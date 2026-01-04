@@ -148,26 +148,34 @@ func (p *Process) eventLoop() {
 	procEvents := proc.Events()
 	procErrors := proc.Errors()
 
-	for {
+	// Track when each channel closes. We must wait for BOTH to close
+	// before calling handleProcessComplete to ensure all errors are processed.
+	var eventsClosed, errorsClosed bool
+
+	for !eventsClosed || !errorsClosed {
 		select {
 		case <-p.ctx.Done():
 			return
 
 		case event, ok := <-procEvents:
 			if !ok {
-				// Events channel closed, process complete
-				p.handleProcessComplete()
-				return
+				eventsClosed = true
+				procEvents = nil // Prevent busy loop on closed channel
+				continue
 			}
 			p.handleOutputEvent(&event)
 
 		case err, ok := <-procErrors:
 			if !ok {
+				errorsClosed = true
+				procErrors = nil // Prevent busy loop on closed channel
 				continue
 			}
 			p.handleError(err)
 		}
 	}
+
+	p.handleProcessComplete()
 }
 
 // handleOutputEvent processes a single output event from the AI process.

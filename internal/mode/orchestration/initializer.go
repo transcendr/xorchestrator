@@ -923,6 +923,7 @@ func (i *Initializer) transitionTo(phase InitPhase) {
 
 // fail transitions to failed state and publishes a failed event.
 // If already failed, this is a no-op to preserve the original failure phase.
+// Cancels the context to stop the run() loop and prevent timeout from firing.
 func (i *Initializer) fail(err error) {
 	i.mu.Lock()
 	// Don't overwrite if already failed - preserve original failure phase
@@ -933,6 +934,7 @@ func (i *Initializer) fail(err error) {
 	i.failedAtPhase = i.phase
 	i.phase = InitFailed
 	i.err = err
+	cancel := i.cancel
 	i.mu.Unlock()
 
 	log.Error(log.CatOrch, "Initialization failed", "subsystem", "init", "phase", i.failedAtPhase, "error", err)
@@ -942,11 +944,22 @@ func (i *Initializer) fail(err error) {
 		Phase: InitFailed,
 		Error: err,
 	})
+
+	// Cancel context to stop run() loop and prevent timeout from firing
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // timeout transitions to timed out state and publishes a timeout event.
+// If already failed, this is a no-op to preserve the original failure.
 func (i *Initializer) timeout() {
 	i.mu.Lock()
+	// Don't overwrite if already failed - preserve original failure
+	if i.phase == InitFailed || i.phase == InitTimedOut {
+		i.mu.Unlock()
+		return
+	}
 	i.failedAtPhase = i.phase
 	i.phase = InitTimedOut
 	i.mu.Unlock()

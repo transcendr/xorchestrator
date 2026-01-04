@@ -54,6 +54,14 @@ func (m *mockProcess) Wait() error {
 	return nil
 }
 
+// Complete simulates process completion by closing both channels.
+// This matches the real claude.Process behavior where waitForCompletion
+// closes the errors channel after the process exits.
+func (m *mockProcess) Complete() {
+	close(m.events)
+	close(m.errors)
+}
+
 // mockCommandSubmitter implements CommandSubmitter for testing.
 type mockCommandSubmitter struct {
 	submitted []command.Command
@@ -142,7 +150,7 @@ func TestStart_BeginsProcessingEvents(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Close events to complete the event loop
-	close(proc.events)
+	proc.Complete()
 
 	// Wait for completion
 	select {
@@ -179,7 +187,7 @@ func TestEventLoop_HandlesOutputEvents(t *testing.T) {
 	require.Contains(t, lines, "Hello from AI")
 
 	// Clean up
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -211,7 +219,7 @@ func TestEventLoop_HandlesAssistantToolUseBlocks(t *testing.T) {
 	assert.Contains(t, lines[0], "Let me read that file.")
 	assert.Contains(t, lines[1], "Read")
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -244,7 +252,7 @@ func TestEventLoop_CallsHandleProcessCompleteOnChannelClose(t *testing.T) {
 	p.Start()
 
 	// Close events to trigger completion
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 
 	// Process should have been waited on
@@ -273,7 +281,7 @@ func TestHandleOutputEvent_BuffersOutputLines(t *testing.T) {
 	lines := p.Output().Lines()
 	assert.Len(t, lines, 5)
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -285,7 +293,7 @@ func TestHandleProcessComplete_SubmitsProcessTurnCompleteCommand(t *testing.T) {
 	p := New("worker-1", repository.RoleWorker, proc, submitter, nil)
 	p.Start()
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 
 	submitted := submitter.getSubmitted()
@@ -304,7 +312,7 @@ func TestHandleProcessComplete_SetsSucceededTrueForStatusCompleted(t *testing.T)
 	p := New("worker-1", repository.RoleWorker, proc, submitter, nil)
 	p.Start()
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 
 	submitted := submitter.getSubmitted()
@@ -330,7 +338,7 @@ func TestHandleProcessComplete_SetsSucceededFalseForOtherStatuses(t *testing.T) 
 			p := New("worker-1", repository.RoleWorker, proc, submitter, nil)
 			p.Start()
 
-			close(proc.events)
+			proc.Complete()
 			<-p.eventDone
 
 			submitted := submitter.getSubmitted()
@@ -357,7 +365,7 @@ func TestHandleError_DoesNotCrash(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 
 	// Should not have crashed
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -384,7 +392,7 @@ func TestHandleProcessComplete_RestoresPreviousSessionIDOnFailure(t *testing.T) 
 	assert.Equal(t, "invalid-new-session-456", p.SessionID())
 
 	// Now close events to trigger handleProcessComplete
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 
 	// After process failure, the previous valid session ID should be restored
@@ -412,7 +420,7 @@ func TestHandleProcessComplete_ClearsSessionIDOnFailureWithNoPrevious(t *testing
 	assert.Equal(t, "invalid-session-from-failed-start", p.SessionID())
 
 	// Now close events to trigger handleProcessComplete
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 
 	// After process failure with no previous session, the session ID should be cleared
@@ -435,7 +443,7 @@ func TestHandleProcessComplete_KeepsSessionIDOnSuccess(t *testing.T) {
 	}
 	time.Sleep(20 * time.Millisecond)
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 
 	// On success, the session ID should be kept
@@ -556,7 +564,7 @@ func TestStop_CancelsContext(t *testing.T) {
 	// Start goroutine to close events after Stop cancels context
 	go func() {
 		<-p.ctx.Done()
-		close(proc.events)
+		proc.Complete()
 	}()
 
 	p.Stop()
@@ -577,7 +585,7 @@ func TestStop_IsIdempotent(t *testing.T) {
 
 	go func() {
 		<-p.ctx.Done()
-		close(proc.events)
+		proc.Complete()
 	}()
 
 	// Call Stop multiple times - should not panic
@@ -595,7 +603,7 @@ func TestStop_WaitsForEventLoopToExit(t *testing.T) {
 	go func() {
 		// Delay closing events to verify Stop actually waits
 		time.Sleep(50 * time.Millisecond)
-		close(proc.events)
+		proc.Complete()
 	}()
 
 	go func() {
@@ -631,7 +639,7 @@ func TestResume_SendsMessageToUnderlyingProcess(t *testing.T) {
 	p.Start()
 
 	// Complete first event loop
-	close(proc1.events)
+	proc1.Complete()
 	<-p.eventDone
 
 	// Resume with new process
@@ -641,7 +649,7 @@ func TestResume_SendsMessageToUnderlyingProcess(t *testing.T) {
 	// Verify new process is active
 	assert.Equal(t, client.StatusRunning, p.Status())
 
-	close(proc2.events)
+	proc2.Complete()
 	<-p.eventDone
 }
 
@@ -659,7 +667,7 @@ func TestResume_UpdatesSessionID(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	assert.Equal(t, "session-1", p.SessionID())
 
-	close(proc1.events)
+	proc1.Complete()
 	<-p.eventDone
 
 	// Resume with new process
@@ -675,7 +683,7 @@ func TestResume_UpdatesSessionID(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	assert.Equal(t, "session-2", p.SessionID())
 
-	close(proc2.events)
+	proc2.Complete()
 	<-p.eventDone
 }
 
@@ -684,7 +692,7 @@ func TestResume_WorksForCoordinatorRole(t *testing.T) {
 	p := New(repository.CoordinatorID, repository.RoleCoordinator, proc1, nil, nil)
 	p.Start()
 
-	close(proc1.events)
+	proc1.Complete()
 	<-p.eventDone
 
 	proc2 := newMockHeadlessProcess()
@@ -694,7 +702,7 @@ func TestResume_WorksForCoordinatorRole(t *testing.T) {
 	assert.Equal(t, repository.RoleCoordinator, p.Role)
 	assert.Equal(t, client.StatusRunning, p.Status())
 
-	close(proc2.events)
+	proc2.Complete()
 	<-p.eventDone
 }
 
@@ -703,7 +711,7 @@ func TestResume_WorksForWorkerRole(t *testing.T) {
 	p := New("worker-1", repository.RoleWorker, proc1, nil, nil)
 	p.Start()
 
-	close(proc1.events)
+	proc1.Complete()
 	<-p.eventDone
 
 	proc2 := newMockHeadlessProcess()
@@ -712,7 +720,7 @@ func TestResume_WorksForWorkerRole(t *testing.T) {
 	assert.Equal(t, repository.RoleWorker, p.Role)
 	assert.Equal(t, client.StatusRunning, p.Status())
 
-	close(proc2.events)
+	proc2.Complete()
 	<-p.eventDone
 }
 
@@ -858,7 +866,7 @@ func TestPublishOutputEvent_PublishesProcessEvent(t *testing.T) {
 		require.FailNow(t, "did not receive event on bus")
 	}
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -885,7 +893,7 @@ func TestPublishErrorEvent_PublishesProcessEvent(t *testing.T) {
 		require.FailNow(t, "did not receive error event")
 	}
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -927,7 +935,7 @@ func TestHandleOutputEvent_ErrorEvent(t *testing.T) {
 	assert.Contains(t, lines[0], "⚠️ Error:")
 	assert.Contains(t, lines[0], "usage limit")
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -946,7 +954,7 @@ func TestEventLoop_ExtractsSessionIDFromInitEvent(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	assert.Equal(t, "session-abc-123", p.SessionID())
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -971,7 +979,7 @@ func TestEventLoop_HandlesToolResults(t *testing.T) {
 	assert.Contains(t, lines[0], "[Bash]")
 	assert.Contains(t, lines[0], "command output here")
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -1012,7 +1020,7 @@ func TestEventLoop_HandlesToolUseEvents(t *testing.T) {
 	require.Len(t, lines, 1, "Expected tool call to be added to output buffer")
 	assert.Contains(t, lines[0], "signal_ready", "Tool name should appear in output")
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -1051,7 +1059,7 @@ func TestEventLoop_HandlesToolUseWithArguments(t *testing.T) {
 	require.Len(t, lines, 1)
 	assert.Contains(t, lines[0], "post_message")
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -1081,7 +1089,7 @@ func TestEventLoop_TruncatesLongToolOutput(t *testing.T) {
 	assert.Contains(t, lines[0], "...")
 	assert.Less(t, len(lines[0]), 600)
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -1205,7 +1213,7 @@ func TestCumulativeCostAccumulation_EmittedInTokenUsageEvent(t *testing.T) {
 		require.FailNow(t, "did not receive token usage event")
 	}
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 
@@ -1249,7 +1257,7 @@ func TestCumulativeCostAccumulation_MultiTurnWithEvents(t *testing.T) {
 			"Turn %d: expected cumulative %.4f, got %.4f", i+1, expectedCumulative[i], m.CumulativeCostUSD)
 	}
 
-	close(proc.events)
+	proc.Complete()
 	<-p.eventDone
 }
 

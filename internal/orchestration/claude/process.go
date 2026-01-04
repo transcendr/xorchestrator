@@ -129,6 +129,10 @@ type Process struct {
 	ctx        context.Context
 	mu         sync.RWMutex
 	wg         sync.WaitGroup
+
+	// stderrLines captures stderr output for inclusion in error messages.
+	// Protected by mu.
+	stderrLines []string
 }
 
 // ErrTimeout is returned when a Claude process exceeds its configured timeout.
@@ -429,7 +433,7 @@ func (p *Process) parseOutput() {
 	}
 }
 
-// parseStderr reads and logs stderr output.
+// parseStderr reads and logs stderr output, capturing lines for error messages.
 func (p *Process) parseStderr() {
 	defer p.wg.Done()
 
@@ -437,6 +441,11 @@ func (p *Process) parseStderr() {
 	for scanner.Scan() {
 		line := scanner.Text()
 		log.Debug(log.CatOrch, "STDERR", "subsystem", "claude", "line", line)
+
+		// Capture stderr lines for inclusion in error messages
+		p.mu.Lock()
+		p.stderrLines = append(p.stderrLines, line)
+		p.mu.Unlock()
 	}
 	if err := scanner.Err(); err != nil {
 		log.Debug(log.CatOrch, "Stderr scanner error", "subsystem", "claude", "error", err)
@@ -444,8 +453,10 @@ func (p *Process) parseStderr() {
 }
 
 // waitForCompletion waits for the process to exit and updates status.
+// It closes the errors channel when done to signal completion to consumers.
 func (p *Process) waitForCompletion() {
 	defer p.wg.Done()
+	defer close(p.errors) // Signal that no more errors will be sent
 
 	log.Debug(log.CatOrch, "Waiting for process to complete", "subsystem", "claude")
 	err := p.cmd.Wait()
@@ -471,7 +482,14 @@ func (p *Process) waitForCompletion() {
 	if err != nil {
 		p.status = client.StatusFailed
 		log.Debug(log.CatOrch, "Process failed", "subsystem", "claude", "error", err)
-		p.sendError(fmt.Errorf("claude process exited: %w", err))
+
+		// Build error message including stderr content if available
+		if len(p.stderrLines) > 0 {
+			stderrMsg := strings.Join(p.stderrLines, "\n")
+			p.sendError(fmt.Errorf("claude process failed: %s (exit: %w)", stderrMsg, err))
+		} else {
+			p.sendError(fmt.Errorf("claude process exited: %w", err))
+		}
 	} else {
 		p.status = client.StatusCompleted
 		log.Debug(log.CatOrch, "Process completed successfully", "subsystem", "claude")

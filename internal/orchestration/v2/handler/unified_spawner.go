@@ -69,7 +69,7 @@ func (s *UnifiedProcessSpawnerImpl) SpawnProcess(ctx context.Context, id string,
 		}
 		initialPrompt, err := prompt.BuildCoordinatorInitialPrompt()
 		if err != nil {
-			return nil, fmt.Errorf("failed to build coordinator inital prompt: %w", err)
+			return nil, fmt.Errorf("failed to build coordinator initial prompt: %w", err)
 		}
 		cfg = client.Config{
 			WorkDir:         s.workDir,
