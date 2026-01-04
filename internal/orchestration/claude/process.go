@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -336,7 +337,7 @@ func (p *Process) sendError(err error) {
 		// Error sent successfully
 	default:
 		// Channel full, log the dropped error
-		log.Debug(log.CatOrch, "Error channel full, dropping error", "subsystem", "claude", "error", err)
+		log.Debug(log.CatOrch, "error channel full, dropping error", "subsystem", "claude", "error", err)
 	}
 }
 
@@ -345,7 +346,7 @@ func (p *Process) parseOutput() {
 	defer p.wg.Done()
 	defer close(p.events)
 
-	log.Debug(log.CatOrch, "Starting output parser", "subsystem", "claude")
+	log.Debug(log.CatOrch, "starting output parser", "subsystem", "claude")
 
 	scanner := bufio.NewScanner(p.stdout)
 	// Increase buffer size for large outputs
@@ -366,11 +367,11 @@ func (p *Process) parseOutput() {
 
 		var event client.OutputEvent
 		if err := json.Unmarshal(line, &event); err != nil {
-			log.Debug(log.CatOrch, "Failed to parse JSON", "subsystem", "claude", "error", err, "line", string(line[:min(100, len(line))]))
+			log.Debug(log.CatOrch, "failed to unmarshal JSON", "subsystem", "claude", "error", err, "line", string(line[:min(100, len(line))]))
 			continue
 		}
 
-		log.Debug(log.CatOrch, "Parsed event", "subsystem", "claude", "type", event.Type, "subtype", event.SubType, "hasTool", event.Tool != nil, "hasMessage", event.Message != nil)
+		log.Debug(log.CatOrch, "parsed event", "subsystem", "claude", "type", event.Type, "subtype", event.SubType, "hasTool", event.Tool != nil, "hasMessage", event.Message != nil)
 
 		// Log Usage data specifically for result events to debug token tracking
 		if event.Type == client.EventResult {
@@ -413,22 +414,20 @@ func (p *Process) parseOutput() {
 			p.mu.Lock()
 			p.sessionID = event.SessionID
 			p.mu.Unlock()
-			log.Debug(log.CatOrch, "Got session ID", "subsystem", "claude", "sessionID", event.SessionID)
+			log.Debug(log.CatOrch, "got session ID", "subsystem", "claude", "sessionID", event.SessionID)
 		}
 
 		select {
 		case p.events <- event:
-			log.Debug(log.CatOrch, "Sent event to channel", "subsystem", "claude", "type", event.Type)
+			log.Debug(log.CatOrch, "sent event to channel", "subsystem", "claude", "type", event.Type)
 		case <-p.ctx.Done():
-			log.Debug(log.CatOrch, "Context done, stopping parser", "subsystem", "claude")
+			log.Debug(log.CatOrch, "context done, stopping parser", "subsystem", "claude")
 			return
 		}
 	}
 
-	log.Debug(log.CatOrch, "Scanner finished", "subsystem", "claude", "totalLines", lineCount)
-
 	if err := scanner.Err(); err != nil {
-		log.Debug(log.CatOrch, "Scanner error", "subsystem", "claude", "error", err)
+		log.Debug(log.CatOrch, "scanner error", "subsystem", "claude", "error", err)
 		p.sendError(fmt.Errorf("stdout scanner error: %w", err))
 	}
 }
@@ -458,32 +457,27 @@ func (p *Process) waitForCompletion() {
 	defer p.wg.Done()
 	defer close(p.errors) // Signal that no more errors will be sent
 
-	log.Debug(log.CatOrch, "Waiting for process to complete", "subsystem", "claude")
+	log.Debug(log.CatOrch, "waiting for process to complete", "subsystem", "claude")
 	err := p.cmd.Wait()
-	log.Debug(log.CatOrch, "Process completed", "subsystem", "claude", "error", err)
+	log.Debug(log.CatOrch, "process completed", "subsystem", "claude", "error", err)
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.status == client.StatusCancelled {
-		// Already cancelled, don't override
-		log.Debug(log.CatOrch, "Process was cancelled", "subsystem", "claude")
+		log.Debug(log.CatOrch, "process was cancelled", "subsystem", "claude")
 		return
 	}
 
-	// Check if this was a timeout
-	if p.ctx.Err() == context.DeadlineExceeded {
+	if errors.Is(p.ctx.Err(), context.DeadlineExceeded) {
 		p.status = client.StatusFailed
-		log.Debug(log.CatOrch, "Process timed out", "subsystem", "claude")
+		log.Debug(log.CatOrch, "process timed out", "subsystem", "claude")
 		p.sendError(ErrTimeout)
 		return
 	}
 
 	if err != nil {
 		p.status = client.StatusFailed
-		log.Debug(log.CatOrch, "Process failed", "subsystem", "claude", "error", err)
-
-		// Build error message including stderr content if available
 		if len(p.stderrLines) > 0 {
 			stderrMsg := strings.Join(p.stderrLines, "\n")
 			p.sendError(fmt.Errorf("claude process failed: %s (exit: %w)", stderrMsg, err))
@@ -492,7 +486,7 @@ func (p *Process) waitForCompletion() {
 		}
 	} else {
 		p.status = client.StatusCompleted
-		log.Debug(log.CatOrch, "Process completed successfully", "subsystem", "claude")
+		log.Debug(log.CatOrch, "process completed successfully", "subsystem", "claude")
 	}
 }
 

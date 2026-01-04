@@ -750,13 +750,13 @@ func (m Model) handleV2Event(event pubsub.Event[any]) (Model, tea.Cmd) {
 func (m Model) handleCoordinatorProcessEvent(evt events.ProcessEvent) Model {
 	switch evt.Type {
 	case events.ProcessSpawned:
-		log.Debug(log.CatOrch, "Coordinator process spawned",
+		log.Debug(log.CatOrch, "coordinator process spawned",
 			"subsystem", "update",
 			"processID", evt.ProcessID)
 		// Coordinator pane initialization is handled elsewhere (initializer)
 
 	case events.ProcessOutput:
-		log.Debug(log.CatOrch, "Coordinator output received",
+		log.Debug(log.CatOrch, "coordinator output received",
 			"subsystem", "update",
 			"processID", evt.ProcessID,
 			"outputLen", len(evt.Output))
@@ -765,21 +765,21 @@ func (m Model) handleCoordinatorProcessEvent(evt events.ProcessEvent) Model {
 		}
 
 	case events.ProcessReady:
-		log.Debug(log.CatOrch, "Coordinator ready",
+		log.Debug(log.CatOrch, "coordinator ready",
 			"subsystem", "update",
 			"processID", evt.ProcessID)
 		m.coordinatorWorking = false
 		m.coordinatorStatus = events.ProcessStatusReady
 
 	case events.ProcessWorking:
-		log.Debug(log.CatOrch, "Coordinator working",
+		log.Debug(log.CatOrch, "coordinator working",
 			"subsystem", "update",
 			"processID", evt.ProcessID)
 		m.coordinatorWorking = true
 		m.coordinatorStatus = events.ProcessStatusWorking
 
 	case events.ProcessIncoming:
-		log.Debug(log.CatOrch, "Coordinator incoming message",
+		log.Debug(log.CatOrch, "coordinator incoming message",
 			"subsystem", "update",
 			"processID", evt.ProcessID,
 			"messageLen", len(evt.Message))
@@ -789,7 +789,7 @@ func (m Model) handleCoordinatorProcessEvent(evt events.ProcessEvent) Model {
 
 	case events.ProcessTokenUsage:
 		if evt.Metrics != nil {
-			log.Debug(log.CatOrch, "Coordinator token usage",
+			log.Debug(log.CatOrch, "coordinator token usage",
 				"subsystem", "update",
 				"processID", evt.ProcessID,
 				"contextTokens", evt.Metrics.ContextTokens,
@@ -799,7 +799,7 @@ func (m Model) handleCoordinatorProcessEvent(evt events.ProcessEvent) Model {
 		}
 
 	case events.ProcessError:
-		log.Debug(log.CatOrch, "Coordinator error",
+		log.Debug(log.CatOrch, "coordinator error",
 			"subsystem", "update",
 			"processID", evt.ProcessID,
 			"error", evt.Error)
@@ -809,14 +809,14 @@ func (m Model) handleCoordinatorProcessEvent(evt events.ProcessEvent) Model {
 		}
 
 	case events.ProcessQueueChanged:
-		log.Debug(log.CatOrch, "Coordinator queue changed",
+		log.Debug(log.CatOrch, "coordinator queue changed",
 			"subsystem", "update",
 			"processID", evt.ProcessID,
 			"queueCount", evt.QueueCount)
 		m.coordinatorPane.queueCount = evt.QueueCount
 
 	case events.ProcessStatusChange:
-		log.Debug(log.CatOrch, "Coordinator status changed",
+		log.Debug(log.CatOrch, "coordinator status changed",
 			"subsystem", "update",
 			"processID", evt.ProcessID,
 			"status", evt.Status)
@@ -843,14 +843,14 @@ func (m Model) handleWorkerProcessEvent(evt events.ProcessEvent) Model {
 
 	switch evt.Type {
 	case events.ProcessSpawned:
-		log.Debug(log.CatOrch, "Worker process spawned",
+		log.Debug(log.CatOrch, "worker process spawned",
 			"subsystem", "update",
 			"workerID", workerID,
 			"taskID", evt.TaskID)
 		m = m.UpdateWorker(workerID, evt.Status)
 
 	case events.ProcessOutput:
-		log.Debug(log.CatOrch, "Worker output received",
+		log.Debug(log.CatOrch, "worker output received",
 			"subsystem", "update",
 			"workerID", workerID,
 			"outputLen", len(evt.Output))
@@ -859,13 +859,13 @@ func (m Model) handleWorkerProcessEvent(evt events.ProcessEvent) Model {
 		}
 
 	case events.ProcessReady:
-		log.Debug(log.CatOrch, "Worker ready",
+		log.Debug(log.CatOrch, "worker ready",
 			"subsystem", "update",
 			"workerID", workerID)
 		m = m.UpdateWorker(workerID, events.ProcessStatusReady)
 
 	case events.ProcessWorking:
-		log.Debug(log.CatOrch, "Worker working",
+		log.Debug(log.CatOrch, "worker working",
 			"subsystem", "update",
 			"workerID", workerID)
 		m = m.UpdateWorker(workerID, events.ProcessStatusWorking)
@@ -873,7 +873,7 @@ func (m Model) handleWorkerProcessEvent(evt events.ProcessEvent) Model {
 	case events.ProcessIncoming:
 		// ProcessIncoming indicates a message was delivered to the worker.
 		// Display messages from both user and coordinator.
-		log.Debug(log.CatOrch, "Worker incoming message",
+		log.Debug(log.CatOrch, "worker incoming message",
 			"subsystem", "update",
 			"workerID", workerID,
 			"sender", evt.Sender,
@@ -884,7 +884,7 @@ func (m Model) handleWorkerProcessEvent(evt events.ProcessEvent) Model {
 
 	case events.ProcessTokenUsage:
 		if evt.Metrics != nil {
-			log.Debug(log.CatOrch, "Worker token usage",
+			log.Debug(log.CatOrch, "worker token usage",
 				"subsystem", "update",
 				"workerID", workerID,
 				"contextTokens", evt.Metrics.ContextTokens,
@@ -894,21 +894,21 @@ func (m Model) handleWorkerProcessEvent(evt events.ProcessEvent) Model {
 		}
 
 	case events.ProcessError:
-		log.Debug(log.CatOrch, "Worker error",
+		log.Debug(log.CatOrch, "worker error",
 			"subsystem", "update",
 			"workerID", workerID,
 			"error", evt.Error)
 		// Worker errors are logged but not shown in modal (non-fatal)
 
 	case events.ProcessQueueChanged:
-		log.Debug(log.CatOrch, "Worker queue changed",
+		log.Debug(log.CatOrch, "worker queue changed",
 			"subsystem", "update",
 			"workerID", workerID,
 			"queueCount", evt.QueueCount)
 		m = m.SetQueueCount(workerID, evt.QueueCount)
 
 	case events.ProcessStatusChange:
-		log.Debug(log.CatOrch, "Worker status changed",
+		log.Debug(log.CatOrch, "worker status changed",
 			"subsystem", "update",
 			"workerID", workerID,
 			"status", evt.Status)

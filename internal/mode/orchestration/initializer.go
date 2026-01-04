@@ -124,7 +124,7 @@ func NewInitializer(cfg InitializerConfig) *Initializer {
 		cfg.ExpectedWorkers = 4
 	}
 	if cfg.Timeout == 0 {
-		cfg.Timeout = 20 * time.Second
+		cfg.Timeout = 30 * time.Second
 	}
 
 	return &Initializer{
@@ -840,9 +840,6 @@ func (i *Initializer) handleCoordinatorProcessEvent(payload events.ProcessEvent)
 
 	// Handle error events (e.g., turn.failed from Codex with usage limit errors)
 	if payload.Type == events.ProcessError {
-		log.Debug(log.CatOrch, "coordinator error during init",
-			"subsystem", "init",
-			"error", payload.Error)
 		if payload.Error != nil {
 			i.fail(payload.Error)
 		} else {

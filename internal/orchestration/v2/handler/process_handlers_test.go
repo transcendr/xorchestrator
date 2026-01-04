@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -690,26 +691,118 @@ func TestProcessTurnCompleteHandler_ReturnsDeliverProcessQueuedCommandIfQueueNot
 }
 
 func TestProcessTurnCompleteHandler_SucceededFalseStillTransitionsToReady(t *testing.T) {
+	// Tests that mid-session failures (after first successful turn) still transition to Ready
+	// for potential recovery. Only startup failures (first turn) go to Failed.
 	processRepo, queueRepo := setupProcessRepos()
 
 	worker := &repository.Process{
-		ID:     "worker-1",
-		Role:   repository.RoleWorker,
-		Status: repository.StatusWorking,
+		ID:               "worker-1",
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true, // Already had a successful turn - this is a mid-session failure
 	}
 	processRepo.AddProcess(worker)
 
 	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
 
-	// succeeded=false
+	// succeeded=false (mid-session failure)
 	cmd := command.NewProcessTurnCompleteCommand("worker-1", false, nil, nil)
 	result, err := h.Handle(context.Background(), cmd)
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 
-	// Still Ready (not Retired automatically)
+	// Still Ready (not Retired automatically) - mid-session failures stay Ready for recovery
 	updated, _ := processRepo.Get("worker-1")
 	assert.Equal(t, repository.StatusReady, updated.Status)
+}
+
+func TestProcessTurnCompleteHandler_StartupFailure_TransitionsToFailed(t *testing.T) {
+	// Tests that first turn failures (before any success) transition to Failed
+	// and emit ProcessError instead of ProcessReady.
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:               "worker-1",
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false, // First turn - never succeeded
+	}
+	processRepo.AddProcess(worker)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	// First turn failed with error
+	testErr := fmt.Errorf("claude process failed: Error: Input must be provided")
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", false, nil, testErr)
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Should transition to Failed (not Ready)
+	turnResult := result.Data.(*handler.ProcessTurnCompleteResult)
+	assert.Equal(t, repository.StatusFailed, turnResult.NewStatus)
+
+	// Verify process is Failed in repo
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusFailed, updated.Status)
+	assert.False(t, updated.HasCompletedTurn, "should remain false since never succeeded")
+
+	// Verify ProcessError event is emitted (not ProcessReady)
+	require.NotEmpty(t, result.Events)
+	foundError := false
+	foundReady := false
+	for _, e := range result.Events {
+		if pe, ok := e.(events.ProcessEvent); ok {
+			if pe.Type == events.ProcessError {
+				foundError = true
+				assert.Equal(t, testErr, pe.Error)
+			}
+			if pe.Type == events.ProcessReady {
+				foundReady = true
+			}
+		}
+	}
+	assert.True(t, foundError, "ProcessError event should be emitted")
+	assert.False(t, foundReady, "ProcessReady event should NOT be emitted for startup failures")
+}
+
+func TestProcessTurnCompleteHandler_CoordinatorStartupFailure_TransitionsToFailed(t *testing.T) {
+	// Tests coordinator-specific startup failure handling
+	processRepo, queueRepo := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:               "coordinator",
+		Role:             repository.RoleCoordinator,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false, // First turn
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	// Coordinator first turn failed
+	testErr := fmt.Errorf("claude process failed: Error: stdin required")
+	cmd := command.NewProcessTurnCompleteCommand("coordinator", false, nil, testErr)
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Should transition to Failed
+	turnResult := result.Data.(*handler.ProcessTurnCompleteResult)
+	assert.Equal(t, repository.StatusFailed, turnResult.NewStatus)
+
+	// Verify ProcessError is emitted with the actual error
+	foundError := false
+	for _, e := range result.Events {
+		if pe, ok := e.(events.ProcessEvent); ok {
+			if pe.Type == events.ProcessError {
+				foundError = true
+				assert.Equal(t, testErr, pe.Error)
+				assert.Equal(t, events.ProcessStatusFailed, pe.Status)
+			}
+		}
+	}
+	assert.True(t, foundError, "ProcessError should be emitted for coordinator startup failure")
 }
 
 // ===========================================================================
@@ -842,17 +935,20 @@ func TestProcessTurnCompleteHandler_CoordinatorsNeverGetEnforcement(t *testing.T
 }
 
 func TestProcessTurnCompleteHandler_FailedTurns_SkipEnforcement(t *testing.T) {
+	// Tests that mid-session failures skip enforcement and stay Ready.
+	// Note: Startup failures (!HasCompletedTurn) go to Failed before enforcement runs.
 	processRepo, queueRepo := setupProcessRepos()
 	enforcer := handler.NewTurnCompletionTracker()
 
 	worker := &repository.Process{
-		ID:     "worker-1",
-		Role:   repository.RoleWorker,
-		Status: repository.StatusWorking,
+		ID:               "worker-1",
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true, // Mid-session failure (already had successful turn)
 	}
 	processRepo.AddProcess(worker)
 
-	// Worker didn't call any tools but turn FAILED
+	// Worker didn't call any tools but turn FAILED (mid-session)
 
 	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
 		handler.WithProcessTurnEnforcer(enforcer))

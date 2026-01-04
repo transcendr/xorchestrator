@@ -51,6 +51,7 @@ type Process struct {
 	cumulativeCostUSD    float64 // Running total cost across all turns
 	taskID               string  // Worker-specific: current task ID
 	isRetired            bool    // Whether this process has been retired
+	lastError            error   // Last error received during this turn (for passing to command)
 }
 
 // New creates a Process. Call Start() to begin the event loop.
@@ -190,8 +191,8 @@ func (p *Process) handleOutputEvent(event *client.OutputEvent) {
 		errMsg := event.GetErrorMessage()
 		// Write error to output buffer so it appears in process pane
 		p.output.Append("⚠️ Error: " + errMsg)
-		// Also emit as error event for tracking
-		p.handleError(fmt.Errorf("process error: %s", errMsg))
+		// Publish immediately for real-time TUI visibility
+		p.handleInFlightError(fmt.Errorf("process error: %s", errMsg))
 		return
 	}
 
@@ -202,8 +203,8 @@ func (p *Process) handleOutputEvent(event *client.OutputEvent) {
 			errMsg := event.GetErrorMessage()
 			// Write error to output buffer so it appears in process pane
 			p.output.Append("⚠️ Error: " + errMsg)
-			// Also emit as error event for tracking
-			p.handleError(fmt.Errorf("process error: %s", errMsg))
+			// Publish immediately for real-time TUI visibility
+			p.handleInFlightError(fmt.Errorf("process error: %s", errMsg))
 			return
 		}
 
@@ -276,7 +277,23 @@ func (p *Process) handleOutputEvent(event *client.OutputEvent) {
 }
 
 // handleError processes an error from the AI process.
+// Stores the error for passing to ProcessTurnCompleteCommand.
+// Does NOT publish ProcessError - the handler is the authoritative source
+// of events and will emit ProcessError for startup failures.
+// For in-flight errors that need immediate visibility, use handleInFlightError.
 func (p *Process) handleError(err error) {
+	p.mu.Lock()
+	p.lastError = err
+	p.mu.Unlock()
+}
+
+// handleInFlightError processes an error that occurs during the turn (not at exit).
+// These are published immediately for real-time TUI visibility (e.g., usage limits).
+// Also stores the error for the handler to include in its ProcessError event.
+func (p *Process) handleInFlightError(err error) {
+	p.mu.Lock()
+	p.lastError = err
+	p.mu.Unlock()
 	p.publishErrorEvent(err)
 }
 
@@ -287,6 +304,7 @@ func (p *Process) handleProcessComplete() {
 	proc := p.proc
 	m := p.metrics
 	sessionIDAtStart := p.sessionIDAtTurnStart
+	lastErr := p.lastError
 	p.mu.RUnlock()
 
 	if proc == nil {
@@ -319,9 +337,10 @@ func (p *Process) handleProcessComplete() {
 	}
 
 	// Submit unified command - handler routes based on process ID
+	// Pass lastError so handler can include it in ProcessError event for startup failures
 	if p.cmdSubmitter != nil {
 		p.cmdSubmitter.Submit(command.NewProcessTurnCompleteCommand(
-			p.ID, succeeded, m, nil,
+			p.ID, succeeded, m, lastErr,
 		))
 	}
 }

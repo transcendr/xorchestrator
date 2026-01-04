@@ -870,31 +870,34 @@ func TestPublishOutputEvent_PublishesProcessEvent(t *testing.T) {
 	<-p.eventDone
 }
 
-func TestPublishErrorEvent_PublishesProcessEvent(t *testing.T) {
+func TestHandleError_StoresErrorForCommand(t *testing.T) {
+	// Tests that errors from the errors channel are stored (not published immediately).
+	// These errors are passed to ProcessTurnCompleteCommand for the handler to emit.
 	proc := newMockHeadlessProcess()
 	eventBus := pubsub.NewBroker[any]()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	sub := eventBus.Subscribe(ctx)
+	submitter := &mockCommandSubmitter{}
 
-	p := New("worker-1", repository.RoleWorker, proc, nil, eventBus)
+	p := New("worker-1", repository.RoleWorker, proc, submitter, eventBus)
 	p.Start()
 
-	// Send error
+	// Send error through errors channel
+	testErr := &testError{msg: "exit status 1"}
 	go func() {
-		proc.errors <- &testError{msg: "test error"}
+		proc.errors <- testErr
 	}()
 
-	// Should receive error event
-	select {
-	case evt := <-sub:
-		require.NotNil(t, evt.Payload)
-	case <-time.After(500 * time.Millisecond):
-		require.FailNow(t, "did not receive error event")
-	}
-
+	// Wait a bit then complete the process
+	time.Sleep(50 * time.Millisecond)
 	proc.Complete()
 	<-p.eventDone
+
+	// Error should be passed to the command
+	submitted := submitter.getSubmitted()
+	require.Len(t, submitted, 1)
+	turnCmd, ok := submitted[0].(*command.ProcessTurnCompleteCommand)
+	require.True(t, ok)
+	require.NotNil(t, turnCmd.Error)
+	assert.Contains(t, turnCmd.Error.Error(), "exit status 1")
 }
 
 func TestHandleOutputEvent_ErrorEvent(t *testing.T) {

@@ -84,6 +84,10 @@ type Process struct {
 	// LastActivityAt is when the process last completed a turn.
 	LastActivityAt time.Time
 
+	// HasCompletedTurn indicates if this process has ever completed a turn successfully.
+	// Used to distinguish startup failures (first turn) from mid-session failures.
+	HasCompletedTurn bool
+
 	// Worker-specific fields (nil/empty for coordinator)
 
 	// Phase is the worker's workflow phase (nil for coordinator).

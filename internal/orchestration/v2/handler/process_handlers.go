@@ -465,8 +465,66 @@ func (h *ProcessTurnCompleteHandler) Handle(ctx context.Context, cmd command.Com
 	// End of turn completion enforcement
 	// ===========================================================================
 
+	// ===========================================================================
+	// Startup failure handling (coordinator and workers)
+	// ===========================================================================
+	// First turn failed before any success → terminal failure
+	// This prevents continuing when a process never established a session.
+	if !proc.HasCompletedTurn && !turnCmd.Succeeded {
+		proc.Status = repository.StatusFailed
+		proc.LastActivityAt = time.Now()
+		// Keep HasCompletedTurn=false since we never succeeded
+
+		if err := h.processRepo.Save(proc); err != nil {
+			return nil, fmt.Errorf("failed to save process: %w", err)
+		}
+
+		// Build error event for consumers (Initializer, etc.)
+		evErr := turnCmd.Error
+		if evErr == nil {
+			evErr = fmt.Errorf("process %s first turn failed; exited before establishing a session", proc.ID)
+		}
+
+		var resultEvents []any
+		errorEvent := events.ProcessEvent{
+			Type:      events.ProcessError,
+			ProcessID: proc.ID,
+			Role:      proc.Role,
+			Status:    events.ProcessStatusFailed,
+			Error:     evErr,
+		}
+		resultEvents = append(resultEvents, errorEvent)
+
+		// Include token usage if available
+		if turnCmd.Metrics != nil {
+			tokenEvent := events.ProcessEvent{
+				Type:      events.ProcessTokenUsage,
+				ProcessID: proc.ID,
+				Role:      proc.Role,
+				Metrics:   turnCmd.Metrics,
+			}
+			resultEvents = append(resultEvents, tokenEvent)
+		}
+
+		result := &ProcessTurnCompleteResult{
+			ProcessID: proc.ID,
+			NewStatus: repository.StatusFailed,
+			WasNoOp:   false,
+		}
+
+		return SuccessWithEvents(result, resultEvents...), nil
+	}
+	// ===========================================================================
+	// End of startup failure handling
+	// ===========================================================================
+
+	// Mark successful turn completion
+	if turnCmd.Succeeded && !proc.HasCompletedTurn {
+		proc.HasCompletedTurn = true
+	}
+
 	// Update process state - same for coordinator and workers
-	// Always transition to Ready (even if succeeded=false, we don't auto-retire)
+	// Always transition to Ready (even if succeeded=false after first success, we don't auto-retire)
 	proc.Status = repository.StatusReady
 	proc.LastActivityAt = time.Now()
 
