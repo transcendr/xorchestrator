@@ -14,6 +14,7 @@ import (
 
 	"github.com/zjrosen/perles/internal/git"
 	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -1267,6 +1268,453 @@ func TestQuitConfirmation_NavigationMode(t *testing.T) {
 	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	require.True(t, m.quitModal.IsVisible(), "Ctrl+C in navigation mode should show quit modal")
 	require.Nil(t, cmd, "should not return command, modal shown instead")
+}
+
+// ========================================================================
+// Uncommitted Changes Warning Tests
+// ========================================================================
+
+func TestUncommittedModal_EmptyWorktreePath_SkipsCheck(t *testing.T) {
+	// Test that when worktreePath is empty, quit proceeds without uncommitted check
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m.worktreePath = "" // No worktree - should skip check
+
+	// Show quit modal and confirm
+	m.quitModal.Show()
+	require.True(t, m.quitModal.IsVisible(), "quit modal should be shown")
+
+	// Confirm quit via modal.SubmitMsg
+	m, cmd := m.Update(modal.SubmitMsg{})
+
+	// Should immediately produce QuitMsg (no uncommitted check when no worktree)
+	require.NotNil(t, cmd, "should return a command")
+	require.False(t, m.uncommittedModal.IsVisible(), "uncommittedModal should NOT be shown when no worktree")
+	msg := cmd()
+	_, ok := msg.(QuitMsg)
+	require.True(t, ok, "should produce QuitMsg when worktreePath is empty")
+}
+
+func TestUncommittedModal_CancelReturnsToOrchestration(t *testing.T) {
+	// Test that cancelling uncommitted modal returns to orchestration (no exit)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Simulate uncommittedModal being visible (as if it was shown due to dirty worktree)
+	m.uncommittedModal.Show()
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be visible")
+
+	// Cancel via modal.CancelMsg
+	m, cmd := m.Update(modal.CancelMsg{})
+
+	// Modal should be hidden
+	require.False(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be hidden after cancel")
+	// No QuitMsg should be produced
+	require.Nil(t, cmd, "cancel should not return a command")
+}
+
+func TestUncommittedModal_ConfirmEmitsQuitMsg(t *testing.T) {
+	// Test that confirming uncommitted modal emits QuitMsg (user chose to discard)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Simulate uncommittedModal being visible
+	m.uncommittedModal.Show()
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be visible")
+
+	// Confirm via modal.SubmitMsg (triggers ResultQuit)
+	m, cmd := m.Update(modal.SubmitMsg{})
+
+	// Modal should be hidden
+	require.False(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be hidden after confirm")
+	// Should produce QuitMsg
+	require.NotNil(t, cmd, "should return a command")
+	msg := cmd()
+	_, ok := msg.(QuitMsg)
+	require.True(t, ok, "confirm should produce QuitMsg")
+}
+
+func TestUncommittedModal_HandlerPriority(t *testing.T) {
+	// Test that uncommittedModal is handled before quitModal
+	// This ensures the uncommitted warning takes precedence
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Show both modals (shouldn't happen in practice, but tests handler priority)
+	m.quitModal.Show()
+	m.uncommittedModal.Show()
+	require.True(t, m.quitModal.IsVisible(), "quitModal should be visible")
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be visible")
+
+	// Send a Cancel message
+	m, _ = m.Update(modal.CancelMsg{})
+
+	// uncommittedModal should be hidden (it's handled first)
+	require.False(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be hidden (handled first)")
+	// quitModal might still be visible (not handled)
+	// This is expected - uncommittedModal handler returns early
+}
+
+func TestUncommittedModal_KeyboardNavigationWorks(t *testing.T) {
+	// Test that keyboard navigation works on uncommittedModal
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Show uncommittedModal
+	m.uncommittedModal.Show()
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be visible")
+
+	// Navigate to Cancel button (right arrow)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+
+	// Press Enter - should produce CancelMsg from inner modal
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd, "Enter should produce a command from inner modal")
+
+	// Execute the command to get the message
+	msg := cmd()
+	_, isCancelMsg := msg.(modal.CancelMsg)
+	require.True(t, isCancelMsg, "Enter on Cancel button should produce CancelMsg")
+
+	// Process the CancelMsg - this triggers ResultCancel
+	m, cmd = m.Update(msg)
+
+	// Modal should be hidden after cancel
+	require.False(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be hidden after cancel")
+	require.Nil(t, cmd, "should not produce a quit command")
+}
+
+func TestUncommittedModal_IsVisibleInView(t *testing.T) {
+	// Test that uncommittedModal appears in View() when visible
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Show uncommittedModal
+	m.uncommittedModal.Show()
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be visible")
+
+	// Render view
+	view := m.View()
+
+	// View should contain the uncommitted modal title
+	require.Contains(t, view, "Uncommitted Changes Detected", "View should contain uncommittedModal title")
+}
+
+func TestUncommittedModal_WarningMessage(t *testing.T) {
+	// Test that the uncommittedModal shows appropriate warning message
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Show uncommittedModal
+	m.uncommittedModal.Show()
+
+	// Render view
+	view := m.View()
+
+	// View should contain the warning about data loss
+	require.Contains(t, view, "LOST", "View should warn about data loss")
+}
+
+// ========================================================================
+// Integration Tests: End-to-End Uncommitted Changes Flow (Single-Modal)
+// ========================================================================
+// These tests verify the SINGLE-MODAL quit flow:
+// 1. User presses quit key (ESC/Ctrl+C)
+// 2. Check for uncommitted changes FIRST
+// 3. If dirty: show uncommittedModal directly (skip quitModal)
+// 4. If clean: show regular quitModal
+// 5. Confirm on either modal → exit immediately
+//
+// Only ONE modal is ever shown, not two in sequence.
+// Tests use mocked git executors via worktreeExecutorFactory.
+
+func TestIntegration_UncommittedChanges_CleanWorktreeShowsQuitModal(t *testing.T) {
+	// Integration test: Clean worktree shows regular quitModal
+	//
+	// Scenario: User presses quit, worktree has no uncommitted changes
+	// Expected: Regular quitModal is shown (not uncommittedModal)
+
+	// Create mock git executor that returns no uncommitted changes
+	mockExecutor := mocks.NewMockGitExecutor(t)
+	mockExecutor.EXPECT().HasUncommittedChanges().Return(false, nil)
+
+	m := New(Config{
+		VimMode: true,
+		Services: mode.Services{
+			GitExecutorFactory: func(path string) git.GitExecutor {
+				require.Equal(t, "/tmp/test-worktree", path, "factory should receive worktree path")
+				return mockExecutor
+			},
+		},
+	})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m.worktreePath = "/tmp/test-worktree" // Worktree exists
+
+	// Ensure we're in normal mode so ESC triggers quit
+	m.input.SetMode(vimtextarea.ModeNormal)
+
+	// Press ESC to trigger quit flow
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	// Verify: Regular quitModal is shown (clean worktree)
+	require.True(t, m.quitModal.IsVisible(), "quitModal should be shown for clean worktree")
+	require.False(t, m.uncommittedModal.IsVisible(), "uncommittedModal should NOT be shown for clean worktree")
+
+	// Confirm quit
+	m, cmd := m.Update(modal.SubmitMsg{})
+
+	// Verify: QuitMsg is emitted
+	require.NotNil(t, cmd, "should return a command")
+	msg := cmd()
+	_, ok := msg.(QuitMsg)
+	require.True(t, ok, "should produce QuitMsg for clean worktree")
+}
+
+func TestIntegration_UncommittedChanges_DirtyWorktreeShowsUncommittedModal(t *testing.T) {
+	// Integration test: Dirty worktree shows uncommittedModal directly
+	//
+	// Scenario: User presses quit, worktree has uncommitted changes
+	// Expected: uncommittedModal is shown directly (skipping quitModal)
+
+	// Create mock git executor that returns uncommitted changes
+	mockExecutor := mocks.NewMockGitExecutor(t)
+	mockExecutor.EXPECT().HasUncommittedChanges().Return(true, nil)
+
+	m := New(Config{
+		VimMode: true,
+		Services: mode.Services{
+			GitExecutorFactory: func(path string) git.GitExecutor {
+				return mockExecutor
+			},
+		},
+	})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m.worktreePath = "/tmp/test-worktree"
+
+	// Ensure we're in normal mode so ESC triggers quit
+	m.input.SetMode(vimtextarea.ModeNormal)
+
+	// Press ESC to trigger quit flow
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	// Verify: uncommittedModal is shown DIRECTLY (single modal, not two-phase)
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be shown for dirty worktree")
+	require.False(t, m.quitModal.IsVisible(), "quitModal should NOT be shown for dirty worktree")
+	require.Nil(t, cmd, "should NOT emit any command when showing modal")
+
+	// Verify: View contains uncommitted modal
+	view := m.View()
+	require.Contains(t, view, "Uncommitted Changes Detected", "View should show uncommittedModal title")
+}
+
+func TestIntegration_UncommittedChanges_CancelReturnsToOrchestration(t *testing.T) {
+	// Integration test: Cancel on uncommittedModal returns to orchestration
+	//
+	// Scenario: User presses quit with dirty worktree, then cancels
+	// Expected: Modal is hidden, user is back in orchestration
+
+	mockExecutor := mocks.NewMockGitExecutor(t)
+	mockExecutor.EXPECT().HasUncommittedChanges().Return(true, nil)
+
+	m := New(Config{
+		VimMode: true,
+		Services: mode.Services{
+			GitExecutorFactory: func(path string) git.GitExecutor {
+				return mockExecutor
+			},
+		},
+	})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m.worktreePath = "/tmp/test-worktree"
+
+	m.input.SetMode(vimtextarea.ModeNormal)
+
+	// Press ESC to trigger quit flow (shows uncommittedModal)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be shown")
+
+	// User cancels via modal.CancelMsg
+	m, cmd := m.Update(modal.CancelMsg{})
+
+	// Verify: Modal is hidden, no exit
+	require.False(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be hidden after cancel")
+	require.Nil(t, cmd, "cancel should NOT produce a command")
+
+	// Verify: User is back in orchestration mode
+	require.True(t, m.input.Focused(), "input should remain focused after cancel")
+}
+
+func TestIntegration_UncommittedChanges_DiscardExits(t *testing.T) {
+	// Integration test: Confirm discard on uncommittedModal exits
+	//
+	// Scenario: User presses quit with dirty worktree, then confirms discard
+	// Expected: QuitMsg is emitted
+
+	mockExecutor := mocks.NewMockGitExecutor(t)
+	mockExecutor.EXPECT().HasUncommittedChanges().Return(true, nil)
+
+	m := New(Config{
+		VimMode: true,
+		Services: mode.Services{
+			GitExecutorFactory: func(path string) git.GitExecutor {
+				return mockExecutor
+			},
+		},
+	})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m.worktreePath = "/tmp/test-worktree"
+
+	m.input.SetMode(vimtextarea.ModeNormal)
+
+	// Press ESC to trigger quit flow (shows uncommittedModal)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be shown")
+
+	// User confirms discard via modal.SubmitMsg
+	m, cmd := m.Update(modal.SubmitMsg{})
+
+	// Verify: Modal is hidden
+	require.False(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be hidden after confirm")
+
+	// Verify: QuitMsg is emitted
+	require.NotNil(t, cmd, "should return a command after confirming discard")
+	msg := cmd()
+	_, ok := msg.(QuitMsg)
+	require.True(t, ok, "confirming discard should produce QuitMsg")
+}
+
+func TestIntegration_UncommittedChanges_GitErrorAssumesDirty(t *testing.T) {
+	// Integration test: Git error during check assumes dirty and shows warning modal
+	//
+	// Scenario: User presses quit, git status check fails with error
+	// Expected: Fail-safe behavior - assume changes exist and show uncommittedModal
+
+	mockExecutor := mocks.NewMockGitExecutor(t)
+	mockExecutor.EXPECT().HasUncommittedChanges().Return(false, errors.New("git error: unable to read index"))
+
+	m := New(Config{
+		VimMode: true,
+		Services: mode.Services{
+			GitExecutorFactory: func(path string) git.GitExecutor {
+				return mockExecutor
+			},
+		},
+	})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m.worktreePath = "/tmp/test-worktree"
+
+	m.input.SetMode(vimtextarea.ModeNormal)
+
+	// Press ESC to trigger quit flow
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	// Verify: uncommittedModal is shown (fail-safe: assume dirty on error)
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be shown on git error (fail-safe)")
+	require.False(t, m.quitModal.IsVisible(), "quitModal should NOT be shown on git error")
+	require.Nil(t, cmd, "should NOT emit QuitMsg when git error occurs")
+}
+
+func TestIntegration_UncommittedChanges_NoWorktreeShowsQuitModal(t *testing.T) {
+	// Integration test: No worktree shows regular quitModal
+	//
+	// Scenario: User presses quit, no worktree exists
+	// Expected: Regular quitModal is shown (no uncommitted check needed)
+
+	m := New(Config{
+		VimMode: true,
+		Services: mode.Services{
+			GitExecutorFactory: func(path string) git.GitExecutor {
+				return git.NewRealExecutor(path)
+			},
+		},
+	})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m.worktreePath = "" // No worktree
+
+	m.input.SetMode(vimtextarea.ModeNormal)
+
+	// Press ESC to trigger quit flow
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	// Verify: Regular quitModal is shown (no worktree to check)
+	require.True(t, m.quitModal.IsVisible(), "quitModal should be shown when no worktree")
+	require.False(t, m.uncommittedModal.IsVisible(), "uncommittedModal should NOT be shown when no worktree")
+}
+
+func TestIntegration_UncommittedChanges_VerifiesWorktreePath(t *testing.T) {
+	// Integration test: Factory receives correct worktree path
+	//
+	// Verifies that the GitExecutorFactory is called with the correct path
+
+	var capturedPath string
+	mockExecutor := mocks.NewMockGitExecutor(t)
+	mockExecutor.EXPECT().HasUncommittedChanges().Return(false, nil)
+
+	m := New(Config{
+		VimMode: true,
+		Services: mode.Services{
+			GitExecutorFactory: func(path string) git.GitExecutor {
+				capturedPath = path
+				return mockExecutor
+			},
+		},
+	})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m.worktreePath = "/home/user/project-worktree-abc123"
+
+	m.input.SetMode(vimtextarea.ModeNormal)
+
+	// Press ESC to trigger quit flow (this calls showQuitModal which uses the factory)
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	// Verify: Factory was called with correct path
+	require.Equal(t, "/home/user/project-worktree-abc123", capturedPath,
+		"factory should receive exact worktree path")
+}
+
+func TestIntegration_UncommittedChanges_CtrlCTriggersFlow(t *testing.T) {
+	// Integration test: Ctrl+C also triggers the uncommitted changes check
+	//
+	// Scenario: User presses Ctrl+C with dirty worktree
+	// Expected: uncommittedModal is shown (same as ESC)
+
+	mockExecutor := mocks.NewMockGitExecutor(t)
+	mockExecutor.EXPECT().HasUncommittedChanges().Return(true, nil)
+
+	m := New(Config{
+		VimMode: true,
+		Services: mode.Services{
+			GitExecutorFactory: func(path string) git.GitExecutor {
+				return mockExecutor
+			},
+		},
+	})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m.worktreePath = "/tmp/test-worktree"
+
+	m.input.SetMode(vimtextarea.ModeNormal)
+
+	// Press Ctrl+C to trigger quit flow
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	// Verify: uncommittedModal is shown (same behavior as ESC)
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be shown on Ctrl+C with dirty worktree")
+	require.False(t, m.quitModal.IsVisible(), "quitModal should NOT be shown")
 }
 
 // ========================================================================

@@ -108,6 +108,9 @@ type Model struct {
 	// Quit confirmation modal
 	quitModal quitmodal.Model
 
+	// Uncommitted changes warning modal (shown when exiting with dirty worktree)
+	uncommittedModal quitmodal.Model
+
 	// Workflow state
 	paused bool
 
@@ -168,13 +171,14 @@ type Model struct {
 	pendingRefresh bool // True when waiting for handoff before refresh
 
 	// Worktree modal state
-	worktreeModal        *modal.Model     // Worktree prompt modal ("Use Git Worktree?")
-	branchSelectModal    *formmodal.Model // Branch selection modal (when not on main)
-	worktreeDecisionMade bool             // True after user has made worktree decision
-	gitExecutor          git.GitExecutor  // Git executor for worktree operations
-	worktreeBaseBranch   string           // Branch to base worktree on (set by branch modal)
-	worktreeBranch       string           // Auto-generated branch name (set after worktree creation)
-	worktreePath         string           // Path to the worktree directory (set after creation)
+	worktreeModal           *modal.Model                      // Worktree prompt modal ("Use Git Worktree?")
+	branchSelectModal       *formmodal.Model                  // Branch selection modal (when not on main)
+	worktreeDecisionMade    bool                              // True after user has made worktree decision
+	gitExecutor             git.GitExecutor                   // Git executor for worktree operations
+	worktreeBaseBranch      string                            // Branch to base worktree on (set by branch modal)
+	worktreeBranch          string                            // Auto-generated branch name (set after worktree creation)
+	worktreePath            string                            // Path to the worktree directory (set after creation)
+	worktreeExecutorFactory func(path string) git.GitExecutor // Factory for creating worktree-scoped executor (injected via Config)
 
 	// Exit state
 	exitMessage string // Message to display when exiting (e.g., worktree cleanup info)
@@ -272,6 +276,12 @@ func New(cfg Config) Model {
 			Title:   "Exit Orchestration Mode?",
 			Message: "Active workers will be stopped.",
 		}),
+		uncommittedModal: quitmodal.New(quitmodal.Config{
+			Title:   "Uncommitted Changes Detected",
+			Message: "You have uncommitted changes in the worktree.\n\nThese changes will be LOST if you exit.\n\nCancel to return and commit your changes.",
+		}),
+		// Get git executor factory from services (injected from app layer)
+		worktreeExecutorFactory: cfg.Services.GitExecutorFactory,
 	}
 }
 
@@ -343,6 +353,9 @@ func (m Model) SetSize(width, height int) Model {
 
 	// Update quit modal size (always update to cache dimensions)
 	m.quitModal.SetSize(width, height)
+
+	// Update uncommitted modal size (always update to cache dimensions)
+	m.uncommittedModal.SetSize(width, height)
 
 	// Update workflow picker size if present
 	if m.workflowPicker != nil {

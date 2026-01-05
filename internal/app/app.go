@@ -12,6 +12,7 @@ import (
 	"github.com/zjrosen/perles/internal/bql"
 	"github.com/zjrosen/perles/internal/cachemanager"
 	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/git"
 	"github.com/zjrosen/perles/internal/keys"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode"
@@ -116,6 +117,9 @@ func NewWithConfig(
 		Executor:   bql.NewExecutor(client.DB(), bqlCache, depGraphCache),
 		Clipboard:  shared.SystemClipboard{},
 		Clock:      shared.RealClock{},
+		GitExecutorFactory: func(path string) git.GitExecutor {
+			return git.NewRealExecutor(path)
+		},
 	}
 
 	// Create log overlay and start listening if debug mode is enabled

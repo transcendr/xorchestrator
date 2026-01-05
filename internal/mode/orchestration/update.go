@@ -156,14 +156,33 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.workerPane.contentDirty[workerID] = false
 	}
 
+	// Handle uncommitted changes warning modal first when visible
+	if m.uncommittedModal.IsVisible() {
+		var cmd tea.Cmd
+		var result quitmodal.Result
+		m.uncommittedModal, cmd, result = m.uncommittedModal.Update(msg)
+		switch result {
+		case quitmodal.ResultQuit:
+			// User confirmed discard - proceed with exit
+			return m, func() tea.Msg { return QuitMsg{} }
+		case quitmodal.ResultCancel:
+			// User cancelled - return to orchestration
+			return m, nil
+		}
+		return m, cmd
+	}
+
 	// Handle quit modal messages first when visible
+	// Note: Uncommitted changes are checked BEFORE showing quit modal (see showQuitModal).
+	// If we reach this point with quitModal visible, the worktree is clean.
 	if m.quitModal.IsVisible() {
 		var cmd tea.Cmd
 		var result quitmodal.Result
 		m.quitModal, cmd, result = m.quitModal.Update(msg)
 		switch result {
 		case quitmodal.ResultQuit:
-			return m, func() tea.Msg { return QuitMsg{} } // CRITICAL: Custom quit message for graceful worker cleanup
+			// Worktree is clean (checked before showing modal) - proceed with exit
+			return m, func() tea.Msg { return QuitMsg{} }
 		case quitmodal.ResultCancel:
 			return m, nil
 		}
@@ -323,7 +342,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					return m, nil
 				}
 			case key.Matches(msg, keys.Quit) || msg.Type == tea.KeyCtrlC:
-				m.quitModal.Show()
+				m.showQuitModal()
 				return m, nil
 			}
 			return m, nil
@@ -331,13 +350,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 		// When vim is disabled, or we are in normal mode, ESC should show quit confirmation directly
 		if (!m.input.VimEnabled() || m.input.InNormalMode()) && msg.Type == tea.KeyEsc {
-			m.quitModal.Show()
+			m.showQuitModal()
 			return m, nil
 		}
 
 		// When vim is disabled, or we are in normal mode, ctrl+c should show quit confirmation directly
 		if (!m.input.VimEnabled() || m.input.InNormalMode()) && msg.Type == tea.KeyCtrlC {
-			m.quitModal.Show()
+			m.showQuitModal()
 			return m, nil
 		}
 
@@ -1063,6 +1082,32 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 	}
 
 	return m, m.initListener.Listen()
+}
+
+// --- Helper methods ---
+
+// showQuitModal checks for uncommitted changes and shows the appropriate quit modal.
+// If the worktree has uncommitted changes, shows the uncommittedModal (warning about data loss).
+// If the worktree is clean or doesn't exist, shows the regular quitModal.
+// This implements a single-modal flow: only ONE modal is ever shown.
+func (m *Model) showQuitModal() {
+	// Check for uncommitted changes FIRST (before showing any modal)
+	if m.worktreePath != "" {
+		worktreeExecutor := m.worktreeExecutorFactory(m.worktreePath)
+		hasChanges, err := worktreeExecutor.HasUncommittedChanges()
+		if err != nil {
+			// Fail-safe: assume changes exist on error and show warning
+			log.Warn(log.CatOrch, "Failed to check uncommitted changes", "error", err)
+			hasChanges = true
+		}
+		if hasChanges {
+			// Dirty worktree: show uncommitted warning modal directly
+			m.uncommittedModal.Show()
+			return
+		}
+	}
+	// Clean worktree or no worktree: show regular quit modal
+	m.quitModal.Show()
 }
 
 // --- Handler methods ---

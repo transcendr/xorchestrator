@@ -124,6 +124,11 @@ func (m Model) renderMainView() string {
 		mainView = m.quitModal.Overlay(mainView)
 	}
 
+	// Show uncommitted changes warning modal (between quit modal and error modal)
+	if m.uncommittedModal.IsVisible() {
+		mainView = m.uncommittedModal.Overlay(mainView)
+	}
+
 	// Show error modal overlay (on top - errors take priority)
 	if m.errorModal != nil {
 		mainView = m.errorModal.Overlay(mainView)

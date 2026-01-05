@@ -1468,3 +1468,43 @@ func TestModel_Cleanup_CancelsInitializer(t *testing.T) {
 		m.Cleanup()
 	})
 }
+
+// ============================================================================
+// Uncommitted Modal Tests
+// ============================================================================
+
+func TestNew_UncommittedModalInitialized(t *testing.T) {
+	// Test that uncommittedModal is properly initialized in New()
+	m := New(Config{})
+
+	// The modal should start hidden
+	require.False(t, m.uncommittedModal.IsVisible(), "uncommittedModal should start hidden")
+}
+
+func TestSetSize_UpdatesUncommittedModal(t *testing.T) {
+	// Test that SetSize() updates uncommittedModal dimensions
+	m := New(Config{})
+
+	// Call SetSize with known dimensions
+	m = m.SetSize(120, 40)
+
+	// Show the modal to verify dimensions are applied
+	m.uncommittedModal.Show()
+
+	// The modal should be visible (proving Show() worked with cached dimensions)
+	require.True(t, m.uncommittedModal.IsVisible(), "uncommittedModal should be visible after Show()")
+}
+
+func TestView_Golden_WithUncommittedModal(t *testing.T) {
+	m := newReadyModel(120, 30)
+
+	// Add some content to the coordinator pane
+	m = m.AddChatMessage("user", "Start working on the auth epic")
+	m = m.AddChatMessage("coordinator", "I'll analyze the epic and plan the execution.")
+
+	// Show the uncommittedModal (simulating dirty worktree detection)
+	m.uncommittedModal.Show()
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
