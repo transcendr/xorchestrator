@@ -6,7 +6,7 @@
 #   curl -sSL https://raw.githubusercontent.com/zjrosen/perles/main/install.sh | bash
 #
 # Environment Variables:
-#   INSTALL_DIR - Installation directory (default: /usr/local/bin)
+#   INSTALL_DIR - Installation directory (default: $HOME/.local/bin)
 #   VERSION     - Specific version to install (default: latest)
 #
 set -e
@@ -14,7 +14,8 @@ set -e
 # Configuration
 OWNER="${OWNER:-zjrosen}"
 REPO="perles"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+# Default to a per-user install path so root is not required.
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -145,6 +146,23 @@ install_binary() {
     fi
 }
 
+# Check if install directory is in PATH and warn if not
+check_path() {
+    if ! printf "%s" "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
+        echo ""
+        warn "$INSTALL_DIR is not in your PATH."
+        echo ""
+        echo "  Add the following to your shell profile (~/.bashrc, ~/.zshrc, or ~/.profile):"
+        echo ""
+        echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+        echo ""
+        echo "  Then reload your shell or run:"
+        echo ""
+        echo "    source ~/.profile  # or ~/.bashrc, ~/.zshrc"
+        echo ""
+    fi
+}
+
 # Verify installation
 verify_install() {
     if command -v "$REPO" &>/dev/null; then
@@ -155,7 +173,7 @@ verify_install() {
         local installed_version
         installed_version=$("$INSTALL_DIR/$REPO" --version 2>/dev/null | head -1)
         info "Successfully installed: $installed_version"
-        warn "$INSTALL_DIR may not be in your PATH"
+        check_path
     else
         error "Installation verification failed."
     fi
