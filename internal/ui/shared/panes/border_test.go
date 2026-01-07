@@ -683,3 +683,697 @@ func TestBorderedPane_Golden_DualBottomTitles(t *testing.T) {
 	result := BorderedPane(cfg)
 	teatest.RequireEqualOutput(t, []byte(result))
 }
+
+// =============================================================================
+// Unit Tests for Tab Struct
+// =============================================================================
+
+func TestTab_ZeroValue(t *testing.T) {
+	// Zero value Tab should have sensible defaults
+	var tab Tab
+
+	// Label should be empty string (valid, will render as empty tab)
+	require.Equal(t, "", tab.Label, "zero value Label should be empty string")
+
+	// Content should be empty string (valid, will render as empty content)
+	require.Equal(t, "", tab.Content, "zero value Content should be empty string")
+
+	// Color should be nil (will use default color)
+	require.Nil(t, tab.Color, "zero value Color should be nil")
+}
+
+// =============================================================================
+// Unit Tests for BorderConfig Tab Fields
+// =============================================================================
+
+func TestBorderConfig_TabFields_ZeroValue(t *testing.T) {
+	// Zero value BorderConfig should maintain backward compatibility
+	// All tab fields should be zero values that result in classic mode behavior
+	var cfg BorderConfig
+
+	// Tabs should be nil (classic mode, not tab mode)
+	require.Nil(t, cfg.Tabs, "zero value Tabs should be nil")
+	require.Len(t, cfg.Tabs, 0, "zero value Tabs should have length 0")
+
+	// ActiveTab should be 0 (first tab if tabs were present)
+	require.Equal(t, 0, cfg.ActiveTab, "zero value ActiveTab should be 0")
+
+	// ActiveTabColor should be nil (will use default: BorderHighlightFocusColor)
+	require.Nil(t, cfg.ActiveTabColor, "zero value ActiveTabColor should be nil")
+
+	// InactiveTabColor should be nil (will use default: TextMutedColor)
+	require.Nil(t, cfg.InactiveTabColor, "zero value InactiveTabColor should be nil")
+}
+
+func TestBorderConfig_TabFields_BackwardCompatibility(t *testing.T) {
+	// Existing BorderConfig usage without tab fields should still work
+	cfg := BorderConfig{
+		Content: "Hello World",
+		Width:   30,
+		Height:  5,
+		TopLeft: "Title",
+	}
+
+	// Tab fields should be zero values (not set)
+	require.Nil(t, cfg.Tabs, "Tabs should be nil when not explicitly set")
+	require.Equal(t, 0, cfg.ActiveTab, "ActiveTab should be 0 when not set")
+	require.Nil(t, cfg.ActiveTabColor, "ActiveTabColor should be nil when not set")
+	require.Nil(t, cfg.InactiveTabColor, "InactiveTabColor should be nil when not set")
+
+	// Should render normally (classic mode)
+	result := BorderedPane(cfg)
+	require.Contains(t, result, "Title", "should render with title in classic mode")
+	require.Contains(t, result, "Hello World", "should render content in classic mode")
+}
+
+// =============================================================================
+// Unit Tests for resolveActiveTabStyle
+// =============================================================================
+
+func TestResolveActiveTabStyle_Default(t *testing.T) {
+	// nil inputs should use BorderHighlightFocusColor (styles package)
+	style := resolveActiveTabStyle(nil, nil)
+
+	// Verify style properties using getter methods
+	require.True(t, style.GetBold(), "active tab style should be bold")
+	require.NotNil(t, style.GetForeground(), "active tab style should have a foreground color")
+}
+
+func TestResolveActiveTabStyle_CustomColor(t *testing.T) {
+	// customColor should override default
+	style := resolveActiveTabStyle(testColorGreen, nil)
+
+	// Verify style properties
+	require.True(t, style.GetBold(), "active tab style should be bold")
+
+	// Foreground should be the custom color
+	fg := style.GetForeground()
+	require.Equal(t, testColorGreen, fg, "foreground should be customColor when tabColor is nil")
+}
+
+func TestResolveActiveTabStyle_TabColor(t *testing.T) {
+	// tabColor should override customColor
+	style := resolveActiveTabStyle(testColorGreen, testColorPurple)
+
+	// Verify style properties
+	require.True(t, style.GetBold(), "active tab style should be bold")
+
+	// Foreground should be tabColor (overrides customColor)
+	fg := style.GetForeground()
+	require.Equal(t, testColorPurple, fg, "foreground should be tabColor (overrides customColor)")
+}
+
+func TestResolveActiveTabStyle_IsBold(t *testing.T) {
+	// All active tab styles should have Bold(true)
+	// Test with nil inputs
+	style := resolveActiveTabStyle(nil, nil)
+	require.True(t, style.GetBold(), "active tab style should be bold (nil inputs)")
+
+	// Test with customColor only
+	styleWithCustom := resolveActiveTabStyle(testColorGreen, nil)
+	require.True(t, styleWithCustom.GetBold(), "active tab style should be bold (with customColor)")
+
+	// Test with tabColor
+	styleWithTab := resolveActiveTabStyle(testColorGreen, testColorPurple)
+	require.True(t, styleWithTab.GetBold(), "active tab style should be bold (with tabColor)")
+}
+
+// =============================================================================
+// Unit Tests for resolveInactiveTabStyle
+// =============================================================================
+
+func TestResolveInactiveTabStyle_Default(t *testing.T) {
+	// nil input should use TextMutedColor (styles package)
+	style := resolveInactiveTabStyle(nil)
+
+	// Verify style properties
+	require.False(t, style.GetBold(), "inactive tab style should not be bold")
+	require.NotNil(t, style.GetForeground(), "inactive tab style should have a foreground color")
+}
+
+func TestResolveInactiveTabStyle_CustomColor(t *testing.T) {
+	// customColor should override default
+	style := resolveInactiveTabStyle(testColorGreen)
+
+	// Verify style properties
+	require.False(t, style.GetBold(), "inactive tab style should not be bold")
+
+	// Foreground should be the custom color
+	fg := style.GetForeground()
+	require.Equal(t, testColorGreen, fg, "foreground should be customColor")
+}
+
+func TestResolveInactiveTabStyle_NotBold(t *testing.T) {
+	// Inactive tab styles should NOT be bold
+	// Compare with active style which IS bold
+	inactiveStyle := resolveInactiveTabStyle(nil)
+	activeStyle := resolveActiveTabStyle(nil, nil)
+
+	// Verify bold difference directly
+	require.False(t, inactiveStyle.GetBold(), "inactive tab style should not be bold")
+	require.True(t, activeStyle.GetBold(), "active tab style should be bold")
+}
+
+// =============================================================================
+// Unit Tests for buildTabTitleTopBorder
+// =============================================================================
+
+func TestBuildTabTitleTopBorder_TwoTabs(t *testing.T) {
+	// Basic two-tab rendering with first tab active
+	borderStyle := lipgloss.NewStyle()
+	activeStyle := lipgloss.NewStyle().Bold(true)
+	inactiveStyle := lipgloss.NewStyle()
+
+	tabs := []Tab{
+		{Label: "Overview"},
+		{Label: "Comments"},
+	}
+
+	result := buildTabTitleTopBorder(tabs, 0, 40, borderStyle, activeStyle, inactiveStyle)
+
+	// Should contain both tab labels
+	require.Contains(t, result, "Overview", "missing first tab label")
+	require.Contains(t, result, "Comments", "missing second tab label")
+
+	// Should contain border corners
+	require.Contains(t, result, "╭", "missing top-left corner")
+	require.Contains(t, result, "╮", "missing top-right corner")
+
+	// Should contain separator between tabs
+	require.Contains(t, result, " ─ ", "missing separator between tabs")
+}
+
+func TestBuildTabTitleTopBorder_ThreeTabs(t *testing.T) {
+	// Three tabs with middle tab (index 1) active
+	borderStyle := lipgloss.NewStyle()
+	activeStyle := lipgloss.NewStyle().Bold(true)
+	inactiveStyle := lipgloss.NewStyle()
+
+	tabs := []Tab{
+		{Label: "Overview"},
+		{Label: "Comments"},
+		{Label: "History"},
+	}
+
+	result := buildTabTitleTopBorder(tabs, 1, 50, borderStyle, activeStyle, inactiveStyle)
+
+	// Should contain all three tab labels
+	require.Contains(t, result, "Overview", "missing first tab label")
+	require.Contains(t, result, "Comments", "missing second (active) tab label")
+	require.Contains(t, result, "History", "missing third tab label")
+
+	// Should contain border corners
+	require.Contains(t, result, "╭", "missing top-left corner")
+	require.Contains(t, result, "╮", "missing top-right corner")
+}
+
+func TestBuildTabTitleTopBorder_SingleTab(t *testing.T) {
+	// Single tab renders correctly
+	borderStyle := lipgloss.NewStyle()
+	activeStyle := lipgloss.NewStyle().Bold(true)
+	inactiveStyle := lipgloss.NewStyle()
+
+	tabs := []Tab{
+		{Label: "Details"},
+	}
+
+	result := buildTabTitleTopBorder(tabs, 0, 30, borderStyle, activeStyle, inactiveStyle)
+
+	// Should contain the single tab label
+	require.Contains(t, result, "Details", "missing tab label")
+
+	// Should contain border corners
+	require.Contains(t, result, "╭", "missing top-left corner")
+	require.Contains(t, result, "╮", "missing top-right corner")
+
+	// Should NOT contain separator (only one tab)
+	// Count occurrences of " ─ " - should be minimal (only in border structure, not between tabs)
+	parts := strings.Split(result, " ─ ")
+	require.LessOrEqual(t, len(parts), 2, "should have no separator between tabs with single tab")
+}
+
+func TestBuildTabTitleTopBorder_ActiveTabClamping(t *testing.T) {
+	// Out-of-bounds activeTab (too high) should be clamped silently
+	borderStyle := lipgloss.NewStyle()
+	activeStyle := lipgloss.NewStyle().Bold(true)
+	inactiveStyle := lipgloss.NewStyle()
+
+	tabs := []Tab{
+		{Label: "Tab1"},
+		{Label: "Tab2"},
+	}
+
+	// activeTab = 10 is out of bounds (max is 1)
+	result := buildTabTitleTopBorder(tabs, 10, 30, borderStyle, activeStyle, inactiveStyle)
+
+	// Should render without panic
+	require.Contains(t, result, "Tab1", "missing first tab label")
+	require.Contains(t, result, "Tab2", "missing second tab label")
+	require.Contains(t, result, "╭", "missing top-left corner")
+	require.Contains(t, result, "╮", "missing top-right corner")
+}
+
+func TestBuildTabTitleTopBorder_NegativeActiveTab(t *testing.T) {
+	// Negative activeTab should be clamped to 0
+	borderStyle := lipgloss.NewStyle()
+	activeStyle := lipgloss.NewStyle().Bold(true)
+	inactiveStyle := lipgloss.NewStyle()
+
+	tabs := []Tab{
+		{Label: "Tab1"},
+		{Label: "Tab2"},
+	}
+
+	// activeTab = -5 should be clamped to 0
+	result := buildTabTitleTopBorder(tabs, -5, 30, borderStyle, activeStyle, inactiveStyle)
+
+	// Should render without panic
+	require.Contains(t, result, "Tab1", "missing first tab label")
+	require.Contains(t, result, "Tab2", "missing second tab label")
+	require.Contains(t, result, "╭", "missing top-left corner")
+	require.Contains(t, result, "╮", "missing top-right corner")
+}
+
+func TestBuildTabTitleTopBorder_LongLabels(t *testing.T) {
+	// Labels should truncate when exceeding available width
+	borderStyle := lipgloss.NewStyle()
+	activeStyle := lipgloss.NewStyle().Bold(true)
+	inactiveStyle := lipgloss.NewStyle()
+
+	tabs := []Tab{
+		{Label: "This is a very long tab label that should be truncated"},
+		{Label: "Another extremely long label here"},
+	}
+
+	// Width 40 is not enough for both full labels
+	result := buildTabTitleTopBorder(tabs, 0, 40, borderStyle, activeStyle, inactiveStyle)
+
+	// Should render without panic
+	require.Contains(t, result, "╭", "missing top-left corner")
+	require.Contains(t, result, "╮", "missing top-right corner")
+
+	// Full labels should NOT appear (they should be truncated)
+	require.NotContains(t, result, "should be truncated", "label should be truncated")
+	require.NotContains(t, result, "extremely long label", "label should be truncated")
+
+	// Should contain ellipsis from truncation
+	require.Contains(t, result, "...", "truncated labels should have ellipsis")
+
+	// Total width should not exceed innerWidth + 2 (for corners)
+	lineWidth := lipgloss.Width(result)
+	require.LessOrEqual(t, lineWidth, 42, "result width should not exceed expected width")
+}
+
+func TestBuildTabTitleTopBorder_UnicodeLabels(t *testing.T) {
+	// Unicode (emoji, CJK) labels should measure width correctly
+	borderStyle := lipgloss.NewStyle()
+	activeStyle := lipgloss.NewStyle().Bold(true)
+	inactiveStyle := lipgloss.NewStyle()
+
+	tabs := []Tab{
+		{Label: "概要"}, // CJK chars (4 visual width)
+		{Label: "📝"},  // Emoji (2 visual width)
+	}
+
+	result := buildTabTitleTopBorder(tabs, 0, 30, borderStyle, activeStyle, inactiveStyle)
+
+	// Should contain Unicode labels
+	require.Contains(t, result, "概要", "missing CJK label")
+	require.Contains(t, result, "📝", "missing emoji label")
+
+	// Should contain border corners
+	require.Contains(t, result, "╭", "missing top-left corner")
+	require.Contains(t, result, "╮", "missing top-right corner")
+}
+
+func TestBuildTabTitleTopBorder_ExactFit(t *testing.T) {
+	// Labels that exactly fit should not be truncated
+	borderStyle := lipgloss.NewStyle()
+	activeStyle := lipgloss.NewStyle().Bold(true)
+	inactiveStyle := lipgloss.NewStyle()
+
+	tabs := []Tab{
+		{Label: "Tab1"},
+		{Label: "Tab2"},
+	}
+
+	// Calculate exact width needed:
+	// "╭─ Tab1 ─ Tab2 ─╮"
+	// Corners: 2, "─ " prefix: 2, "Tab1": 4, " ─ " sep: 3, "Tab2": 4, " ─" suffix: 2 = 17 total
+	// innerWidth = total - 2 (corners) = 15
+	// But we also need trailing dashes, so let's give it a bit more
+	result := buildTabTitleTopBorder(tabs, 0, 18, borderStyle, activeStyle, inactiveStyle)
+
+	// Labels should NOT be truncated (no ellipsis)
+	require.Contains(t, result, "Tab1", "missing first tab label")
+	require.Contains(t, result, "Tab2", "missing second tab label")
+	require.NotContains(t, result, "...", "labels should not be truncated when they fit")
+}
+
+func TestBuildTabTitleTopBorder_NarrowWidth(t *testing.T) {
+	// Very narrow width should be handled gracefully
+	borderStyle := lipgloss.NewStyle()
+	activeStyle := lipgloss.NewStyle().Bold(true)
+	inactiveStyle := lipgloss.NewStyle()
+
+	tabs := []Tab{
+		{Label: "Tab1"},
+		{Label: "Tab2"},
+	}
+
+	// Very narrow width - should fall back to plain border or handle gracefully
+	result := buildTabTitleTopBorder(tabs, 0, 5, borderStyle, activeStyle, inactiveStyle)
+
+	// Should render without panic
+	require.Contains(t, result, "╭", "missing top-left corner")
+	require.Contains(t, result, "╮", "missing top-right corner")
+}
+
+// =============================================================================
+// Unit Tests for BorderedPane Tab Mode
+// =============================================================================
+
+func TestBorderedPane_TabMode_BasicRendering(t *testing.T) {
+	// Tabs render in title bar
+	cfg := BorderConfig{
+		Width:  40,
+		Height: 5,
+		Tabs: []Tab{
+			{Label: "Overview", Content: "Overview content here"},
+			{Label: "Comments", Content: "Comments content here"},
+		},
+		ActiveTab: 0,
+	}
+
+	result := BorderedPane(cfg)
+
+	// Should contain both tab labels in the title area
+	require.Contains(t, result, "Overview", "missing first tab label")
+	require.Contains(t, result, "Comments", "missing second tab label")
+
+	// Should contain border characters
+	require.Contains(t, result, "╭", "missing top-left corner")
+	require.Contains(t, result, "╮", "missing top-right corner")
+	require.Contains(t, result, "╰", "missing bottom-left corner")
+	require.Contains(t, result, "╯", "missing bottom-right corner")
+
+	// Should contain content from active tab
+	require.Contains(t, result, "Overview content", "missing active tab content")
+}
+
+func TestBorderedPane_TabMode_ActiveTabHighlighted(t *testing.T) {
+	// Active tab should be styled differently (bold)
+	cfg := BorderConfig{
+		Width:  40,
+		Height: 5,
+		Tabs: []Tab{
+			{Label: "Tab1", Content: "Content 1"},
+			{Label: "Tab2", Content: "Content 2"},
+		},
+		ActiveTab: 1, // Second tab is active
+	}
+
+	result := BorderedPane(cfg)
+
+	// Both tabs should be present
+	require.Contains(t, result, "Tab1", "missing first tab label")
+	require.Contains(t, result, "Tab2", "missing second tab label")
+
+	// Content should be from the active tab (Tab2)
+	require.Contains(t, result, "Content 2", "missing active tab content")
+	require.NotContains(t, result, "Content 1", "should not show inactive tab content")
+}
+
+func TestBorderedPane_TabMode_ContentFromActiveTab(t *testing.T) {
+	// Correct content displayed based on ActiveTab index
+	cfg := BorderConfig{
+		Width:  50,
+		Height: 5,
+		Tabs: []Tab{
+			{Label: "First", Content: "First tab content"},
+			{Label: "Second", Content: "Second tab content"},
+			{Label: "Third", Content: "Third tab content"},
+		},
+		ActiveTab: 2, // Third tab is active
+	}
+
+	result := BorderedPane(cfg)
+
+	// Should display content from third tab
+	require.Contains(t, result, "Third tab content", "missing third tab content")
+	require.NotContains(t, result, "First tab content", "should not show first tab content")
+	require.NotContains(t, result, "Second tab content", "should not show second tab content")
+}
+
+func TestBorderedPane_TabMode_ZeroTabs(t *testing.T) {
+	// Empty tabs slice should fall back to classic mode
+	cfg := BorderConfig{
+		Content: "Classic content",
+		Width:   30,
+		Height:  5,
+		TopLeft: "Classic Title",
+		Tabs:    []Tab{}, // Empty slice, not nil
+	}
+
+	result := BorderedPane(cfg)
+
+	// Should render in classic mode with TopLeft title
+	require.Contains(t, result, "Classic Title", "missing classic mode title")
+	require.Contains(t, result, "Classic content", "missing classic mode content")
+}
+
+func TestBorderedPane_TabMode_IgnoresTopLeftTitle(t *testing.T) {
+	// TopLeft, TopRight, TitleColor should be ignored in tab mode
+	cfg := BorderConfig{
+		Content:  "This should be ignored",
+		Width:    40,
+		Height:   5,
+		TopLeft:  "IGNORED TITLE",
+		TopRight: "IGNORED RIGHT",
+		Tabs: []Tab{
+			{Label: "TabLabel", Content: "Tab content"},
+		},
+		ActiveTab: 0,
+	}
+
+	result := BorderedPane(cfg)
+
+	// Tab label should appear
+	require.Contains(t, result, "TabLabel", "missing tab label")
+
+	// TopLeft and TopRight titles should NOT appear
+	require.NotContains(t, result, "IGNORED TITLE", "TopLeft should be ignored in tab mode")
+	require.NotContains(t, result, "IGNORED RIGHT", "TopRight should be ignored in tab mode")
+
+	// Tab content should appear, not cfg.Content
+	require.Contains(t, result, "Tab content", "missing tab content")
+	require.NotContains(t, result, "This should be ignored", "cfg.Content should be ignored in tab mode")
+}
+
+func TestBorderedPane_TabMode_BottomTitlesWork(t *testing.T) {
+	// BottomLeft and BottomRight should work in tab mode
+	cfg := BorderConfig{
+		Width:       40,
+		Height:      5,
+		BottomLeft:  "Help: ?",
+		BottomRight: "Page 1/3",
+		Tabs: []Tab{
+			{Label: "Details", Content: "Details content"},
+		},
+		ActiveTab: 0,
+	}
+
+	result := BorderedPane(cfg)
+
+	// Tab label should appear
+	require.Contains(t, result, "Details", "missing tab label")
+
+	// Bottom titles should appear
+	require.Contains(t, result, "Help: ?", "missing bottom-left title")
+	require.Contains(t, result, "Page 1/3", "missing bottom-right title")
+}
+
+func TestBorderedPane_TabMode_FocusedBorder(t *testing.T) {
+	// Focused flag should affect border color, not tab styling
+	cfgUnfocused := BorderConfig{
+		Width:              40,
+		Height:             5,
+		Focused:            false,
+		BorderColor:        testColorBlue,
+		FocusedBorderColor: testColorGreen,
+		Tabs: []Tab{
+			{Label: "Tab1", Content: "Content"},
+		},
+		ActiveTab: 0,
+	}
+
+	cfgFocused := BorderConfig{
+		Width:              40,
+		Height:             5,
+		Focused:            true,
+		BorderColor:        testColorBlue,
+		FocusedBorderColor: testColorGreen,
+		Tabs: []Tab{
+			{Label: "Tab1", Content: "Content"},
+		},
+		ActiveTab: 0,
+	}
+
+	unfocusedResult := BorderedPane(cfgUnfocused)
+	focusedResult := BorderedPane(cfgFocused)
+
+	// Both should have valid structure
+	require.Contains(t, unfocusedResult, "Tab1", "unfocused missing tab label")
+	require.Contains(t, focusedResult, "Tab1", "focused missing tab label")
+	require.Contains(t, unfocusedResult, "Content", "unfocused missing content")
+	require.Contains(t, focusedResult, "Content", "focused missing content")
+
+	// Both should have same line count
+	unfocusedLines := strings.Split(unfocusedResult, "\n")
+	focusedLines := strings.Split(focusedResult, "\n")
+	require.Equal(t, len(unfocusedLines), len(focusedLines), "focused and unfocused should have same line count")
+}
+
+func TestBorderedPane_TabMode_CustomActiveColor(t *testing.T) {
+	// ActiveTabColor should be used for active tab styling
+	cfg := BorderConfig{
+		Width:          40,
+		Height:         5,
+		ActiveTabColor: testColorPurple,
+		Tabs: []Tab{
+			{Label: "Active", Content: "Active content"},
+			{Label: "Inactive", Content: "Inactive content"},
+		},
+		ActiveTab: 0,
+	}
+
+	result := BorderedPane(cfg)
+
+	// Should render without error
+	require.Contains(t, result, "Active", "missing active tab label")
+	require.Contains(t, result, "Inactive", "missing inactive tab label")
+	require.Contains(t, result, "Active content", "missing active tab content")
+}
+
+func TestBorderedPane_TabMode_CustomInactiveColor(t *testing.T) {
+	// InactiveTabColor should be used for inactive tab styling
+	cfg := BorderConfig{
+		Width:            40,
+		Height:           5,
+		InactiveTabColor: testColorGreen,
+		Tabs: []Tab{
+			{Label: "Active", Content: "Active content"},
+			{Label: "Inactive", Content: "Inactive content"},
+		},
+		ActiveTab: 0,
+	}
+
+	result := BorderedPane(cfg)
+
+	// Should render without error
+	require.Contains(t, result, "Active", "missing active tab label")
+	require.Contains(t, result, "Inactive", "missing inactive tab label")
+	require.Contains(t, result, "Active content", "missing active tab content")
+}
+
+func TestBorderedPane_TabMode_PerTabCustomColor(t *testing.T) {
+	// Tab.Color should override ActiveTabColor for that specific tab
+	cfg := BorderConfig{
+		Width:          40,
+		Height:         5,
+		ActiveTabColor: testColorBlue, // Global active color
+		Tabs: []Tab{
+			{Label: "CustomColor", Content: "Content 1", Color: testColorPurple}, // Per-tab custom color
+			{Label: "Normal", Content: "Content 2"},
+		},
+		ActiveTab: 0, // First tab is active, which has a custom color
+	}
+
+	result := BorderedPane(cfg)
+
+	// Should render without error
+	require.Contains(t, result, "CustomColor", "missing tab with custom color")
+	require.Contains(t, result, "Normal", "missing normal tab")
+	require.Contains(t, result, "Content 1", "missing active tab content")
+}
+
+// =============================================================================
+// Golden Tests for Tab Mode
+// =============================================================================
+
+func TestBorderedPane_Golden_TabMode_TwoTabs(t *testing.T) {
+	cfg := BorderConfig{
+		Width:  50,
+		Height: 7,
+		Tabs: []Tab{
+			{Label: "Overview", Content: "This is the overview content.\nWith multiple lines."},
+			{Label: "Comments", Content: "Comments would appear here."},
+		},
+		ActiveTab: 0,
+	}
+
+	result := BorderedPane(cfg)
+	teatest.RequireEqualOutput(t, []byte(result))
+}
+
+func TestBorderedPane_Golden_TabMode_ThreeTabs(t *testing.T) {
+	cfg := BorderConfig{
+		Width:  60,
+		Height: 7,
+		Tabs: []Tab{
+			{Label: "Overview", Content: "Overview content"},
+			{Label: "Comments", Content: "Comments content"},
+			{Label: "History", Content: "History content"},
+		},
+		ActiveTab: 1, // Middle tab is active
+	}
+
+	result := BorderedPane(cfg)
+	teatest.RequireEqualOutput(t, []byte(result))
+}
+
+func TestBorderedPane_Golden_TabMode_NarrowWidth(t *testing.T) {
+	cfg := BorderConfig{
+		Width:  25,
+		Height: 5,
+		Tabs: []Tab{
+			{Label: "Tab1", Content: "Short"},
+			{Label: "Tab2", Content: "Content"},
+		},
+		ActiveTab: 0,
+	}
+
+	result := BorderedPane(cfg)
+	teatest.RequireEqualOutput(t, []byte(result))
+}
+
+func TestBorderedPane_Golden_TabMode_WithBottom(t *testing.T) {
+	cfg := BorderConfig{
+		Width:       50,
+		Height:      7,
+		BottomLeft:  "Help: ?",
+		BottomRight: "1/3",
+		Tabs: []Tab{
+			{Label: "Details", Content: "Detail information here.\nMore details below."},
+			{Label: "Files", Content: "File listing here."},
+		},
+		ActiveTab: 0,
+	}
+
+	result := BorderedPane(cfg)
+	teatest.RequireEqualOutput(t, []byte(result))
+}
+
+func TestBorderedPane_Golden_TabMode_SingleTab(t *testing.T) {
+	cfg := BorderConfig{
+		Width:  40,
+		Height: 5,
+		Tabs: []Tab{
+			{Label: "Only Tab", Content: "Single tab content here."},
+		},
+		ActiveTab: 0,
+	}
+
+	result := BorderedPane(cfg)
+	teatest.RequireEqualOutput(t, []byte(result))
+}

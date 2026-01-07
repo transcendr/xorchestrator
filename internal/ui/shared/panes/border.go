@@ -21,6 +21,15 @@ const (
 	borderMiddleRight = "┤"
 )
 
+// Tab represents a single tab in tab mode.
+// When BorderConfig.Tabs is non-empty, tab labels are rendered in the title bar
+// and the active tab's Content is displayed inside the border.
+type Tab struct {
+	Label   string                 // Tab label displayed in title bar
+	Content string                 // Pre-rendered content for this tab
+	Color   lipgloss.TerminalColor // Optional custom color for this tab's label (nil = use default)
+}
+
 // BorderConfig configures the appearance of a bordered panel.
 // This is the new struct-based API that replaces the 8-parameter RenderWithTitleBorder function.
 type BorderConfig struct {
@@ -42,6 +51,14 @@ type BorderConfig struct {
 	TitleColor         lipgloss.TerminalColor // Color for title text
 	BorderColor        lipgloss.TerminalColor // Border color when not focused
 	FocusedBorderColor lipgloss.TerminalColor // Border color when focused
+
+	// Tab mode (optional - when Tabs is non-empty, enables tab mode)
+	// In tab mode, TopLeft, TopRight, and TitleColor are ignored.
+	// Tab labels are rendered in the title bar instead.
+	Tabs             []Tab                  // Enables tab mode when non-empty
+	ActiveTab        int                    // 0-indexed active tab (clamped to valid range)
+	ActiveTabColor   lipgloss.TerminalColor // Custom active tab color (default: BorderHighlightFocusColor)
+	InactiveTabColor lipgloss.TerminalColor // Custom inactive tab color (default: TextMutedColor)
 }
 
 // BorderedPane renders content within a bordered panel with optional titles.
@@ -52,35 +69,85 @@ type BorderConfig struct {
 //   - BorderColor set, FocusedBorderColor nil: inherit BorderColor for focused state
 //   - BorderColor nil, FocusedBorderColor set: unfocused uses BorderDefaultColor, focused uses specified
 //   - Both set: use appropriately based on Focused flag
+//
+// Tab mode:
+//   - Enabled when len(cfg.Tabs) > 0
+//   - In tab mode: TopLeft, TopRight, TitleColor are IGNORED
+//   - Tab labels are rendered in the title bar with active/inactive styling
+//   - Content is taken from cfg.Tabs[clampedActiveTab].Content
+//   - BottomLeft and BottomRight continue to work normally in both modes
 func BorderedPane(cfg BorderConfig) string {
 	// Resolve border color with fallback logic
 	borderColor := resolveBorderColor(cfg.BorderColor, cfg.FocusedBorderColor, cfg.Focused)
 
-	// Resolve title color (default to BorderDefaultColor if nil)
-	titleColor := cfg.TitleColor
-	if titleColor == nil {
-		titleColor = styles.BorderDefaultColor
-	}
-
 	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
-	titleStyle := lipgloss.NewStyle().Foreground(titleColor)
 
 	// Calculate inner width (excluding border characters)
 	innerWidth := max(cfg.Width-2, 1) // -2 for left and right border
 
-	// Build top border with embedded titles
-	topBorder := buildDualTitleTopBorder(cfg.TopLeft, cfg.TopRight, innerWidth, borderStyle, titleStyle)
+	// Detect tab mode: len(cfg.Tabs) > 0
+	isTabMode := len(cfg.Tabs) > 0
+
+	var topBorder string
+	var content string
+
+	if isTabMode {
+		// Tab mode: use tab styles and buildTabTitleTopBorder
+		// TopLeft, TopRight, and TitleColor are IGNORED in tab mode
+
+		// Clamp activeTab to valid range
+		activeTab := max(cfg.ActiveTab, 0)
+		if activeTab >= len(cfg.Tabs) {
+			activeTab = len(cfg.Tabs) - 1
+		}
+
+		// Resolve tab styles
+		// For the active tab, check if the tab has a custom color
+		var activeTabColor lipgloss.TerminalColor
+		if activeTab >= 0 && activeTab < len(cfg.Tabs) && cfg.Tabs[activeTab].Color != nil {
+			activeTabColor = cfg.Tabs[activeTab].Color
+		}
+		activeStyle := resolveActiveTabStyle(cfg.ActiveTabColor, activeTabColor)
+		inactiveStyle := resolveInactiveTabStyle(cfg.InactiveTabColor)
+
+		// Build top border with tab labels
+		topBorder = buildTabTitleTopBorder(cfg.Tabs, activeTab, innerWidth, borderStyle, activeStyle, inactiveStyle)
+
+		// Select content from the active tab
+		content = cfg.Tabs[activeTab].Content
+	} else {
+		// Classic mode: existing behavior unchanged
+		// Resolve title color (default to BorderDefaultColor if nil)
+		titleColor := cfg.TitleColor
+		if titleColor == nil {
+			titleColor = styles.BorderDefaultColor
+		}
+		titleStyle := lipgloss.NewStyle().Foreground(titleColor)
+
+		// Build top border with embedded titles
+		topBorder = buildDualTitleTopBorder(cfg.TopLeft, cfg.TopRight, innerWidth, borderStyle, titleStyle)
+
+		// Use content from cfg.Content
+		content = cfg.Content
+	}
 
 	// Build bottom border with embedded titles (handles empty titles correctly)
 	// Format: ╰─ BottomLeft ─────────────────── BottomRight ─╯
-	bottomBorder := buildDualTitleBottomBorder(cfg.BottomLeft, cfg.BottomRight, innerWidth, borderStyle, titleStyle)
+	// Bottom titles work in both modes
+	// Resolve title color for bottom border (default to BorderDefaultColor if nil)
+	bottomTitleColor := cfg.TitleColor
+	if bottomTitleColor == nil {
+		bottomTitleColor = styles.BorderDefaultColor
+	}
+	bottomTitleStyle := lipgloss.NewStyle().Foreground(bottomTitleColor)
+	bottomBorder := buildDualTitleBottomBorder(cfg.BottomLeft, cfg.BottomRight, innerWidth, borderStyle, bottomTitleStyle)
 
 	// Calculate content height (excluding top and bottom borders)
 	contentHeight := max(cfg.Height-2, 1)
 
 	// Use lipgloss to constrain content width (handles wrapping/truncation properly)
 	contentStyle := lipgloss.NewStyle().Width(innerWidth).Height(contentHeight)
-	constrainedContent := contentStyle.Render(cfg.Content)
+	constrainedContent := contentStyle.Render(content)
 
 	// Split constrained content into lines
 	contentLines := strings.Split(constrainedContent, "\n")
@@ -144,6 +211,38 @@ func resolveBorderColor(borderColor, focusedBorderColor lipgloss.TerminalColor, 
 		return focusedBorderColor
 	}
 	return borderColor
+}
+
+// resolveActiveTabStyle returns a bold style for active tab labels.
+//
+// Color precedence:
+//   - tabColor (per-tab custom color) if set
+//   - customColor (global active tab color) if set
+//   - BorderHighlightFocusColor (default)
+func resolveActiveTabStyle(customColor, tabColor lipgloss.TerminalColor) lipgloss.Style {
+	// Determine color with precedence: tabColor > customColor > default
+	var color lipgloss.TerminalColor = styles.BorderHighlightFocusColor
+	if customColor != nil {
+		color = customColor
+	}
+	if tabColor != nil {
+		color = tabColor
+	}
+	return lipgloss.NewStyle().Bold(true).Foreground(color)
+}
+
+// resolveInactiveTabStyle returns a non-bold style for inactive tab labels.
+//
+// Color precedence:
+//   - customColor (global inactive tab color) if set
+//   - TextMutedColor (default)
+func resolveInactiveTabStyle(customColor lipgloss.TerminalColor) lipgloss.Style {
+	// Determine color with precedence: customColor > default
+	var color lipgloss.TerminalColor = styles.TextMutedColor
+	if customColor != nil {
+		color = customColor
+	}
+	return lipgloss.NewStyle().Foreground(color)
 }
 
 // buildTopBorder creates the top border with embedded title.
@@ -342,6 +441,112 @@ func buildDualTitleBottomBorder(leftTitle, rightTitle string, innerWidth int, bo
 	}
 
 	result.WriteString(borderStyle.Render(borderBottomRight))
+
+	return result.String()
+}
+
+// buildTabTitleTopBorder creates the top border with tab labels.
+// Format: ╭─ Tab1 ─ Tab2 ─ Tab3 ───────────────╮
+// The active tab receives activeStyle (bold), inactive tabs receive inactiveStyle.
+// Labels are truncated if they exceed available width.
+func buildTabTitleTopBorder(tabs []Tab, activeTab int, innerWidth int, borderStyle, activeStyle, inactiveStyle lipgloss.Style) string {
+	if innerWidth < 1 {
+		return borderStyle.Render(borderTopLeft + borderTopRight)
+	}
+
+	// If no tabs, render plain border
+	if len(tabs) == 0 {
+		return borderStyle.Render(borderTopLeft + strings.Repeat(borderHorizontal, innerWidth) + borderTopRight)
+	}
+
+	// Clamp activeTab to valid range: [0, len(tabs)-1]
+	if activeTab < 0 {
+		activeTab = 0
+	}
+	if activeTab >= len(tabs) {
+		activeTab = len(tabs) - 1
+	}
+
+	// Separator between tabs: " ─ " (3 chars visual width)
+	separator := " " + borderHorizontal + " "
+	separatorWidth := 3
+
+	// Calculate available width for all tab labels
+	// Format: ╭─ Tab1 ─ Tab2 ─ Tab3 ───╮
+	// Fixed parts: "─ " prefix (2 chars) + " ─" suffix (2 chars) = 4 chars minimum
+	// Separators: (numTabs - 1) * 3 chars for " ─ " between tabs
+	numTabs := len(tabs)
+	fixedOverhead := 2 // "─ " prefix before first tab
+	if numTabs > 1 {
+		fixedOverhead += (numTabs - 1) * separatorWidth
+	}
+	// We need at least 1 dash at the end before the corner
+	minTrailingDashes := 1
+
+	availableForLabels := innerWidth - fixedOverhead - minTrailingDashes
+	if availableForLabels < numTabs {
+		// Not enough space for even 1 char per tab - fall back to plain border
+		return borderStyle.Render(borderTopLeft + strings.Repeat(borderHorizontal, innerWidth) + borderTopRight)
+	}
+
+	// Calculate total label width
+	totalLabelWidth := 0
+	for _, tab := range tabs {
+		totalLabelWidth += lipgloss.Width(tab.Label)
+	}
+
+	// If labels exceed available space, truncate them proportionally
+	labels := make([]string, numTabs)
+	if totalLabelWidth > availableForLabels {
+		// Truncate labels proportionally
+		// Simple approach: give each label a proportional share based on its original length
+		for i, tab := range tabs {
+			originalWidth := lipgloss.Width(tab.Label)
+			// Calculate this label's share of available space (min 3 for "..." truncation, max originalWidth)
+			share := min(max(availableForLabels*originalWidth/totalLabelWidth, 3), originalWidth)
+			labels[i] = styles.TruncateString(tab.Label, share)
+		}
+	} else {
+		// No truncation needed
+		for i, tab := range tabs {
+			labels[i] = tab.Label
+		}
+	}
+
+	// Build the border
+	var result strings.Builder
+	result.WriteString(borderStyle.Render(borderTopLeft + borderHorizontal + " "))
+
+	// Render each tab label with appropriate style
+	for i, label := range labels {
+		var style lipgloss.Style
+		if i == activeTab {
+			style = activeStyle
+		} else {
+			style = inactiveStyle
+		}
+		result.WriteString(style.Render(label))
+
+		// Add separator after all but the last tab
+		if i < numTabs-1 {
+			result.WriteString(borderStyle.Render(separator))
+		}
+	}
+
+	// Calculate trailing dashes
+	// Total rendered so far: "╭─ " (3) + labels + separators
+	renderedContentWidth := 2 // "─ " prefix
+	for _, label := range labels {
+		renderedContentWidth += lipgloss.Width(label)
+	}
+	if numTabs > 1 {
+		renderedContentWidth += (numTabs - 1) * separatorWidth
+	}
+
+	trailingDashes := max(innerWidth-renderedContentWidth, 1)
+
+	// Add space before trailing dashes, then dashes, then corner
+	result.WriteString(borderStyle.Render(" " + strings.Repeat(borderHorizontal, trailingDashes-1) + borderTopRight))
 
 	return result.String()
 }

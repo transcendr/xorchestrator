@@ -254,8 +254,8 @@ func TestGetTokenCategories(t *testing.T) {
 func TestComponentRegistry(t *testing.T) {
 	demos := GetComponentDemos()
 
-	// Should have 15 demos (including theme tokens, issuebadge, issueeditor, and commandpalette)
-	require.Len(t, demos, 15, "Should have 15 component demos")
+	// Should have 16 demos (including theme tokens, issuebadge, issueeditor, commandpalette, and tabpane)
+	require.Len(t, demos, 16, "Should have 16 component demos")
 
 	// Each demo should have valid Create function
 	for _, demo := range demos {
@@ -279,12 +279,12 @@ func TestFocusTransitions(t *testing.T) {
 	// Initial state
 	require.Equal(t, FocusSidebar, m.focus)
 
-	// Tab to demo area
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	// Right arrow to demo area
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRight})
 	require.Equal(t, FocusDemo, m.focus)
 
-	// Tab back to sidebar
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	// Left arrow back to sidebar
+	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyLeft})
 	require.Equal(t, FocusSidebar, m.focus)
 
 	// Select component with Enter
@@ -319,19 +319,4 @@ func TestSidebarNavigation(t *testing.T) {
 	// Wrap around: j at bottom goes to top
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	require.Equal(t, 0, m.selectedIndex)
-}
-
-func TestResetComponent(t *testing.T) {
-	m := createGoldenTestModel(t)
-
-	// Select a component via Enter
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	require.NotNil(t, m.demoModel)
-
-	// Reset with Ctrl+R
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlR})
-
-	// Model should still exist and last action should mention reset
-	require.NotNil(t, m.demoModel)
-	require.Contains(t, m.lastAction, "Reset")
 }

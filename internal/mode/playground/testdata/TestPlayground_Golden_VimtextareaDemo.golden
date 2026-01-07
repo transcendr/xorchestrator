@@ -15,8 +15,8 @@
 │   chainart                 │  ││                                                                 │
 │   issuebadge               │  │ │    Yellow          Rose            Aqua            Gray 4      │
 │   issueeditor              │  ││                                                                 │
-│   Theme Tokens             │  │ │    Orange          Amber           Navy            Gray 5      │
-│                            │  ││                                                                 │
+│   tabpane                  │  │ │    Orange          Amber           Navy            Gray 5      │
+│   Theme Tokens             │  ││                                                                 │
 │                            │  │ │    Teal            Emerald         Plum            Gray 6      │
 │                            │  ││                                                                 │
 │                            │  │ │    Gray            Sky             Salmon          Gray 7      │
@@ -24,5 +24,7 @@
 │                            │  │ │    Pink            Fuchsia         Khaki           Gray 8      │
 │                            │  ││                                                                 │
 │                            │  │ │    Coral           Violet          Mint            Black       │
+│                            │  ││                                                                 │
+│                            │  │ │                                                                │
 ╰────────────────────────────╯  ╰──────────────────────────────────────────────────────────────────╯
-Tab: Switch panes  │  Ctrl+R: Reset  │  Ctrl+C: Quit                                                
+Ctrl+C: Quit                                                                                        

@@ -146,16 +146,6 @@ func (m Model) handleComponentListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
-	case "tab":
-		if m.focus == FocusSidebar {
-			m.focus = FocusDemo
-			m.ensureDemoLoaded()
-			return m, nil
-		}
-		if m.focus == FocusDemo {
-			m.focus = FocusSidebar
-			return m, nil
-		}
 	case "right":
 		if m.focus == FocusSidebar {
 			m.focus = FocusDemo
@@ -167,13 +157,6 @@ func (m Model) handleComponentListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.focus = FocusSidebar
 			return m, nil
 		}
-	}
-
-	// Ctrl+R resets current component
-	if key == "ctrl+r" && m.demoModel != nil {
-		m.demoModel = m.demoModel.Reset()
-		m.lastAction = "Reset: " + m.demos[m.selectedIndex].Name
-		return m, nil
 	}
 
 	// Focus-specific handling
@@ -246,7 +229,7 @@ func (m Model) getDemoAreaDimensions() (int, int) {
 	sidebarWidth := m.getSidebarWidth()
 	gap := 2
 	demoWidth := m.width - sidebarWidth - gap - 4 // -4 for borders
-	demoHeight := m.height - 6                    // -6 for header/footer
+	demoHeight := m.height - 4                    // -4 for footer (1) + borders (2) + newline (1)
 	return max(demoWidth, 20), max(demoHeight, 10)
 }
 
@@ -281,8 +264,8 @@ func (m *Model) renderComponentListView() string {
 	gap := 2
 	demoWidth := m.width - sidebarWidth - gap
 
-	// Calculate content height (leaving room for footer)
-	contentHeight := m.height - 3
+	// Calculate content height (leaving room for footer - 1 line)
+	contentHeight := m.height - 1
 
 	// Render sidebar
 	sidebarContent := renderSidebar(m.demos, m.selectedIndex, sidebarWidth, contentHeight, m.focus == FocusSidebar)
@@ -318,13 +301,7 @@ func (m *Model) renderComponentListView() string {
 
 	// Footer - single line, full width
 	footerStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor).Width(m.width)
-	var footerParts []string
-	footerParts = append(footerParts, "Tab: Switch panes")
-	if m.demoModel != nil {
-		footerParts = append(footerParts, "Ctrl+R: Reset")
-	}
-	footerParts = append(footerParts, "Ctrl+C: Quit")
-	footer := footerStyle.Render(strings.Join(footerParts, "  │  "))
+	footer := footerStyle.Render("Ctrl+C: Quit")
 
 	return mainContent + "\n" + footer
 }

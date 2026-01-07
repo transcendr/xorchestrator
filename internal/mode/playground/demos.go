@@ -120,6 +120,11 @@ func GetComponentDemos() []ComponentDemo {
 			Create:      createIssueeditorDemo,
 		},
 		{
+			Name:        "tabpane",
+			Description: "Tab mode for bordered panes",
+			Create:      createTabDemo,
+		},
+		{
 			Name:        "Theme Tokens",
 			Description: "All theme color tokens",
 			Create:      createThemeTokensDemo,
@@ -1858,3 +1863,182 @@ func renderTokenContent() string {
 
 	return sb.String()
 }
+
+// =============================================================================
+// Tab Mode Demo
+// =============================================================================
+
+// TabDemoModel demonstrates the tab mode for BorderedPane.
+type TabDemoModel struct {
+	activeTab int
+	width     int
+	height    int
+}
+
+func createTabDemo(width, height int) DemoModel {
+	return &TabDemoModel{
+		activeTab: 0,
+		width:     width,
+		height:    height,
+	}
+}
+
+func (m *TabDemoModel) Update(msg tea.Msg) (DemoModel, tea.Cmd, string) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "1":
+			m.activeTab = 0
+			return m, nil, "Switched to Files tab"
+		case "2":
+			m.activeTab = 1
+			return m, nil, "Switched to Search tab"
+		case "3":
+			m.activeTab = 2
+			return m, nil, "Switched to Tasks tab"
+		case "4":
+			m.activeTab = 3
+			return m, nil, "Switched to Settings tab"
+		case "tab":
+			m.activeTab = (m.activeTab + 1) % 4
+			return m, nil, fmt.Sprintf("Cycled to tab %d", m.activeTab+1)
+		case "shift+tab":
+			m.activeTab = (m.activeTab + 3) % 4 // +3 mod 4 = -1 mod 4
+			return m, nil, fmt.Sprintf("Cycled to tab %d", m.activeTab+1)
+		}
+	}
+	return m, nil, ""
+}
+
+func (m *TabDemoModel) View() string {
+	// Define 4 tabs with different content
+	tabs := []panes.Tab{
+		{
+			Label:   "Files",
+			Content: m.renderFilesContent(),
+		},
+		{
+			Label:   "Search",
+			Content: m.renderSearchContent(),
+		},
+		{
+			Label:   "Tasks",
+			Content: m.renderTasksContent(),
+			Color:   styles.StatusSuccessColor, // Custom color for this tab
+		},
+		{
+			Label:   "Settings",
+			Content: m.renderSettingsContent(),
+		},
+	}
+
+	// Calculate pane dimensions
+	paneWidth := min(m.width-4, 70)
+	paneHeight := min(m.height-4, 16)
+
+	return panes.BorderedPane(panes.BorderConfig{
+		Width:      paneWidth,
+		Height:     paneHeight,
+		Tabs:       tabs,
+		ActiveTab:  m.activeTab,
+		Focused:    true,
+		BottomLeft: fmt.Sprintf("Tab %d/4", m.activeTab+1),
+	})
+}
+
+func (m *TabDemoModel) renderFilesContent() string {
+	var sb strings.Builder
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.TextPrimaryColor)
+	itemStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
+	iconStyle := lipgloss.NewStyle().Foreground(styles.StatusInProgressColor)
+
+	sb.WriteString(headerStyle.Render("Project Files"))
+	sb.WriteString("\n\n")
+	sb.WriteString(iconStyle.Render("📁") + " " + itemStyle.Render("src/"))
+	sb.WriteString("\n")
+	sb.WriteString(iconStyle.Render("📁") + " " + itemStyle.Render("internal/"))
+	sb.WriteString("\n")
+	sb.WriteString(iconStyle.Render("📁") + " " + itemStyle.Render("cmd/"))
+	sb.WriteString("\n")
+	sb.WriteString(iconStyle.Render("📄") + " " + itemStyle.Render("main.go"))
+	sb.WriteString("\n")
+	sb.WriteString(iconStyle.Render("📄") + " " + itemStyle.Render("go.mod"))
+	sb.WriteString("\n")
+	sb.WriteString(iconStyle.Render("📄") + " " + itemStyle.Render("README.md"))
+
+	return sb.String()
+}
+
+func (m *TabDemoModel) renderSearchContent() string {
+	var sb strings.Builder
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.TextPrimaryColor)
+	resultStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
+	matchStyle := lipgloss.NewStyle().Foreground(styles.StatusInProgressColor).Bold(true)
+
+	sb.WriteString(headerStyle.Render("Search Results: \"TODO\""))
+	sb.WriteString("\n\n")
+	sb.WriteString(resultStyle.Render("main.go:42  ") + matchStyle.Render("TODO") + resultStyle.Render(": implement error handling"))
+	sb.WriteString("\n")
+	sb.WriteString(resultStyle.Render("util.go:18  ") + matchStyle.Render("TODO") + resultStyle.Render(": add unit tests"))
+	sb.WriteString("\n")
+	sb.WriteString(resultStyle.Render("config.go:7 ") + matchStyle.Render("TODO") + resultStyle.Render(": read from env"))
+	sb.WriteString("\n\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(styles.TextMutedColor).Render("3 results found"))
+
+	return sb.String()
+}
+
+func (m *TabDemoModel) renderTasksContent() string {
+	var sb strings.Builder
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.TextPrimaryColor)
+	doneStyle := lipgloss.NewStyle().Foreground(styles.StatusSuccessColor)
+	pendingStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
+	checkStyle := lipgloss.NewStyle().Foreground(styles.StatusSuccessColor)
+
+	sb.WriteString(headerStyle.Render("Active Tasks"))
+	sb.WriteString("\n\n")
+	sb.WriteString(checkStyle.Render("✓") + " " + doneStyle.Render("Set up project structure"))
+	sb.WriteString("\n")
+	sb.WriteString(checkStyle.Render("✓") + " " + doneStyle.Render("Implement core features"))
+	sb.WriteString("\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(styles.TextMutedColor).Render("○") + " " + pendingStyle.Render("Add documentation"))
+	sb.WriteString("\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(styles.TextMutedColor).Render("○") + " " + pendingStyle.Render("Write tests"))
+	sb.WriteString("\n\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(styles.TextMutedColor).Italic(true).Render("This tab has a custom green color!"))
+
+	return sb.String()
+}
+
+func (m *TabDemoModel) renderSettingsContent() string {
+	var sb strings.Builder
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.TextPrimaryColor)
+	labelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
+	valueStyle := lipgloss.NewStyle().Foreground(styles.StatusInProgressColor)
+
+	sb.WriteString(headerStyle.Render("Settings"))
+	sb.WriteString("\n\n")
+	sb.WriteString(labelStyle.Render("Theme:       ") + valueStyle.Render("Dark"))
+	sb.WriteString("\n")
+	sb.WriteString(labelStyle.Render("Auto-save:   ") + valueStyle.Render("Enabled"))
+	sb.WriteString("\n")
+	sb.WriteString(labelStyle.Render("Font size:   ") + valueStyle.Render("14px"))
+	sb.WriteString("\n")
+	sb.WriteString(labelStyle.Render("Tab width:   ") + valueStyle.Render("4 spaces"))
+	sb.WriteString("\n\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(styles.TextMutedColor).Render("Press Enter to edit"))
+
+	return sb.String()
+}
+
+func (m *TabDemoModel) SetSize(width, height int) DemoModel {
+	m.width = width
+	m.height = height
+	return m
+}
+
+func (m *TabDemoModel) Reset() DemoModel {
+	return createTabDemo(m.width, m.height)
+}
+
+func (m *TabDemoModel) NeedsEscKey() bool { return false }

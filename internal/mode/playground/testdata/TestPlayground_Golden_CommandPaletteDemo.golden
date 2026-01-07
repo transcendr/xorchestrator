@@ -15,8 +15,8 @@
 │   chainart                 │  │ │>Create Issue                                                   │
 │   issuebadge               │  ││                                                                 │
 │   issueeditor              │  │ │  Open a new issue in the tracker                               │
-│   Theme Tokens             │  ││                                                                 │
-│                            │  │ │                                                                │
+│   tabpane                  │  ││                                                                 │
+│   Theme Tokens             │  │ │                                                                │
 │                            │  ││                                                                 │
 │                            │  │ │ Search Files                                                   │
 │                            │  ││                                                                 │
@@ -24,5 +24,7 @@
 │                            │  ││                                                                 │
 │                            │  │ │                                                                │
 │                            │  ││                                                                 │
+│                            │  │ │ Run Tests                                                      │
+│                            │  ││                                                                 │
 ╰────────────────────────────╯  ╰──────────────────────────────────────────────────────────────────╯
-Tab: Switch panes  │  Ctrl+R: Reset  │  Ctrl+C: Quit                                                
+Ctrl+C: Quit                                                                                        
