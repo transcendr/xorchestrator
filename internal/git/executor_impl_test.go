@@ -854,14 +854,13 @@ func TestRealExecutor_GetCommitLogForRef_ValidBranch(t *testing.T) {
 
 	executor := NewRealExecutor(cwd)
 
-	// Get the main branch name
-	mainBranch, err := executor.GetMainBranch()
-	require.NoError(t, err, "GetMainBranch() error")
+	// Use HEAD which always exists (works in CI with detached HEAD)
+	ref := "HEAD"
 
-	// Get commits for main branch
-	commits, err := executor.GetCommitLogForRef(mainBranch, 5)
-	require.NoError(t, err, "GetCommitLogForRef(%q, 5) error", mainBranch)
-	require.NotEmpty(t, commits, "GetCommitLogForRef(%q, 5) should return commits", mainBranch)
+	// Get commits for HEAD
+	commits, err := executor.GetCommitLogForRef(ref, 5)
+	require.NoError(t, err, "GetCommitLogForRef(%q, 5) error", ref)
+	require.NotEmpty(t, commits, "GetCommitLogForRef(%q, 5) should return commits", ref)
 
 	// Verify commit structure
 	for i, c := range commits {
@@ -872,7 +871,7 @@ func TestRealExecutor_GetCommitLogForRef_ValidBranch(t *testing.T) {
 		require.NotEmpty(t, c.Author, "commit[%d].Author is empty", i)
 	}
 
-	t.Logf("GetCommitLogForRef(%q, 5) returned %d commits", mainBranch, len(commits))
+	t.Logf("GetCommitLogForRef(%q, 5) returned %d commits", ref, len(commits))
 }
 
 // TestRealExecutor_GetCommitLogForRef_InvalidRef tests that invalid ref returns error.
@@ -895,16 +894,16 @@ func TestRealExecutor_GetCommitLogForRef_Limit(t *testing.T) {
 
 	executor := NewRealExecutor(cwd)
 
-	mainBranch, err := executor.GetMainBranch()
-	require.NoError(t, err)
+	// Use HEAD which always exists (works in CI with detached HEAD)
+	ref := "HEAD"
 
 	// Get 1 commit
-	commits1, err := executor.GetCommitLogForRef(mainBranch, 1)
+	commits1, err := executor.GetCommitLogForRef(ref, 1)
 	require.NoError(t, err)
 	require.Len(t, commits1, 1, "GetCommitLogForRef with limit=1 should return 1 commit")
 
 	// Get 3 commits
-	commits3, err := executor.GetCommitLogForRef(mainBranch, 3)
+	commits3, err := executor.GetCommitLogForRef(ref, 3)
 	require.NoError(t, err)
 	require.LessOrEqual(t, len(commits3), 3, "GetCommitLogForRef with limit=3 should return at most 3 commits")
 

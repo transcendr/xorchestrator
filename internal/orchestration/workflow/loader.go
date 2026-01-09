@@ -91,13 +91,12 @@ func parseFrontmatter(content string) (frontmatter, error) {
 
 	// Find the ending delimiter
 	rest := content[len(frontmatterDelimiter):]
-	endIdx := strings.Index(rest, "\n"+frontmatterDelimiter)
-	if endIdx == -1 {
+	yamlContent, _, found := strings.Cut(rest, "\n"+frontmatterDelimiter)
+	if !found {
 		return fm, fmt.Errorf("no closing frontmatter delimiter found")
 	}
 
 	// Extract the YAML content (skip the leading newline if present)
-	yamlContent := rest[:endIdx]
 	yamlContent = strings.TrimPrefix(yamlContent, "\n")
 
 	// Parse the YAML
