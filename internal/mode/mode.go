@@ -66,3 +66,8 @@ type ShowToastMsg struct {
 	Message string
 	Style   toaster.Style
 }
+
+// RequestQuitMsg requests showing the quit confirmation modal.
+// Modes bubble this up instead of handling quit directly, allowing the app
+// to manage a centralized quit modal with consistent behavior.
+type RequestQuitMsg struct{}

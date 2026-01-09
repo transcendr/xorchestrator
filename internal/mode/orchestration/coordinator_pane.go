@@ -2,7 +2,6 @@ package orchestration
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -13,16 +12,8 @@ import (
 
 // Coordinator pane styles
 var (
-	userMessageStyle = lipgloss.NewStyle().
-				Foreground(UserColor)
-
 	coordinatorMessageStyle = lipgloss.NewStyle().
-				Foreground(CoordinatorColor)
-
-	roleStyle = lipgloss.NewStyle().Bold(true)
-
-	toolCallStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"})
+		Foreground(CoordinatorColor)
 )
 
 // renderCoordinatorPane renders the left pane showing coordinator chat history.
@@ -132,53 +123,4 @@ func (m Model) renderCoordinatorContent(wrapWidth int) string {
 		AgentLabel: "Coordinator",
 		AgentColor: coordinatorMessageStyle.GetForeground().(lipgloss.AdaptiveColor),
 	})
-}
-
-// wordWrap wraps text at the given width, preserving explicit newlines.
-func wordWrap(text string, width int) string {
-	if width <= 0 {
-		return text
-	}
-
-	// Split by newlines first to preserve explicit line breaks
-	lines := strings.Split(text, "\n")
-	var result strings.Builder
-
-	for lineIdx, line := range lines {
-		if lineIdx > 0 {
-			result.WriteString("\n")
-		}
-
-		// Skip empty lines
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-
-		// Word wrap this line
-		words := strings.Fields(line)
-		var currentLine strings.Builder
-
-		for i, word := range words {
-			// Check if adding this word would exceed line width
-			needsNewLine := currentLine.Len()+len(word)+1 > width && currentLine.Len() > 0
-
-			if needsNewLine {
-				result.WriteString(currentLine.String())
-				result.WriteString("\n")
-				currentLine.Reset()
-			}
-
-			if currentLine.Len() > 0 {
-				currentLine.WriteString(" ")
-			}
-			currentLine.WriteString(word)
-
-			// Write last word of this line
-			if i == len(words)-1 && currentLine.Len() > 0 {
-				result.WriteString(currentLine.String())
-			}
-		}
-	}
-
-	return result.String()
 }

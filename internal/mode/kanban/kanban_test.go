@@ -15,7 +15,6 @@ import (
 	"github.com/zjrosen/perles/internal/ui/board"
 	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
 	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
 )
 
 // createTestModel creates a minimal Model for testing state transitions.
@@ -249,20 +248,22 @@ func TestKanban_CtrlO_SendsOrchestrationMsg(t *testing.T) {
 }
 
 // =============================================================================
-// Quit Confirmation Tests
+// Quit Request Tests (quit modal now handled at app level)
 // =============================================================================
 
-func TestKanban_CtrlC_OpensQuitModal(t *testing.T) {
+func TestKanban_CtrlC_ReturnsRequestQuitMsg(t *testing.T) {
 	m := createTestModel(t)
 	m.view = ViewBoard
 
 	// Simulate Ctrl+C keypress
 	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
-	m, cmd := m.handleBoardKey(msg)
+	_, cmd := m.handleBoardKey(msg)
 
-	// Should open quit modal, not quit immediately
-	require.True(t, m.quitModal.IsVisible(), "expected quitModal to be visible")
-	require.Nil(t, cmd, "expected no command (just showing modal)")
+	// Should return a command that produces mode.RequestQuitMsg
+	require.NotNil(t, cmd, "expected quit request command")
+	result := cmd()
+	_, isRequestQuit := result.(mode.RequestQuitMsg)
+	require.True(t, isRequestQuit, "expected mode.RequestQuitMsg")
 }
 
 func TestKanban_QKey_DoesNotQuit(t *testing.T) {
@@ -271,103 +272,31 @@ func TestKanban_QKey_DoesNotQuit(t *testing.T) {
 
 	// Simulate 'q' keypress - should NOT quit
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
-	m, cmd := m.handleBoardKey(msg)
+	_, cmd := m.handleBoardKey(msg)
 
-	// Should not return tea.Quit and should not open quit modal
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to NOT be visible on 'q' key")
-	// The command should be nil or delegate to board (not tea.Quit)
+	// The command should be nil or delegate to board (not tea.Quit or RequestQuitMsg)
 	if cmd != nil {
 		result := cmd()
 		_, isQuit := result.(tea.QuitMsg)
 		require.False(t, isQuit, "expected 'q' key to NOT quit")
+		_, isRequestQuit := result.(mode.RequestQuitMsg)
+		require.False(t, isRequestQuit, "expected 'q' key to NOT request quit")
 	}
 }
 
-func TestKanban_CtrlC_QuitsWhenModalOpen(t *testing.T) {
-	m := createTestModel(t)
-	// First, open the quit modal
-	m.quitModal.Show()
-	require.True(t, m.quitModal.IsVisible(), "precondition: quitModal should be visible")
-
-	// Simulate Ctrl+C while modal is open
-	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
-	m, cmd := m.Update(msg)
-
-	// Should clear modal and quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to be hidden")
-	require.NotNil(t, cmd, "expected quit command")
-}
-
-func TestKanban_Enter_QuitsWhenModalOpen(t *testing.T) {
-	m := createTestModel(t)
-	// First, open the quit modal
-	m.quitModal.Show()
-	require.True(t, m.quitModal.IsVisible(), "precondition: quitModal should be visible")
-
-	// Simulate Enter while modal is open (via modal.SubmitMsg from inner modal)
-	msg := modal.SubmitMsg{}
-	m, cmd := m.Update(msg)
-
-	// Should clear modal and quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to be hidden")
-	require.NotNil(t, cmd, "expected quit command")
-}
-
-func TestKanban_Escape_DismissesQuitModal(t *testing.T) {
-	m := createTestModel(t)
-	// First, open the quit modal
-	m.quitModal.Show()
-	require.True(t, m.quitModal.IsVisible(), "precondition: quitModal should be visible")
-
-	// Simulate Escape while modal is open (via modal.CancelMsg from inner modal)
-	msg := modal.CancelMsg{}
-	m, cmd := m.Update(msg)
-
-	// Should dismiss modal, not quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to be hidden")
-	require.Nil(t, cmd, "expected no command (modal dismissed)")
-}
-
-func TestKanban_QuitModalSubmit_Quits(t *testing.T) {
-	m := createTestModel(t)
-	// Open the quit modal
-	m.quitModal.Show()
-	require.True(t, m.quitModal.IsVisible(), "precondition: quitModal should be visible")
-
-	// Simulate modal submit
-	m, cmd := m.Update(modal.SubmitMsg{})
-
-	// Should clear modal and return tea.Quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to be hidden")
-	require.NotNil(t, cmd, "expected quit command")
-	// Note: tea.Quit returns a tea.QuitMsg function, so we verify it's set
-}
-
-func TestKanban_QuitModalCancel_DismissesModal(t *testing.T) {
-	m := createTestModel(t)
-	// Open the quit modal
-	m.quitModal.Show()
-	require.True(t, m.quitModal.IsVisible(), "precondition: quitModal should be visible")
-
-	// Simulate modal cancel (Esc)
-	m, cmd := m.Update(modal.CancelMsg{})
-
-	// Should clear modal, not quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to be hidden")
-	require.Nil(t, cmd, "expected no command")
-}
-
-func TestKanban_HelpView_CtrlC_OpensQuitModal(t *testing.T) {
+func TestKanban_HelpView_CtrlC_ReturnsRequestQuitMsg(t *testing.T) {
 	m := createTestModel(t)
 	m.view = ViewHelp
 
 	// Simulate Ctrl+C in help view
 	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
-	m, cmd := m.handleKey(msg)
+	_, cmd := m.handleKey(msg)
 
-	// Should open quit modal
-	require.True(t, m.quitModal.IsVisible(), "expected quitModal to be visible in help view")
-	require.Nil(t, cmd, "expected no command")
+	// Should return mode.RequestQuitMsg
+	require.NotNil(t, cmd, "expected quit request command")
+	result := cmd()
+	_, isRequestQuit := result.(mode.RequestQuitMsg)
+	require.True(t, isRequestQuit, "expected mode.RequestQuitMsg in help view")
 }
 
 // =============================================================================

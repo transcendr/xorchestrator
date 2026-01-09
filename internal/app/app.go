@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zjrosen/perles/internal/beads"
 	"github.com/zjrosen/perles/internal/bql"
@@ -21,12 +22,17 @@ import (
 	"github.com/zjrosen/perles/internal/mode/orchestration"
 	"github.com/zjrosen/perles/internal/mode/search"
 	"github.com/zjrosen/perles/internal/mode/shared"
+	"github.com/zjrosen/perles/internal/orchestration/client"
+	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/pubsub"
 
+	"github.com/zjrosen/perles/internal/ui/shared/chatpanel"
 	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
 	"github.com/zjrosen/perles/internal/ui/shared/logoverlay"
+	"github.com/zjrosen/perles/internal/ui/shared/quitmodal"
 	"github.com/zjrosen/perles/internal/ui/shared/toaster"
+	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 	"github.com/zjrosen/perles/internal/ui/styles"
 	"github.com/zjrosen/perles/internal/watcher"
 )
@@ -56,6 +62,11 @@ type Model struct {
 	// Diff viewer overlay
 	diffViewer diffviewer.Model
 
+	// Chat panel for Kanban/Search modes (excluded from orchestration)
+	chatPanel        chatpanel.Model
+	chatPanelFocused bool
+	chatInfra        *v2.SimpleInfrastructure
+
 	// Cache Managers
 	bqlCache      cachemanager.CacheManager[string, []beads.Issue]
 	depGraphCache cachemanager.CacheManager[string, *bql.DependencyGraph]
@@ -65,6 +76,9 @@ type Model struct {
 	watcherCtx      context.Context
 	watcherCancel   context.CancelFunc
 	watcherListener *pubsub.ContinuousListener[watcher.WatcherEvent]
+
+	// Quit confirmation modal (for chat panel Ctrl+C)
+	quitModal quitmodal.Model
 }
 
 // NewWithConfig creates a new application model with the provided configuration.
@@ -143,6 +157,15 @@ func NewWithConfig(
 		workDir,
 	).SetClipboard(services.Clipboard)
 
+	// Create chat panel with config from services
+	// Panel defaults to hidden (visible = false)
+	chatPanelCfg := chatpanel.Config{
+		ClientType:     cfg.Orchestration.Client,
+		WorkDir:        workDir,
+		SessionTimeout: chatpanel.DefaultConfig().SessionTimeout,
+	}
+	cp := chatpanel.New(chatPanelCfg)
+
 	return Model{
 		currentMode:     mode.ModeKanban,
 		kanban:          kanban.New(services),
@@ -154,10 +177,15 @@ func NewWithConfig(
 		debugMode:       debugMode,
 		logListenCmd:    logListenCmd,
 		diffViewer:      dv,
+		chatPanel:       cp,
 		watcherHandle:   watcherHandle,
 		watcherCtx:      watcherCtx,
 		watcherCancel:   watcherCancel,
 		watcherListener: watcherListener,
+		quitModal: quitmodal.New(quitmodal.Config{
+			Title:   "Exit Application?",
+			Message: "Are you sure you want to quit?",
+		}),
 	}
 }
 
@@ -182,17 +210,53 @@ func (m Model) Init() tea.Cmd {
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle quit modal first when visible (captures all input)
+	if m.quitModal.IsVisible() {
+		var cmd tea.Cmd
+		var result quitmodal.Result
+		m.quitModal, cmd, result = m.quitModal.Update(msg)
+		switch result {
+		case quitmodal.ResultQuit:
+			return m, tea.Quit
+		case quitmodal.ResultCancel:
+			return m, nil
+		}
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 
-		m.kanban = m.kanban.SetSize(msg.Width, msg.Height)
-		m.search = m.search.SetSize(msg.Width, msg.Height)
+		// Calculate main content width (reduced when chat panel is visible)
+		mainWidth := msg.Width
+		if m.chatPanel.Visible() && m.currentMode != mode.ModeOrchestration {
+			mainWidth = msg.Width - m.chatPanelWidth()
+		}
+
+		m.kanban = m.kanban.SetSize(mainWidth, msg.Height)
+		m.search = m.search.SetSize(mainWidth, msg.Height)
 		m.orchestration = m.orchestration.SetSize(msg.Width, msg.Height)
 		m.toaster = m.toaster.SetSize(msg.Width, msg.Height)
 		m.logOverlay.SetSize(msg.Width, msg.Height)
 		m.diffViewer = m.diffViewer.SetSize(msg.Width, msg.Height)
+		m.chatPanel = m.chatPanel.SetSize(m.chatPanelWidth(), m.chatPanelHeight())
+		m.quitModal.SetSize(msg.Width, msg.Height)
+
+		// Auto-close chat panel if terminal resizes below minimum width
+		if m.chatPanel.Visible() && msg.Width < MinChatPanelTerminalWidth {
+			m.chatPanel.Cleanup()
+			m.chatPanel = m.chatPanel.Toggle().Blur() // Set hidden and unfocused
+			m.chatPanelFocused = false
+			log.Info(log.CatMode, "Chat panel auto-closed due to terminal resize", "width", msg.Width)
+			return m, func() tea.Msg {
+				return mode.ShowToastMsg{
+					Message: "Terminal too narrow for chat panel",
+					Style:   toaster.StyleInfo,
+				}
+			}
+		}
 
 		return m, nil
 
@@ -208,6 +272,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.diffViewer.Visible() {
 			var cmd tea.Cmd
 			m.diffViewer, cmd = m.diffViewer.Update(msg)
+			return m, cmd
+		}
+
+		// Route mouse events to chat panel when visible
+		if m.chatPanel.Visible() {
+			var cmd tea.Cmd
+			m.chatPanel, cmd = m.chatPanel.Update(msg)
 			return m, cmd
 		}
 
@@ -228,6 +299,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.logOverlay, cmd = m.logOverlay.Update(msg)
 
+			return m, cmd
+		}
+
+		// Handle Ctrl+W to toggle chat panel (not in orchestration mode)
+		if key.Matches(msg, keys.App.ToggleChatPanel) && m.currentMode != mode.ModeOrchestration {
+			return m.handleToggleChatPanel()
+		}
+
+		// Tab toggles focus between main view and chat panel when panel is visible
+		if msg.Type == tea.KeyTab && m.chatPanel.Visible() && m.currentMode != mode.ModeOrchestration {
+			if m.chatPanelFocused {
+				m.chatPanel = m.chatPanel.Blur()
+				m.chatPanelFocused = false
+				m.kanban = m.kanban.SetBoardFocused(true)
+			} else {
+				m.chatPanel = m.chatPanel.Focus()
+				m.chatPanelFocused = true
+				m.kanban = m.kanban.SetBoardFocused(false)
+			}
+			return m, nil
+		}
+
+		// Chat panel focus routing - when focused, panel takes precedence for key events
+		if m.chatPanelFocused && m.chatPanel.Visible() && m.currentMode != mode.ModeOrchestration {
+			var cmd tea.Cmd
+			m.chatPanel, cmd = m.chatPanel.Update(msg)
 			return m, cmd
 		}
 
@@ -263,6 +360,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case kanban.SwitchToOrchestrationMsg:
 		log.Info(log.CatMode, "Switching mode", "from", "kanban", "to", "orchestration")
+
+		// Close chat panel if open to prevent "two AIs" confusion
+		// Must call Cleanup() before entering orchestration to stop the AI process
+		// and prevent goroutine leaks (context cancelled, processor drained)
+		if m.chatPanel.Visible() {
+			m.chatPanel.Cleanup()
+			m.chatPanel = m.chatPanel.Toggle().Blur() // Set hidden and unfocused
+			m.chatPanelFocused = false
+			log.Info(log.CatMode, "Chat panel closed on orchestration entry")
+		}
+
 		m.currentMode = mode.ModeOrchestration
 
 		// Get orchestration config from services.Config
@@ -349,6 +457,64 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Continue listening for unknown event types
 		return m, m.watcherListener.Listen()
+
+	// Forward vimtextarea.SubmitMsg to chatPanel for processing
+	// This is emitted when user presses Enter in the chat input
+	case vimtextarea.SubmitMsg:
+		if m.chatPanelFocused && m.chatPanel.Visible() && m.currentMode != mode.ModeOrchestration {
+			var cmd tea.Cmd
+			m.chatPanel, cmd = m.chatPanel.Update(msg)
+			return m, cmd
+		}
+		// Fall through to mode handler (orchestration mode handles its own SubmitMsg)
+
+	// Forward chat panel pubsub events (from SimpleChatInfrastructure)
+	// Always forward to chat panel to keep listener active (even when hidden).
+	// This prevents the listener chain from breaking when the panel is toggled off.
+	case pubsub.Event[any]:
+		if m.chatPanel.HasInfrastructure() && m.currentMode != mode.ModeOrchestration {
+			var cmd tea.Cmd
+			m.chatPanel, cmd = m.chatPanel.Update(msg)
+			// Don't return - let mode also process if needed (though modes won't
+			// receive chatPanel's events since they're from different brokers)
+			if cmd != nil {
+				return m, cmd
+			}
+		}
+		// Fall through to mode handler
+
+	// Handle SendMessageMsg from chatPanel (user submitted a message)
+	case chatpanel.SendMessageMsg:
+		if m.chatInfra != nil && m.chatInfra.ProcessRegistry.Get(chatpanel.ChatPanelProcessID) != nil {
+			sendCmd := m.chatPanel.SendMessage(msg.Content)
+			if sendCmd != nil {
+				return m, sendCmd
+			}
+		}
+		return m, nil
+
+	// Handle AssistantErrorMsg from chatPanel (infrastructure error)
+	case chatpanel.AssistantErrorMsg:
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{
+				Message: "Chat error: " + msg.Error.Error(),
+				Style:   toaster.StyleError,
+			}
+		}
+
+	// Handle RequestQuitMsg from chatPanel (user pressed Ctrl+C in normal mode)
+	case chatpanel.RequestQuitMsg:
+		m.quitModal.Show()
+		return m, nil
+
+	// Handle NewSessionRequestMsg from chatPanel (user pressed Ctrl+N)
+	case chatpanel.NewSessionRequestMsg:
+		return m.handleNewSessionRequest()
+
+	// Handle RequestQuitMsg from kanban/search modes (user pressed Ctrl+C)
+	case mode.RequestQuitMsg:
+		m.quitModal.Show()
+		return m, nil
 
 	case mode.ShowToastMsg:
 		m.toaster = m.toaster.Show(msg.Message, msg.Style)
@@ -604,8 +770,180 @@ func (m Model) handleSaveTreeAsColumn(msg search.SaveTreeAsColumnMsg) (tea.Model
 	return m, nil
 }
 
+// chatPanelWidth returns the fixed width for the chat panel.
+func (m Model) chatPanelWidth() int {
+	return 50
+}
+
+// chatPanelHeight returns the height for the chat panel.
+// Accounts for status bar when in Kanban mode with status bar visible.
+func (m Model) chatPanelHeight() int {
+	height := m.height
+	// In Kanban mode, account for status bar if visible
+	if m.currentMode == mode.ModeKanban && m.kanban.ShowStatusBar() {
+		height-- // Status bar takes 1 line
+	}
+	return height
+}
+
+// MinChatPanelTerminalWidth is the minimum terminal width required to open the chat panel.
+const MinChatPanelTerminalWidth = 100
+
+// handleToggleChatPanel handles Ctrl+W to toggle the chat panel.
+// If opening and terminal is too narrow, shows a toast instead.
+// When toggling, also transfers focus to/from the panel.
+// On first open, lazily creates SimpleChatInfrastructure and spawns the assistant.
+func (m Model) handleToggleChatPanel() (tea.Model, tea.Cmd) {
+	// If panel is currently hidden, we're trying to open it
+	if !m.chatPanel.Visible() {
+		// Check minimum width requirement
+		if m.width < MinChatPanelTerminalWidth {
+			return m, func() tea.Msg {
+				return mode.ShowToastMsg{
+					Message: fmt.Sprintf("Terminal too narrow for chat panel (need %d cols, have %d)", MinChatPanelTerminalWidth, m.width),
+					Style:   toaster.StyleInfo,
+				}
+			}
+		}
+
+		var cmds []tea.Cmd
+
+		// Lazily create infrastructure on first open
+		if m.chatInfra == nil {
+			// Create AI client based on chat panel config
+			aiClient, err := client.NewClient(client.ClientType(m.chatPanel.Config().ClientType))
+			if err != nil {
+				log.Warn(log.CatMode, "Failed to create AI client", "error", err)
+				return m, func() tea.Msg {
+					return mode.ShowToastMsg{
+						Message: "Failed to create AI client: " + err.Error(),
+						Style:   toaster.StyleError,
+					}
+				}
+			}
+
+			// Create v2 SimpleInfrastructure with config
+			infra, err := v2.NewSimpleInfrastructure(v2.SimpleInfrastructureConfig{
+				AIClient:      aiClient,
+				WorkDir:       m.chatPanel.Config().WorkDir,
+				SystemPrompt:  chatpanel.BuildAssistantSystemPrompt(),
+				InitialPrompt: chatpanel.BuildAssistantInitialPrompt(),
+			})
+			if err != nil {
+				log.Warn(log.CatMode, "Failed to create chat infrastructure", "error", err)
+				return m, func() tea.Msg {
+					return mode.ShowToastMsg{
+						Message: "Failed to create chat infrastructure: " + err.Error(),
+						Style:   toaster.StyleError,
+					}
+				}
+			}
+
+			if err := infra.Start(); err != nil {
+				log.Warn(log.CatMode, "Failed to start chat infrastructure", "error", err)
+				return m, func() tea.Msg {
+					return mode.ShowToastMsg{
+						Message: "Failed to start chat assistant",
+						Style:   toaster.StyleError,
+					}
+				}
+			}
+			m.chatInfra = infra
+			m.chatPanel = m.chatPanel.SetInfrastructure(infra)
+			cmds = append(cmds, m.chatPanel.InitListener())
+			log.Info(log.CatMode, "Chat infrastructure created and started")
+		}
+
+		// Open panel and focus it
+		m.chatPanel = m.chatPanel.Toggle().Focus()
+		m.chatPanelFocused = true
+		m.kanban = m.kanban.SetBoardFocused(false)
+
+		// Resize the current mode to account for chat panel width
+		mainWidth := m.width - m.chatPanelWidth()
+		switch m.currentMode {
+		case mode.ModeKanban:
+			m.kanban = m.kanban.SetSize(mainWidth, m.height)
+		case mode.ModeSearch:
+			m.search = m.search.SetSize(mainWidth, m.height)
+		}
+
+		// Spawn assistant if not already spawned
+		if m.chatInfra != nil && m.chatInfra.ProcessRegistry.Get(chatpanel.ChatPanelProcessID) == nil {
+			spawnCmd := m.chatPanel.SpawnAssistant()
+			if spawnCmd != nil {
+				cmds = append(cmds, spawnCmd)
+			}
+			log.Info(log.CatMode, "Spawning chat assistant")
+		}
+
+		return m, tea.Batch(cmds...)
+	}
+
+	// Panel is visible, close it and unfocus
+	m.chatPanel = m.chatPanel.Toggle().Blur()
+	m.chatPanelFocused = false
+	m.kanban = m.kanban.SetBoardFocused(true)
+
+	// Resize the current mode back to full terminal width
+	// This ensures the main content area expands to fill the space
+	switch m.currentMode {
+	case mode.ModeKanban:
+		m.kanban = m.kanban.SetSize(m.width, m.height)
+	case mode.ModeSearch:
+		m.search = m.search.SetSize(m.width, m.height)
+	}
+
+	return m, nil
+}
+
+// handleNewSessionRequest handles Ctrl+N from the chat panel to create a new session.
+// It generates a new session ID, creates the session in the chat panel,
+// spawns a process for it, and returns a NewSessionCreatedMsg on success.
+func (m Model) handleNewSessionRequest() (tea.Model, tea.Cmd) {
+	// Require infrastructure to be set up
+	if m.chatInfra == nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{
+				Message: "Chat panel not initialized",
+				Style:   toaster.StyleError,
+			}
+		}
+	}
+
+	// Generate sequential session ID
+	sessionID := m.chatPanel.NextSessionID()
+
+	// Create the session in the chat panel
+	var session *chatpanel.SessionData
+	m.chatPanel, session = m.chatPanel.CreateSession(sessionID)
+
+	// Use session ID as process ID for simplicity
+	processID := sessionID
+
+	// Update session's process ID and reverse lookup
+	session.ProcessID = processID
+	m.chatPanel = m.chatPanel.SetSessionProcessID(sessionID, processID)
+
+	// Spawn process for the new session
+	spawnCmd := m.chatPanel.SpawnAssistantForSession(processID)
+
+	log.Info(log.CatMode, "Created new chat session", "sessionID", sessionID, "processID", processID)
+
+	// Return spawn command batched with NewSessionCreatedMsg
+	return m, tea.Batch(
+		spawnCmd,
+		func() tea.Msg {
+			return chatpanel.NewSessionCreatedMsg{SessionID: sessionID}
+		},
+	)
+}
+
 // View implements tea.Model.
 func (m Model) View() string {
+	// Determine if chat panel should be shown (excluded from orchestration mode)
+	showChatPanel := m.chatPanel.Visible() && m.currentMode != mode.ModeOrchestration
+
 	var view string
 	switch m.currentMode {
 	case mode.ModeSearch:
@@ -614,6 +952,13 @@ func (m Model) View() string {
 		view = m.orchestration.View()
 	default:
 		view = m.kanban.View()
+	}
+
+	// Compose main content with chat panel when visible
+	if showChatPanel {
+		panelWidth := m.chatPanelWidth()
+		m.chatPanel = m.chatPanel.SetSize(panelWidth, m.chatPanelHeight())
+		view = lipgloss.JoinHorizontal(lipgloss.Top, view, m.chatPanel.View())
 	}
 
 	// Overlay toaster on top of active mode's view
@@ -631,6 +976,11 @@ func (m Model) View() string {
 		view = m.logOverlay.Overlay(view)
 	}
 
+	// Overlay quit modal on top when visible
+	if m.quitModal.IsVisible() {
+		view = m.quitModal.Overlay(view)
+	}
+
 	return view
 }
 
@@ -643,6 +993,9 @@ func (m *Model) Close() error {
 	if m.currentMode == mode.ModeOrchestration {
 		m.orchestration.CancelSubscriptions()
 	}
+
+	// Clean up chat panel infrastructure
+	m.chatPanel.Cleanup()
 
 	// Close mode controllers
 	if err := m.kanban.Close(); err != nil {

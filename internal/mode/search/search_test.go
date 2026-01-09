@@ -16,7 +16,6 @@ import (
 	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
 	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
 	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
 )
 
 // createTestModel creates a minimal Model for testing state transitions.
@@ -968,48 +967,54 @@ func executeBatchCmd(cmd tea.Cmd) []tea.Msg {
 }
 
 // =============================================================================
-// Quit Confirmation Tests
+// Quit Request Tests (quit modal now handled at app level)
 // =============================================================================
 
-func TestSearch_CtrlC_OpensQuitModal_FocusResults(t *testing.T) {
+func TestSearch_CtrlC_ReturnsRequestQuitMsg_FocusResults(t *testing.T) {
 	m := createTestModelWithResults(t)
 	m.focus = FocusResults
 
 	// Simulate Ctrl+C keypress
 	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
-	m, cmd := m.handleKey(msg)
+	_, cmd := m.handleKey(msg)
 
-	// Should open quit modal, not quit immediately
-	require.True(t, m.quitModal.IsVisible(), "expected quitModal to be visible")
-	require.Nil(t, cmd, "expected no command (just showing modal)")
+	// Should return mode.RequestQuitMsg
+	require.NotNil(t, cmd, "expected quit request command")
+	result := cmd()
+	_, isRequestQuit := result.(mode.RequestQuitMsg)
+	require.True(t, isRequestQuit, "expected mode.RequestQuitMsg")
 }
 
-func TestSearch_CtrlC_OpensQuitModal_FocusSearch(t *testing.T) {
+func TestSearch_CtrlC_ReturnsRequestQuitMsg_FocusSearch(t *testing.T) {
 	m := createTestModel(t)
 	m.focus = FocusSearch
 	m.input.Focus()
 
 	// Simulate Ctrl+C keypress
 	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
-	m, cmd := m.handleKey(msg)
+	_, cmd := m.handleKey(msg)
 
-	// Should open quit modal, not quit immediately
-	require.True(t, m.quitModal.IsVisible(), "expected quitModal to be visible in search input")
-	require.Nil(t, cmd, "expected no command")
+	// Should return mode.RequestQuitMsg
+	require.NotNil(t, cmd, "expected quit request command")
+	result := cmd()
+	_, isRequestQuit := result.(mode.RequestQuitMsg)
+	require.True(t, isRequestQuit, "expected mode.RequestQuitMsg in search input")
 }
 
-func TestSearch_CtrlC_OpensQuitModal_TreeSubMode(t *testing.T) {
+func TestSearch_CtrlC_ReturnsRequestQuitMsg_TreeSubMode(t *testing.T) {
 	m := createTestModel(t)
 	m.subMode = mode.SubModeTree
 	m.focus = FocusResults
 
 	// Simulate Ctrl+C keypress
 	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
-	m, cmd := m.handleKey(msg)
+	_, cmd := m.handleKey(msg)
 
-	// Should open quit modal in tree sub-mode too
-	require.True(t, m.quitModal.IsVisible(), "expected quitModal to be visible in tree sub-mode")
-	require.Nil(t, cmd, "expected no command")
+	// Should return mode.RequestQuitMsg in tree sub-mode too
+	require.NotNil(t, cmd, "expected quit request command")
+	result := cmd()
+	_, isRequestQuit := result.(mode.RequestQuitMsg)
+	require.True(t, isRequestQuit, "expected mode.RequestQuitMsg in tree sub-mode")
 }
 
 func TestSearch_QKey_DoesNotQuit(t *testing.T) {
@@ -1018,94 +1023,16 @@ func TestSearch_QKey_DoesNotQuit(t *testing.T) {
 
 	// Simulate 'q' keypress - should NOT quit
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
-	m, cmd := m.handleKey(msg)
+	_, cmd := m.handleKey(msg)
 
-	// Should not set quit modal and should not quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to NOT be visible on 'q' key")
+	// The command should be nil or not a quit-related message
 	if cmd != nil {
 		result := cmd()
 		_, isQuit := result.(tea.QuitMsg)
 		require.False(t, isQuit, "expected 'q' key to NOT quit")
+		_, isRequestQuit := result.(mode.RequestQuitMsg)
+		require.False(t, isRequestQuit, "expected 'q' key to NOT request quit")
 	}
-}
-
-func TestSearch_CtrlC_QuitsWhenModalOpen(t *testing.T) {
-	m := createTestModel(t)
-	// First, open the quit modal
-	m.quitModal.Show()
-	require.True(t, m.quitModal.IsVisible(), "precondition: quitModal should be visible")
-
-	// Simulate Ctrl+C while modal is open
-	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
-	m, cmd := m.Update(msg)
-
-	// Should clear modal and quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to be hidden")
-	require.NotNil(t, cmd, "expected quit command")
-}
-
-func TestSearch_Enter_QuitsWhenModalOpen(t *testing.T) {
-	m := createTestModel(t)
-	// First, open the quit modal (focus starts on Confirm button)
-	m.quitModal.Show()
-	require.True(t, m.quitModal.IsVisible(), "precondition: quitModal should be visible")
-
-	// Enter key delegates to inner modal which returns SubmitMsg command
-	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	require.NotNil(t, cmd, "Enter should produce a command from inner modal")
-
-	// Execute the command to get SubmitMsg
-	msg := cmd()
-
-	// Process the SubmitMsg - this triggers ResultQuit
-	m, cmd = m.Update(msg)
-
-	// Should clear modal and quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to be hidden")
-	require.NotNil(t, cmd, "expected quit command")
-}
-
-func TestSearch_Escape_DismissesQuitModal(t *testing.T) {
-	m := createTestModel(t)
-	// First, open the quit modal
-	m.quitModal.Show()
-	require.True(t, m.quitModal.IsVisible(), "precondition: quitModal should be visible")
-
-	// Simulate Escape while modal is open
-	msg := tea.KeyMsg{Type: tea.KeyEscape}
-	m, cmd := m.Update(msg)
-
-	// Should dismiss modal, not quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to be hidden")
-	require.Nil(t, cmd, "expected no command (modal dismissed)")
-}
-
-func TestSearch_QuitModalSubmit_Quits(t *testing.T) {
-	m := createTestModel(t)
-	// Open the quit modal
-	m.quitModal.Show()
-	require.True(t, m.quitModal.IsVisible(), "precondition: quitModal should be visible")
-
-	// Simulate modal submit
-	m, cmd := m.Update(modal.SubmitMsg{})
-
-	// Should clear modal and return tea.Quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to be hidden")
-	require.NotNil(t, cmd, "expected quit command")
-}
-
-func TestSearch_QuitModalCancel_DismissesModal(t *testing.T) {
-	m := createTestModel(t)
-	// Open the quit modal
-	m.quitModal.Show()
-	require.True(t, m.quitModal.IsVisible(), "precondition: quitModal should be visible")
-
-	// Simulate modal cancel (Esc)
-	m, cmd := m.Update(modal.CancelMsg{})
-
-	// Should clear modal, not quit
-	require.False(t, m.quitModal.IsVisible(), "expected quitModal to be hidden")
-	require.Nil(t, cmd, "expected no command")
 }
 
 // =============================================================================

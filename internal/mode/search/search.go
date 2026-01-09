@@ -30,7 +30,6 @@ import (
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 	"github.com/zjrosen/perles/internal/ui/shared/picker"
-	"github.com/zjrosen/perles/internal/ui/shared/quitmodal"
 	"github.com/zjrosen/perles/internal/ui/shared/toaster"
 	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 	"github.com/zjrosen/perles/internal/ui/styles"
@@ -92,7 +91,6 @@ type Model struct {
 	newViewModal  formmodal.Model
 	modal         modal.Model
 	issueEditor   issueeditor.Model // Unified issue editor modal
-	quitModal     quitmodal.Model   // Quit confirmation modal
 
 	// Delete operation state
 	deleteIssueIDs []string // IDs to delete (includes descendants for epics)
@@ -480,10 +478,6 @@ func New(services mode.Services) Model {
 		focus:       FocusSearch,
 		view:        ViewSearch,
 		help:        help.NewSearch(),
-		quitModal: quitmodal.New(quitmodal.Config{
-			Title:   "Exit Application?",
-			Message: "Are you sure you want to quit?",
-		}),
 	}
 }
 
@@ -555,28 +549,11 @@ func (m Model) SetSize(width, height int) Model {
 		m.tree.SetSize(leftWidth-2, treeHeight) // -2 for border
 	}
 
-	// Update quit modal
-	m.quitModal.SetSize(width, height)
-
 	return m
 }
 
 // Update handles messages.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	// Handle quit modal first when visible
-	if m.quitModal.IsVisible() {
-		var cmd tea.Cmd
-		var result quitmodal.Result
-		m.quitModal, cmd, result = m.quitModal.Update(msg)
-		switch result {
-		case quitmodal.ResultQuit:
-			return m, tea.Quit
-		case quitmodal.ResultCancel:
-			return m, nil
-		}
-		return m, cmd
-	}
-
 	// Handle key messages
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		return m.handleKey(keyMsg)
@@ -768,15 +745,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // View renders the search mode.
 func (m Model) View() string {
-	// If quit modal is visible, overlay it on top of the current view
-	if m.quitModal.IsVisible() {
-		return m.quitModal.Overlay(m.renderViewWithOverlays())
-	}
-	return m.renderViewWithOverlays()
-}
-
-// renderViewWithOverlays renders the view with any active overlay (except quit modal).
-func (m Model) renderViewWithOverlays() string {
 	// Handle overlays
 	switch m.view {
 	case ViewHelp:
@@ -868,8 +836,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 		switch {
 		case msg.Type == tea.KeyCtrlC:
-			m.quitModal.Show()
-			return m, nil
+			return m, func() tea.Msg { return mode.RequestQuitMsg{} }
 		case msg.String() == "tab" || msg.String() == "ctrl+n":
 			// Exit search input, move to results
 			m.input.Blur()
@@ -939,8 +906,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.subMode == mode.SubModeTree && m.focus == FocusResults {
 		switch {
 		case msg.Type == tea.KeyCtrlC:
-			m.quitModal.Show()
-			return m, nil
+			return m, func() tea.Msg { return mode.RequestQuitMsg{} }
 		case key.Matches(msg, keys.Search.Blur):
 			return m, func() tea.Msg { return ExitToKanbanMsg{} }
 		case key.Matches(msg, keys.Search.Help):
@@ -1029,8 +995,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	// Not in search input - handle navigation and global keys
 	switch {
 	case msg.Type == tea.KeyCtrlC:
-		m.quitModal.Show()
-		return m, nil
+		return m, func() tea.Msg { return mode.RequestQuitMsg{} }
 
 	case key.Matches(msg, keys.Search.Blur):
 		// Exit search mode back to kanban

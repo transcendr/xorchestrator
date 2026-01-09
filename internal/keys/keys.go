@@ -348,6 +348,16 @@ var LogOverlay = struct {
 	),
 }
 
+// App contains keybindings for app-level actions (cross-mode).
+var App = struct {
+	ToggleChatPanel key.Binding
+}{
+	ToggleChatPanel: key.NewBinding(
+		key.WithKeys("ctrl+w"),
+		key.WithHelp("ctrl+w", "toggle chat panel"),
+	),
+}
+
 // DiffViewer contains keybindings specific to the diff viewer overlay.
 var DiffViewer = struct {
 	Open           key.Binding // ctrl+g - opens diff viewer

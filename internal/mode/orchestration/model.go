@@ -35,6 +35,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/commandpalette"
+	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
 	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/quitmodal"
@@ -56,16 +57,16 @@ const (
 	PaneCommand     = 4
 )
 
+// ChatMessage is an alias for the shared chatrender.Message type.
+// Used for coordinator and worker chat history.
+type ChatMessage = chatrender.Message
+
 // activeWorkflowHolder holds a reference to the active workflow.
 // This is a pointer type so it survives Bubble Tea's value-based Model copies.
 // The adapter's WorkflowConfigProvider can read from this shared reference.
 type activeWorkflowHolder struct {
 	workflow *workflow.Workflow
 }
-
-// ChatMessage is an alias for the shared chatrender.Message type.
-// Used for coordinator and worker chat history.
-type ChatMessage = chatrender.Message
 
 // InitPhase represents the current initialization phase.
 type InitPhase int
@@ -868,11 +869,6 @@ func (m *Model) GetWorkflowConfig(agentType roles.AgentType) *roles.WorkflowConf
 	activeWf := m.activeWorkflowRef.workflow
 	if activeWf.AgentRoles == nil {
 		return nil
-	}
-
-	var roleKeys []string
-	for k := range activeWf.AgentRoles {
-		roleKeys = append(roleKeys, k)
 	}
 
 	roleConfig, ok := activeWf.AgentRoles[string(agentType)]

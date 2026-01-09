@@ -651,3 +651,73 @@ func TestView_Golden_VisualModeCursorInSelection(t *testing.T) {
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))
 }
+
+// ============================================================================
+// Unit Tests: Cursor at exact width boundary (edge case)
+// ============================================================================
+
+func TestView_CursorAtExactWidthBoundary(t *testing.T) {
+	// Test the edge case where cursor is at the end of a line that fills
+	// exactly to the width. The cursor should still be visible.
+	m := New(Config{VimEnabled: true, DefaultMode: ModeInsert})
+
+	// Create a line that is exactly 20 characters (same as width)
+	m.SetValue("12345678901234567890") // 20 chars
+	m.SetSize(20, 3)                   // Width exactly matches line length
+	m.cursorCol = 20                   // Cursor at end (after last char)
+	m.Focus()
+
+	view := m.View()
+
+	// Cursor should be visible - this was the bug, cursor disappeared
+	// when at exact width boundary
+	require.Contains(t, view, cursorOn, "Cursor should be visible at exact width boundary")
+	require.Contains(t, view, cursorOff, "Cursor should have closing sequence")
+}
+
+func TestView_CursorWrapLine_ExactWidthBoundary(t *testing.T) {
+	// Test that cursorWrapLine returns index beyond segments at exact width boundary
+	// The cursor will be shown on a virtual next line by renderContent()
+	m := New(Config{VimEnabled: true, DefaultMode: ModeInsert})
+
+	// Line exactly 40 chars, width 40
+	m.SetValue("1234567890123456789012345678901234567890") // 40 chars
+	m.SetSize(40, 3)
+	m.cursorCol = 40 // Cursor at end
+
+	// cursorWrapLine returns 1 (beyond the single segment), renderContent adds virtual cursor line
+	wrapLine := m.cursorWrapLine()
+	require.Equal(t, 1, wrapLine, "Cursor at end of exact-width line should be on virtual wrap line 1")
+}
+
+func TestView_CursorWrapLine_MultipleExactWidths(t *testing.T) {
+	// Test cursor at end of a line that wraps to exactly 2 segments
+	m := New(Config{VimEnabled: true, DefaultMode: ModeInsert})
+
+	// Line of 80 chars, width 40 - wraps to exactly 2 segments
+	m.SetValue("12345678901234567890123456789012345678901234567890123456789012345678901234567890") // 80 chars
+	m.SetSize(40, 5)
+	m.cursorCol = 80 // Cursor at end
+
+	// cursorWrapLine returns 2 (beyond segments 0 and 1), renderContent adds virtual cursor line
+	wrapLine := m.cursorWrapLine()
+	require.Equal(t, 2, wrapLine, "Cursor at end of 2-segment line should be on virtual wrap line 2")
+
+	m.Focus()
+	view := m.View()
+	require.Contains(t, view, cursorOn, "Cursor should be visible at end of multi-wrap line")
+}
+
+func TestView_CursorWrapLine_NotAtEnd(t *testing.T) {
+	// Verify the fix doesn't break normal cases - cursor in middle of wrapped line
+	m := New(Config{VimEnabled: true, DefaultMode: ModeInsert})
+
+	// Line of 80 chars, width 40
+	m.SetValue("12345678901234567890123456789012345678901234567890123456789012345678901234567890")
+	m.SetSize(40, 5)
+	m.cursorCol = 40 // Cursor at start of second segment
+
+	// cursorWrapLine should return 1 (cursor is ON character 40, which is in segment 1)
+	wrapLine := m.cursorWrapLine()
+	require.Equal(t, 1, wrapLine, "Cursor at position 40 should be on wrap line 1")
+}

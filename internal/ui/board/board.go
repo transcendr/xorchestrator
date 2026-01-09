@@ -49,6 +49,10 @@ type Model struct {
 	focused  int
 	width    int
 	height   int
+
+	// boardFocused controls whether the selected column is visually highlighted.
+	// When false (e.g., chat panel has focus), no column border is highlighted.
+	boardFocused bool
 }
 
 // NewFromViews creates a board from multiple view configurations.
@@ -98,13 +102,14 @@ func NewFromViews(viewConfigs []config.ViewConfig, executor bql.BQLExecutor, clo
 	}
 
 	return Model{
-		views:       views,
-		currentView: 0,
-		columns:     columns,
-		configs:     configs,
-		executor:    executor,
-		clock:       clock,
-		focused:     focusIdx,
+		views:        views,
+		currentView:  0,
+		columns:      columns,
+		configs:      configs,
+		executor:     executor,
+		clock:        clock,
+		focused:      focusIdx,
+		boardFocused: true, // Board has focus by default
 	}
 }
 
@@ -123,11 +128,18 @@ func (m Model) SetSize(width, height int) Model {
 		return m
 	}
 
-	contentWidth := width / colCount
+	// Distribute width evenly, giving remainder to the last columns
+	baseWidth := width / colCount
+	remainder := width % colCount
 	contentHeight := height
 
 	for i := range m.columns {
-		m.columns[i] = m.columns[i].SetSize(contentWidth, contentHeight)
+		colWidth := baseWidth
+		// Give extra width to the last 'remainder' columns
+		if i >= colCount-remainder {
+			colWidth++
+		}
+		m.columns[i] = m.columns[i].SetSize(colWidth, contentHeight)
 	}
 	return m
 }
@@ -158,6 +170,14 @@ func (m Model) SetFocus(col int) Model {
 	if col >= 0 && col < len(m.columns) {
 		m.focused = col
 	}
+	return m
+}
+
+// SetBoardFocused sets whether the board has focus.
+// When true, the selected column border is highlighted.
+// When false (e.g., chat panel has focus), no highlighting is shown.
+func (m Model) SetBoardFocused(focused bool) Model {
+	m.boardFocused = focused
 	return m
 }
 
@@ -456,9 +476,11 @@ func (m Model) View() string {
 
 	for i, col := range m.columns {
 		isFocused := i == m.focused
+		// Only show focus highlight when board has focus
+		showFocusHighlight := isFocused && m.boardFocused
 
 		// Set focused state for selection rendering
-		col = col.SetFocused(isFocused)
+		col = col.SetFocused(showFocusHighlight)
 
 		// Use column's own color
 		colColor := col.Color()
@@ -470,7 +492,7 @@ func (m Model) View() string {
 			Height:             contentHeight,
 			TopLeft:            col.Title(),
 			TopRight:           col.RightTitle(),
-			Focused:            isFocused,
+			Focused:            showFocusHighlight,
 			TitleColor:         colColor,
 			FocusedBorderColor: colColor,
 		})

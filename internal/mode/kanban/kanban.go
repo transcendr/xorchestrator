@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zjrosen/perles/internal/beads"
 	"github.com/zjrosen/perles/internal/config"
@@ -19,7 +20,6 @@ import (
 	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/picker"
-	"github.com/zjrosen/perles/internal/ui/shared/quitmodal"
 	"github.com/zjrosen/perles/internal/ui/shared/toaster"
 	"github.com/zjrosen/perles/internal/ui/styles"
 )
@@ -56,7 +56,6 @@ type Model struct {
 	colEditor   coleditor.Model
 	modal       modal.Model
 	issueEditor issueeditor.Model // Unified issue editor modal
-	quitModal   quitmodal.Model   // Quit confirmation modal
 	view        ViewMode
 	width       int
 	height      int
@@ -88,14 +87,10 @@ func New(services mode.Services) Model {
 		SetShowCounts(services.Config.UI.ShowCounts)
 
 	return Model{
-		services: services,
-		view:     ViewBoard,
-		board:    boardModel,
-		help:     help.New(),
-		quitModal: quitmodal.New(quitmodal.Config{
-			Title:   "Exit Application?",
-			Message: "Are you sure you want to quit?",
-		}),
+		services:            services,
+		view:                ViewBoard,
+		board:               boardModel,
+		help:                help.New(),
 		loading:             true,
 		showStatusBar:       services.Config.UI.ShowStatusBar,
 		pendingDeleteColumn: -1,
@@ -129,7 +124,6 @@ func (m Model) SetSize(width, height int) Model {
 	m.height = height
 	m.board = m.board.SetSize(width, m.boardHeight())
 	m.help = m.help.SetSize(width, height)
-	m.quitModal.SetSize(width, height)
 	// Update column editor if we're viewing it
 	if m.view == ViewColumnEditor {
 		m.colEditor = m.colEditor.SetSize(width, height)
@@ -145,22 +139,14 @@ func (m Model) SetSize(width, height int) Model {
 	return m
 }
 
+// SetBoardFocused sets whether the board has focus for column highlighting.
+func (m Model) SetBoardFocused(focused bool) Model {
+	m.board = m.board.SetBoardFocused(focused)
+	return m
+}
+
 // Update handles messages.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	// Handle quit modal first when visible
-	if m.quitModal.IsVisible() {
-		var cmd tea.Cmd
-		var result quitmodal.Result
-		m.quitModal, cmd, result = m.quitModal.Update(msg)
-		switch result {
-		case quitmodal.ResultQuit:
-			return m, tea.Quit
-		case quitmodal.ResultCancel:
-			return m, nil
-		}
-		return m, cmd
-	}
-
 	// Handle key messages
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		return m.handleKey(keyMsg)
@@ -311,67 +297,53 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // View renders the kanban mode.
 func (m Model) View() string {
-	// If quit modal is visible, overlay it on top of the current view
-	if m.quitModal.IsVisible() {
-		return m.quitModal.Overlay(m.renderCurrentView())
-	}
-	return m.renderCurrentView()
-}
-
-// renderCurrentView renders the current view without the quit modal overlay.
-func (m Model) renderCurrentView() string {
 	switch m.view {
 	case ViewHelp:
 		// Render help overlay on top of board
-		bg := m.board.View()
-		if m.showStatusBar {
-			bg += "\n" + m.renderStatusBar()
-		}
+		bg := m.renderBoardWithStatusBar()
 		return m.help.Overlay(bg)
 	case ViewColumnEditor:
 		// Full-screen column editor
 		return m.colEditor.View()
 	case ViewNewViewModal, ViewDeleteViewModal, ViewRenameViewModal:
 		// Render modal overlay on top of board
-		bg := m.board.View()
-		if m.showStatusBar {
-			bg += "\n" + m.renderStatusBar()
-		}
+		bg := m.renderBoardWithStatusBar()
 		return m.modal.Overlay(bg)
 	case ViewEditIssue:
 		// Render issue editor overlay on top of board
-		bg := m.board.View()
-		if m.showStatusBar {
-			bg += "\n" + m.renderStatusBar()
-		}
+		bg := m.renderBoardWithStatusBar()
 		return m.issueEditor.Overlay(bg)
 	case ViewViewMenu:
 		// Render view menu overlay on top of board
-		bg := m.board.View()
-		if m.showStatusBar {
-			bg += "\n" + m.renderStatusBar()
-		}
+		bg := m.renderBoardWithStatusBar()
 		return m.picker.Overlay(bg)
 	case ViewDeleteColumnModal, ViewDeleteIssue:
 		// Render delete modal overlay on top of board
-		bg := m.board.View()
-		if m.showStatusBar {
-			bg += "\n" + m.renderStatusBar()
-		}
+		bg := m.renderBoardWithStatusBar()
 		return m.modal.Overlay(bg)
 	default:
-		// Add top margin for spacing
-		view := m.board.View()
-		if m.showStatusBar {
-			view += "\n"
-			if m.err != nil {
-				view += m.renderErrorBar()
-			} else {
-				view += m.renderStatusBar()
-			}
-		}
-		return view
+		return m.renderBoardWithStatusBar()
 	}
+}
+
+// renderBoardWithStatusBar renders the board with optional status bar,
+// ensuring consistent width to prevent layout shifts.
+func (m Model) renderBoardWithStatusBar() string {
+	// Render board and ensure it fills the full width
+	// This prevents layout shifts when status bar is toggled,
+	// since column widths may not sum exactly to m.width due to integer division
+	boardStyle := lipgloss.NewStyle().Width(m.width)
+	view := boardStyle.Render(m.board.View())
+
+	if m.showStatusBar {
+		view += "\n"
+		if m.err != nil {
+			view += m.renderErrorBar()
+		} else {
+			view += m.renderStatusBar()
+		}
+	}
+	return view
 }
 
 // Close releases resources held by the kanban mode.
@@ -462,6 +434,11 @@ func (m Model) configPath() string {
 		return ".perles.yaml"
 	}
 	return m.services.ConfigPath
+}
+
+// ShowStatusBar returns whether the status bar is currently visible.
+func (m Model) ShowStatusBar() bool {
+	return m.showStatusBar
 }
 
 func (m Model) renderStatusBar() string {

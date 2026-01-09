@@ -28,8 +28,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case ViewHelp:
 		switch {
 		case msg.Type == tea.KeyCtrlC:
-			m.quitModal.Show()
-			return m, nil
+			return m, func() tea.Msg { return mode.RequestQuitMsg{} }
 		case key.Matches(msg, keys.Common.Escape), key.Matches(msg, keys.Common.Help):
 			m.view = ViewBoard
 			return m, nil
@@ -65,8 +64,7 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	switch {
 	case msg.Type == tea.KeyCtrlC:
-		m.quitModal.Show()
-		return m, nil
+		return m, func() tea.Msg { return mode.RequestQuitMsg{} }
 
 	case key.Matches(msg, keys.Common.Help):
 		m.view = ViewHelp

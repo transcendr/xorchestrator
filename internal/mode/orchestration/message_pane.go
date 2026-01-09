@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 	"github.com/zjrosen/perles/internal/ui/styles"
 )
@@ -132,7 +133,7 @@ func (m Model) renderMessageContent(wrapWidth int) string {
 		header := fmt.Sprintf("%s %s → %s", timestamp, senderStyled, entry.To)
 
 		// Word wrap content (account for left border + space)
-		wrappedContent := wordWrap(entry.Content, wrapWidth-4)
+		wrappedContent := chatrender.WordWrap(entry.Content, wrapWidth-4)
 		styledContent := messageContentStyle.Render(wrappedContent)
 
 		// Add left border to header

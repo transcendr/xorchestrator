@@ -109,6 +109,23 @@ func (m Model) renderContent() string {
 			currentDisplayRow++
 		}
 
+		// Handle virtual cursor line: when cursor is at exact width boundary,
+		// cursorWrapLine() returns an index beyond the wrapped segments.
+		// Add a new display line with just the cursor.
+		if m.focused && logicalRow == m.cursorRow {
+			cursorWrap := m.cursorWrapLine()
+			if cursorWrap >= len(wrappedLines) {
+				// Skip if before scroll offset
+				if currentDisplayRow >= scrollDisplayRow {
+					// Stop if we've filled the visible area
+					if m.height <= 0 || len(displayLines) < m.height {
+						displayLines = append(displayLines, cursorOn+" "+cursorOff)
+					}
+				}
+				currentDisplayRow++
+			}
+		}
+
 		// Stop if we've filled the visible area
 		if m.height > 0 && len(displayLines) >= m.height {
 			break
@@ -644,6 +661,8 @@ func (m Model) cursorDisplayRow() int {
 // cursorWrapLine returns which wrapped line within the current row the cursor is on (0-indexed).
 // cursorCol is a grapheme index, so we need to calculate the display column
 // (sum of display widths of graphemes before cursor) and divide by m.width.
+// Note: This may return an index beyond the actual wrapped segments when cursor
+// is at an exact width boundary. renderContent() handles this by adding a virtual cursor line.
 func (m Model) cursorWrapLine() int {
 	if m.width <= 0 {
 		return 0

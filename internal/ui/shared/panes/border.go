@@ -59,6 +59,11 @@ type BorderConfig struct {
 	ActiveTab        int                    // 0-indexed active tab (clamped to valid range)
 	ActiveTabColor   lipgloss.TerminalColor // Custom active tab color (default: BorderHighlightFocusColor)
 	InactiveTabColor lipgloss.TerminalColor // Custom inactive tab color (default: TextMutedColor)
+
+	// PreWrapped indicates the content already handles its own line wrapping.
+	// When true, skips lipgloss Width constraint to avoid double-wrapping.
+	// Use this for components like vimtextarea that manage their own soft-wrap.
+	PreWrapped bool
 }
 
 // BorderedPane renders content within a bordered panel with optional titles.
@@ -145,9 +150,17 @@ func BorderedPane(cfg BorderConfig) string {
 	// Calculate content height (excluding top and bottom borders)
 	contentHeight := max(cfg.Height-2, 1)
 
-	// Use lipgloss to constrain content width (handles wrapping/truncation properly)
-	contentStyle := lipgloss.NewStyle().Width(innerWidth).Height(contentHeight)
-	constrainedContent := contentStyle.Render(content)
+	// Constrain content dimensions
+	// When PreWrapped is true, skip lipgloss constraints entirely since content
+	// handles its own wrapping (e.g., vimtextarea). The line loop below handles
+	// height limiting and width padding. This avoids double-wrapping conflicts.
+	var constrainedContent string
+	if cfg.PreWrapped {
+		constrainedContent = content
+	} else {
+		contentStyle := lipgloss.NewStyle().Width(innerWidth).Height(contentHeight)
+		constrainedContent = contentStyle.Render(content)
+	}
 
 	// Split constrained content into lines
 	contentLines := strings.Split(constrainedContent, "\n")

@@ -471,14 +471,16 @@ func TestTreeSubMode_HelpKey_ShowsHelp(t *testing.T) {
 	require.Equal(t, ViewHelp, m.view, "? should switch to help view")
 }
 
-func TestTreeSubMode_CtrlC_OpensQuitModal(t *testing.T) {
+func TestTreeSubMode_CtrlC_ReturnsRequestQuitMsg(t *testing.T) {
 	m := createTreeTestModel(t)
 
-	// Press ctrl+c - should open quit modal, not quit directly
-	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	// Press ctrl+c - should return mode.RequestQuitMsg
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 
-	require.True(t, m.quitModal.IsVisible(), "ctrl+c should open quit modal")
-	require.Nil(t, cmd, "no command expected (just showing modal)")
+	require.NotNil(t, cmd, "expected quit request command")
+	result := cmd()
+	_, isRequestQuit := result.(mode.RequestQuitMsg)
+	require.True(t, isRequestQuit, "ctrl+c should return mode.RequestQuitMsg")
 }
 
 func TestTreeSubMode_NotFocused_KeysPassThrough(t *testing.T) {

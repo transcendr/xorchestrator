@@ -46,6 +46,7 @@ test-update:
 		./internal/ui/modals/issueeditor/... \
 		./internal/ui/nobeads/... \
 		./internal/ui/outdated/... \
+		./internal/ui/shared/chatpanel/... \
 		./internal/ui/shared/colorpicker/... \
 		./internal/ui/shared/diffviewer/... \
 		./internal/ui/shared/issuebadge/... \
