@@ -117,6 +117,12 @@ func (d issueDelegate) Render(w io.Writer, m list.Model, index int, item list.It
 
 	isSelected := index == m.Index() && d.focused != nil && *d.focused
 	line := renderIssueLine(issue, isSelected)
+
+	// Constrain to list width so lines wrap properly within column bounds
+	if m.Width() > 0 {
+		line = lipgloss.NewStyle().Width(m.Width()).Render(line)
+	}
+
 	_, _ = fmt.Fprint(w, line)
 }
 
