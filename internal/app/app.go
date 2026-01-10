@@ -483,6 +483,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Fall through to mode handler
 
+	// Forward spinner tick to chat panel for loading animation
+	case chatpanel.SpinnerTickMsg:
+		if m.chatPanel.Visible() && m.currentMode != mode.ModeOrchestration {
+			var cmd tea.Cmd
+			m.chatPanel, cmd = m.chatPanel.Update(msg)
+			return m, cmd
+		}
+
 	// Handle SendMessageMsg from chatPanel (user submitted a message)
 	case chatpanel.SendMessageMsg:
 		if m.chatInfra != nil && m.chatInfra.ProcessRegistry.Get(chatpanel.ChatPanelProcessID) != nil {
@@ -870,11 +878,17 @@ func (m Model) handleToggleChatPanel() (tea.Model, tea.Cmd) {
 
 		// Spawn assistant if not already spawned
 		if m.chatInfra != nil && m.chatInfra.ProcessRegistry.Get(chatpanel.ChatPanelProcessID) == nil {
-			spawnCmd := m.chatPanel.SpawnAssistant()
+			var spawnCmd tea.Cmd
+			m.chatPanel, spawnCmd = m.chatPanel.SpawnAssistant()
 			if spawnCmd != nil {
 				cmds = append(cmds, spawnCmd)
 			}
 			log.Info(log.CatMode, "Spawning chat assistant")
+		} else {
+			// Process exists but session may still be Pending - restart spinner if needed
+			if spinnerCmd := m.chatPanel.StartSpinner(); spinnerCmd != nil {
+				cmds = append(cmds, spinnerCmd)
+			}
 		}
 
 		return m, tea.Batch(cmds...)
@@ -926,7 +940,8 @@ func (m Model) handleNewSessionRequest() (tea.Model, tea.Cmd) {
 	m.chatPanel = m.chatPanel.SetSessionProcessID(sessionID, processID)
 
 	// Spawn process for the new session
-	spawnCmd := m.chatPanel.SpawnAssistantForSession(processID)
+	var spawnCmd tea.Cmd
+	m.chatPanel, spawnCmd = m.chatPanel.SpawnAssistantForSession(processID)
 
 	log.Info(log.CatMode, "Created new chat session", "sessionID", sessionID, "processID", processID)
 

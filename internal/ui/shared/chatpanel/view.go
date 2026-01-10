@@ -54,8 +54,22 @@ func (m Model) View() string {
 			break
 		}
 
-		// Render chat messages using viewport
+		// Calculate viewport dimensions
 		vpWidth := max(m.width-2, 1)
+
+		// Show loading indicator while waiting for first response
+		if session.Status == events.ProcessStatusPending {
+			tabContent = m.renderLoadingIndicator(vpWidth, contentHeight)
+			break
+		}
+
+		// Show error state if spawn failed
+		if session.Status == events.ProcessStatusFailed {
+			tabContent = m.renderErrorState(vpWidth, contentHeight)
+			break
+		}
+
+		// Render chat messages using viewport
 		content := m.renderMessages(vpWidth)
 
 		// Pad content to push to bottom (chat-like behavior)
@@ -181,6 +195,85 @@ func (m Model) renderMessages(wrapWidth int) string {
 		AgentLabel: "Assistant",
 		AgentColor: chatrender.AssistantColor,
 	})
+}
+
+// renderLoadingIndicator renders a centered loading indicator with spinner.
+// Used during initial spawn phase when session is Pending or Starting.
+// Uses theme-aware SpinnerColor for the spinner styling.
+func (m Model) renderLoadingIndicator(width, height int) string {
+	if width < 1 || height < 1 {
+		return ""
+	}
+
+	spinnerStyle := lipgloss.NewStyle().
+		Foreground(styles.SpinnerColor)
+
+	messageStyle := lipgloss.NewStyle().
+		Foreground(styles.TextSecondaryColor)
+
+	// Get current spinner frame
+	frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
+
+	// Build loading content with animated braille spinner
+	var lines []string
+	lines = append(lines, "")
+	lines = append(lines, spinnerStyle.Render(frame+" Starting assistant..."))
+	lines = append(lines, "")
+	lines = append(lines, messageStyle.Render("Please wait while the AI process initializes"))
+	lines = append(lines, "")
+
+	content := strings.Join(lines, "\n")
+
+	// Center the content block
+	style := lipgloss.NewStyle().
+		Width(width).
+		Height(height).
+		Align(lipgloss.Center, lipgloss.Center)
+
+	return style.Render(content)
+}
+
+// renderErrorState renders a centered error state with recovery guidance.
+// Used when session status is Failed (ProcessStatusFailed).
+// Shows error message and instructions for recovery.
+func (m Model) renderErrorState(width, height int) string {
+	if width < 1 || height < 1 {
+		return ""
+	}
+
+	warningStyle := lipgloss.NewStyle().
+		Foreground(styles.StatusErrorColor).
+		Bold(true)
+
+	messageStyle := lipgloss.NewStyle().
+		Foreground(styles.TextPrimaryColor)
+
+	helpStyle := lipgloss.NewStyle().
+		Foreground(styles.TextMutedColor)
+
+	keyStyle := lipgloss.NewStyle().
+		Foreground(styles.StatusInProgressColor)
+
+	// Build error content
+	var lines []string
+	lines = append(lines, "")
+	lines = append(lines, warningStyle.Render("Failed to start assistant"))
+	lines = append(lines, "")
+	lines = append(lines, messageStyle.Render("The AI process could not be initialized."))
+	lines = append(lines, "")
+	lines = append(lines, helpStyle.Render("Recovery options:"))
+	lines = append(lines, keyStyle.Render("Ctrl+W")+" "+helpStyle.Render("to retry"))
+	lines = append(lines, "")
+
+	content := strings.Join(lines, "\n")
+
+	// Center the content block
+	style := lipgloss.NewStyle().
+		Width(width).
+		Height(height).
+		Align(lipgloss.Center, lipgloss.Center)
+
+	return style.Render(content)
 }
 
 // renderSessionsTab renders the Sessions tab content with a selectable session list.

@@ -503,6 +503,9 @@ func TestModel_View_ShowsTabs(t *testing.T) {
 func TestModel_View_WithMessages(t *testing.T) {
 	m := New(DefaultConfig()).SetSize(40, 20).Toggle()
 
+	// Set session to Ready status to show messages (Pending shows loading indicator)
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusReady
+
 	// Add some messages
 	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Hello!"})
 	m = m.AddMessage(chatrender.Message{Role: RoleAssistant, Content: "Hi there!"})
@@ -712,7 +715,7 @@ func TestModel_SpawnAssistant_NoInfrastructure(t *testing.T) {
 	m := New(cfg)
 
 	// SpawnAssistant should return an error command when no infrastructure
-	cmd := m.SpawnAssistant()
+	_, cmd := m.SpawnAssistant()
 	require.NotNil(t, cmd)
 
 	// Execute the command
@@ -752,9 +755,9 @@ func TestModel_SpawnAssistant_SubmitsCommand(t *testing.T) {
 
 	m = m.SetInfrastructure(infra)
 
-	// SpawnAssistant should return nil (no error) when infrastructure is set
-	cmd := m.SpawnAssistant()
-	require.Nil(t, cmd, "SpawnAssistant should return nil cmd on successful submission")
+	// SpawnAssistant should return spinnerTick cmd when infrastructure is set
+	_, cmd := m.SpawnAssistant()
+	require.NotNil(t, cmd, "SpawnAssistant should return spinnerTick cmd on successful submission")
 }
 
 func TestModel_SendMessage_SubmitsCommand(t *testing.T) {
@@ -1242,6 +1245,144 @@ func TestModel_HandleProcessEvent_ProcessIncoming_Empty(t *testing.T) {
 	require.NotNil(t, cmd) // listener continues
 }
 
+func TestModel_HandleProcessEvent_ProcessSpawned(t *testing.T) {
+	cfg := Config{
+		ClientType: "claude",
+		WorkDir:    "/tmp/test",
+	}
+	m := New(cfg)
+
+	// Create infrastructure
+	infra := newTestInfrastructure(t)
+	infra.Start()
+	defer infra.Shutdown()
+
+	m = m.SetInfrastructure(infra)
+
+	// Verify initial session status is Pending
+	require.Equal(t, events.ProcessStatusPending, m.ActiveSession().Status)
+
+	// Create a ProcessSpawned event
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessSpawned,
+			ProcessID: ChatPanelProcessID, // Must match session's ProcessID for routing
+		},
+	}
+
+	// Handle the event
+	m, cmd := m.Update(event)
+
+	// Verify session status is unchanged (ProcessSpawned is no-op, status stays Pending)
+	require.Equal(t, events.ProcessStatusPending, m.ActiveSession().Status)
+	require.NotNil(t, cmd) // listener continues
+}
+
+func TestModel_HandleProcessEvent_ProcessReady_UpdatesSessionStatus(t *testing.T) {
+	cfg := Config{
+		ClientType: "claude",
+		WorkDir:    "/tmp/test",
+	}
+	m := New(cfg)
+
+	// Create infrastructure
+	infra := newTestInfrastructure(t)
+	infra.Start()
+	defer infra.Shutdown()
+
+	m = m.SetInfrastructure(infra)
+
+	// Set session status to Working (simulating post-spawn state)
+	m.ActiveSession().Status = events.ProcessStatusWorking
+
+	// Create a ProcessReady event
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessReady,
+			ProcessID: ChatPanelProcessID,
+		},
+	}
+
+	// Handle the event
+	m, cmd := m.Update(event)
+
+	// Verify session status was updated to Ready
+	require.Equal(t, events.ProcessStatusReady, m.ActiveSession().Status)
+	require.NotNil(t, cmd) // listener continues
+}
+
+func TestModel_HandleProcessEvent_ProcessWorking_UpdatesSessionStatus(t *testing.T) {
+	cfg := Config{
+		ClientType: "claude",
+		WorkDir:    "/tmp/test",
+	}
+	m := New(cfg)
+
+	// Create infrastructure
+	infra := newTestInfrastructure(t)
+	infra.Start()
+	defer infra.Shutdown()
+
+	m = m.SetInfrastructure(infra)
+
+	// Set session status to Ready first
+	m.ActiveSession().Status = events.ProcessStatusReady
+
+	// Create a ProcessWorking event
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessWorking,
+			ProcessID: ChatPanelProcessID,
+		},
+	}
+
+	// Handle the event
+	m, cmd := m.Update(event)
+
+	// Verify session status was updated to Working
+	require.Equal(t, events.ProcessStatusWorking, m.ActiveSession().Status)
+	require.NotNil(t, cmd) // listener continues
+}
+
+func TestModel_HandleProcessEvent_ProcessError_UpdatesSessionStatus(t *testing.T) {
+	cfg := Config{
+		ClientType: "claude",
+		WorkDir:    "/tmp/test",
+	}
+	m := New(cfg)
+
+	// Create infrastructure
+	infra := newTestInfrastructure(t)
+	infra.Start()
+	defer infra.Shutdown()
+
+	m = m.SetInfrastructure(infra)
+
+	// Set session status to Working (simulating in-progress state)
+	m.ActiveSession().Status = events.ProcessStatusWorking
+
+	// Create a ProcessError event with an error
+	testErr := errors.New("test spawn failure")
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessError,
+			ProcessID: ChatPanelProcessID,
+			Error:     testErr,
+		},
+	}
+
+	// Handle the event
+	m, cmd := m.Update(event)
+
+	// Verify session status was updated to Failed
+	require.Equal(t, events.ProcessStatusFailed, m.ActiveSession().Status)
+	require.NotNil(t, cmd) // should be batch with listener + error msg
+}
+
 func TestModel_Cleanup(t *testing.T) {
 	cfg := Config{
 		ClientType: "claude",
@@ -1286,7 +1427,7 @@ func TestModel_SubmitError_ReturnsErrorMsg(t *testing.T) {
 	m = m.SetInfrastructure(infra)
 
 	// SpawnAssistant should return error since processor is not started
-	cmd := m.SpawnAssistant()
+	_, cmd := m.SpawnAssistant()
 	require.NotNil(t, cmd, "SpawnAssistant should return error cmd when processor not started")
 
 	// Execute the command to verify it's an error
@@ -1741,6 +1882,9 @@ func TestActiveSessionID(t *testing.T) {
 func TestRenderChatTabUsesActiveSession(t *testing.T) {
 	m := New(DefaultConfig()).SetSize(50, 25).Toggle()
 
+	// Set session to Ready status to show messages
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusReady
+
 	// Add message to initial session (session-1)
 	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Hello from session 1"})
 	m = m.AddMessage(chatrender.Message{Role: RoleAssistant, Content: "Response in session 1"})
@@ -1752,6 +1896,7 @@ func TestRenderChatTabUsesActiveSession(t *testing.T) {
 
 	// Create and switch to session-2
 	m, _ = m.CreateSession("session-2")
+	m.sessions["session-2"].Status = events.ProcessStatusReady
 	m, _ = m.SwitchSession("session-2")
 
 	// Add different messages to session-2
@@ -1779,6 +1924,9 @@ func TestRenderChatTabUsesActiveSession(t *testing.T) {
 func TestViewportPerSession(t *testing.T) {
 	m := New(DefaultConfig()).SetSize(50, 20).Toggle()
 
+	// Set session to Ready status to show messages (Pending shows loading indicator)
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusReady
+
 	// Add enough messages to session-1 to enable scrolling
 	for i := 0; i < 20; i++ {
 		m = m.AddMessage(chatrender.Message{
@@ -1804,6 +1952,7 @@ func TestViewportPerSession(t *testing.T) {
 
 	// Create and switch to session-2
 	m, _ = m.CreateSession("session-2")
+	m.sessions["session-2"].Status = events.ProcessStatusReady
 	m, _ = m.SwitchSession("session-2")
 
 	// Add messages to session-2
@@ -2238,6 +2387,9 @@ func TestHasNewContentTracking_ScrolledUp(t *testing.T) {
 		WorkDir:    "/tmp/test",
 	}
 	m := New(cfg).SetSize(50, 20).Toggle()
+
+	// Set session to Ready status to show messages (Pending shows loading indicator)
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusReady
 
 	// Create infrastructure
 	infra := newTestInfrastructure(t)
@@ -2903,16 +3055,16 @@ func TestSpawnAssistantForSession(t *testing.T) {
 	require.NoError(t, err)
 	defer infra.Shutdown()
 
-	// SpawnAssistantForSession should return nil on successful submission
-	cmd := m.SpawnAssistantForSession("session-2")
-	require.Nil(t, cmd, "SpawnAssistantForSession should return nil on successful submission")
+	// SpawnAssistantForSession should return spinnerTick cmd on successful submission
+	_, cmd := m.SpawnAssistantForSession("session-2")
+	require.NotNil(t, cmd, "SpawnAssistantForSession should return spinnerTick cmd on successful submission")
 }
 
 func TestSpawnAssistantForSession_NoInfrastructure(t *testing.T) {
 	// Test that SpawnAssistantForSession returns error when no infrastructure
 	m := New(DefaultConfig())
 
-	cmd := m.SpawnAssistantForSession("session-2")
+	_, cmd := m.SpawnAssistantForSession("session-2")
 	require.NotNil(t, cmd, "SpawnAssistantForSession should return error cmd when no infrastructure")
 
 	// Execute the command to get the error message
@@ -2920,6 +3072,101 @@ func TestSpawnAssistantForSession_NoInfrastructure(t *testing.T) {
 	errMsg, ok := msg.(AssistantErrorMsg)
 	require.True(t, ok, "Should return AssistantErrorMsg")
 	require.Equal(t, ErrNoInfrastructure, errMsg.Error)
+}
+
+func TestSpawnAssistantForSession_KeepsStatusPending(t *testing.T) {
+	// Test that SpawnAssistantForSession keeps session status as Pending (shows loading indicator)
+	m := New(DefaultConfig())
+	infra := newTestInfrastructureWithSpawnExpectation(t)
+	m = m.SetInfrastructure(infra)
+
+	// Start the infrastructure
+	err := infra.Start()
+	require.NoError(t, err)
+	defer infra.Shutdown()
+
+	// Default session (session-1) should be mapped to ChatPanelProcessID
+	session := m.SessionByProcessID(ChatPanelProcessID)
+	require.NotNil(t, session, "Session should be mapped to ChatPanelProcessID")
+
+	// Verify initial status is Pending
+	require.Equal(t, events.ProcessStatusPending, session.Status,
+		"Session status should initially be Pending")
+
+	// Call SpawnAssistantForSession - must capture returned model to get status change
+	var cmd tea.Cmd
+	m, cmd = m.SpawnAssistantForSession(ChatPanelProcessID)
+	require.NotNil(t, cmd, "Should return spinnerTick cmd on successful submission")
+
+	// Status should still be Pending (loading indicator shows until ProcessReady)
+	session = m.SessionByProcessID(ChatPanelProcessID)
+	require.Equal(t, events.ProcessStatusPending, session.Status,
+		"Session status should remain Pending until ProcessReady event")
+}
+
+func TestSpawnAssistantForSession_KeepsStatusPendingForNewSession(t *testing.T) {
+	// Test that status remains Pending for a newly created session
+	m := New(DefaultConfig())
+	infra := newTestInfrastructureWithSpawnExpectation(t)
+	m = m.SetInfrastructure(infra)
+
+	// Start the infrastructure
+	err := infra.Start()
+	require.NoError(t, err)
+	defer infra.Shutdown()
+
+	// Create a new session
+	var session *SessionData
+	m, session = m.CreateSession("session-2")
+	require.NotNil(t, session)
+
+	// Set up the process ID mapping (as app.go does before calling SpawnAssistantForSession)
+	processID := "session-2"
+	session.ProcessID = processID
+	m = m.SetSessionProcessID("session-2", processID)
+
+	// Verify initial status is Pending
+	require.Equal(t, events.ProcessStatusPending, session.Status,
+		"New session status should be Pending")
+
+	// Call SpawnAssistantForSession - must capture returned model to get status change
+	var cmd tea.Cmd
+	m, cmd = m.SpawnAssistantForSession(processID)
+	require.NotNil(t, cmd, "Should return spinnerTick cmd on successful submission")
+
+	// Status should still be Pending - check from returned model
+	session = m.SessionByProcessID(processID)
+	require.Equal(t, events.ProcessStatusPending, session.Status,
+		"Session status should remain Pending until ProcessReady event")
+}
+
+func TestSpawnAssistantForSession_StatusNotSetForUnknownProcessID(t *testing.T) {
+	// Test that status is NOT set if processID doesn't map to a session
+	// (defensive behavior - should not crash)
+	m := New(DefaultConfig())
+	infra := newTestInfrastructureWithSpawnExpectation(t)
+	m = m.SetInfrastructure(infra)
+
+	// Start the infrastructure
+	err := infra.Start()
+	require.NoError(t, err)
+	defer infra.Shutdown()
+
+	// Get the original session (to verify it's not affected)
+	originalSession := m.SessionByProcessID(ChatPanelProcessID)
+	require.NotNil(t, originalSession)
+	originalStatus := originalSession.Status
+
+	// Call SpawnAssistantForSession with unknown processID
+	// This should not crash - just submit the command without setting status
+	var cmd tea.Cmd
+	m, cmd = m.SpawnAssistantForSession("unknown-process-id")
+	require.NotNil(t, cmd, "Should return spinnerTick cmd on successful submission even with unknown process ID")
+
+	// Original session's status should be unchanged (check from returned model)
+	originalSession = m.SessionByProcessID(ChatPanelProcessID)
+	require.Equal(t, originalStatus, originalSession.Status,
+		"Original session status should not be affected by unknown processID")
 }
 
 func TestNewSessionClearsHasNewContent(t *testing.T) {
@@ -3242,4 +3489,176 @@ func TestEnterOnCreateNewSession_EmitsNewSessionRequest(t *testing.T) {
 	msg := cmd()
 	_, ok := msg.(NewSessionRequestMsg)
 	require.True(t, ok, "Should emit NewSessionRequestMsg, got %T", msg)
+}
+
+// ============================================================================
+// Loading Indicator and Error State Tests (perles-6sce.3)
+// ============================================================================
+
+func TestRenderLoadingIndicator_Golden(t *testing.T) {
+	// Test golden snapshot for loading indicator
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Render the loading indicator with standard dimensions
+	output := m.renderLoadingIndicator(58, 12) // Inner width/height accounting for borders
+
+	teatest.RequireEqualOutput(t, []byte(output))
+}
+
+func TestRenderErrorState_Golden(t *testing.T) {
+	// Test golden snapshot for error state
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Render the error state with standard dimensions
+	output := m.renderErrorState(58, 12)
+
+	teatest.RequireEqualOutput(t, []byte(output))
+}
+
+func TestRenderLoadingIndicator_UsesSpinnerColor(t *testing.T) {
+	// Unit test: Loading indicator uses SpinnerColor from theme
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	output := m.renderLoadingIndicator(58, 12)
+
+	// The output should contain the braille spinner character
+	require.Contains(t, output, "⠋", "Loading indicator should contain braille spinner character")
+	require.Contains(t, output, "Starting assistant...", "Loading indicator should contain message text")
+}
+
+func TestRenderErrorState_IncludesRecoveryGuidance(t *testing.T) {
+	// Unit test: Error state includes recovery guidance text
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	output := m.renderErrorState(58, 12)
+
+	// Error state should include recovery guidance
+	require.Contains(t, output, "Failed to start assistant", "Error state should contain failure message")
+	require.Contains(t, output, "Ctrl+W", "Error state should contain recovery key hint")
+	require.Contains(t, output, "to retry", "Error state should contain retry guidance")
+}
+
+func TestRenderLoadingIndicator_HandlesZeroDimensions(t *testing.T) {
+	// Unit test: Loading indicator handles zero dimensions gracefully
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Zero width
+	output := m.renderLoadingIndicator(0, 12)
+	require.Empty(t, output, "Loading indicator should return empty for zero width")
+
+	// Zero height
+	output = m.renderLoadingIndicator(58, 0)
+	require.Empty(t, output, "Loading indicator should return empty for zero height")
+}
+
+func TestRenderErrorState_HandlesZeroDimensions(t *testing.T) {
+	// Unit test: Error state handles zero dimensions gracefully
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Zero width
+	output := m.renderErrorState(0, 12)
+	require.Empty(t, output, "Error state should return empty for zero width")
+
+	// Zero height
+	output = m.renderErrorState(58, 0)
+	require.Empty(t, output, "Error state should return empty for zero height")
+}
+
+// ============================================================================
+// View() Status-Based Routing Tests (perles-6sce.4)
+// ============================================================================
+
+func TestView_Golden_ChatTab_PendingStatus(t *testing.T) {
+	// Golden test: Chat tab with session in Pending status shows loading indicator
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Use default session with pending status
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusPending
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_ChatTab_FailedStatus(t *testing.T) {
+	// Golden test: Chat tab with session in Failed status shows error state
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Use default session with failed status
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusFailed
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_ChatTab_ReadyStatus(t *testing.T) {
+	// Golden test: Chat tab with session in Ready status shows messages (existing behavior)
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Use default session with ready status and some messages
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusReady
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Hello"})
+	m = m.AddMessage(chatrender.Message{Role: RoleAssistant, Content: "Hi there!"})
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_RoutesToLoadingIndicatorForPending(t *testing.T) {
+	// Unit test: View() correctly routes to loading indicator for Pending status
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Use default session with pending status
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusPending
+
+	view := m.View()
+
+	// Should show loading indicator content
+	require.Contains(t, view, "Starting assistant...", "Pending status should show loading indicator")
+	require.Contains(t, view, "⠋", "Pending status should show spinner")
+}
+
+func TestView_RoutesToErrorStateForFailed(t *testing.T) {
+	// Unit test: View() correctly routes to error state for Failed status
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Use default session with failed status
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusFailed
+
+	view := m.View()
+
+	// Should show error state content
+	require.Contains(t, view, "Failed to start assistant", "Failed status should show error state")
+	require.Contains(t, view, "Ctrl+W", "Failed status should show recovery hint")
+}
+
+func TestView_RoutesToMessagesForReadyStatus(t *testing.T) {
+	// Unit test: View() correctly routes to messages for Ready status
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Use default session with ready status and a message
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusReady
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Test message"})
+
+	view := m.View()
+
+	// Should show messages, not loading or error
+	require.Contains(t, view, "Test message", "Ready status should show messages")
+	require.NotContains(t, view, "Starting assistant...", "Ready status should not show loading indicator")
+	require.NotContains(t, view, "Failed to start assistant", "Ready status should not show error state")
+}
+
+func TestView_RoutesToMessagesForWorkingStatus(t *testing.T) {
+	// Unit test: View() correctly routes to messages for Working status
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Use default session with working status and a message
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusWorking
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Working message"})
+
+	view := m.View()
+
+	// Should show messages, not loading or error
+	require.Contains(t, view, "Working message", "Working status should show messages")
+	require.NotContains(t, view, "Starting assistant...", "Working status should not show loading indicator")
+	require.NotContains(t, view, "Failed to start assistant", "Working status should not show error state")
 }

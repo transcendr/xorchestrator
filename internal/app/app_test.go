@@ -1283,7 +1283,7 @@ func TestApp_ChatPanel_SpawnError_ReturnsErrorMsg(t *testing.T) {
 	})
 
 	// SpawnAssistant without infrastructure should return error cmd
-	cmd := panelWithoutInfra.SpawnAssistant()
+	_, cmd := panelWithoutInfra.SpawnAssistant()
 	require.NotNil(t, cmd, "SpawnAssistant should return error cmd when no infrastructure")
 
 	// Execute the command to get the error message

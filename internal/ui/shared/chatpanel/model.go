@@ -104,9 +104,18 @@ type Model struct {
 	// Confirmation state for session retirement
 	pendingRetireSessionID string // Session ID pending retirement confirmation (empty = no pending)
 
+	// Spinner animation
+	spinnerFrame int // Current spinner frame index
+
 	// Clock is the time source for testing. If nil, uses time.Now().
 	Clock func() time.Time
 }
+
+// spinnerFrames defines the braille spinner animation sequence.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// SpinnerTickMsg advances the spinner frame.
+type SpinnerTickMsg struct{}
 
 // DefaultSessionID is the ID of the initial session created on startup.
 const DefaultSessionID = "session-1"
@@ -221,11 +230,38 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
+// spinnerTick returns a command that sends SpinnerTickMsg after 80ms.
+func spinnerTick() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg {
+		return SpinnerTickMsg{}
+	})
+}
+
+// StartSpinner returns a command to start the spinner animation.
+// Used when reopening the panel while session is still Pending.
+func (m Model) StartSpinner() tea.Cmd {
+	session := m.ActiveSession()
+	if session != nil && session.Status == events.ProcessStatusPending {
+		return spinnerTick()
+	}
+	return nil
+}
+
 // Update implements tea.Model and handles messages.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	// Handle spinner animation
+	case SpinnerTickMsg:
+		// Only advance spinner if we're showing the loading indicator
+		session := m.ActiveSession()
+		if session != nil && session.Status == events.ProcessStatusPending {
+			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+			return m, spinnerTick()
+		}
+		return m, nil
+
 	// Handle pubsub events from infrastructure (always, regardless of visibility)
 	case pubsub.Event[any]:
 		return m.handlePubSubEvent(msg)
@@ -585,20 +621,24 @@ func (m Model) InitListener() tea.Cmd {
 // SpawnAssistant submits a SpawnProcessCommand to create a new AI assistant process.
 // The infrastructure's SimpleInfrastructureConfig contains the AI client, work dir,
 // system prompt, and initial prompt - these are configured when creating the infrastructure.
-// Returns a tea.Cmd that emits AssistantErrorMsg if submission fails.
-func (m Model) SpawnAssistant() tea.Cmd {
+// Returns the updated model (with status set to Starting) and a tea.Cmd that emits
+// AssistantErrorMsg if submission fails.
+func (m Model) SpawnAssistant() (Model, tea.Cmd) {
 	return m.SpawnAssistantForSession(ChatPanelProcessID)
 }
 
 // SpawnAssistantForSession submits a SpawnProcessCommand with a specific process ID.
 // This is used for multi-session support where each session has its own process.
-// Returns a tea.Cmd that emits AssistantErrorMsg if submission fails.
-func (m Model) SpawnAssistantForSession(processID string) tea.Cmd {
+// Returns the updated model (with status set to Starting) and a tea.Cmd that emits
+// AssistantErrorMsg if submission fails.
+func (m Model) SpawnAssistantForSession(processID string) (Model, tea.Cmd) {
 	if m.infra == nil {
-		return func() tea.Msg {
+		return m, func() tea.Msg {
 			return AssistantErrorMsg{Error: ErrNoInfrastructure}
 		}
 	}
+
+	// Session stays in Pending status - will transition to Ready when first turn completes
 
 	// Create spawn command using v2 command types
 	// The SimpleInfrastructure's spawner already has the AI client config
@@ -607,12 +647,13 @@ func (m Model) SpawnAssistantForSession(processID string) tea.Cmd {
 
 	// Submit to infrastructure
 	if err := m.infra.Submit(cmd); err != nil {
-		return func() tea.Msg {
+		return m, func() tea.Msg {
 			return AssistantErrorMsg{Error: err}
 		}
 	}
 
-	return nil
+	// Start spinner animation
+	return m, spinnerTick()
 }
 
 // NextSessionID generates the next sequential session ID based on the number of existing sessions.
@@ -1007,6 +1048,10 @@ func (m Model) appendToSession(session *SessionData, event events.ProcessEvent) 
 		if event.Metrics != nil {
 			session.Metrics = event.Metrics
 		}
+
+	case events.ProcessSpawned:
+		// No-op: status is already Starting from SpawnAssistantForSession
+		// Will transition to Ready when first turn completes
 
 	case events.ProcessReady:
 		session.Status = events.ProcessStatusReady
