@@ -4,6 +4,7 @@ package chatrender
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -33,9 +34,10 @@ var (
 
 // Message represents a single message in chat history.
 type Message struct {
-	Role       string // "user", "assistant", "coordinator", "system"
-	Content    string
-	IsToolCall bool // True if this is a tool call (for grouped rendering)
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	IsToolCall bool       `json:"is_tool_call,omitempty"`
+	Timestamp  *time.Time `json:"ts,omitempty"`
 }
 
 // RenderConfig configures how chat messages are rendered.

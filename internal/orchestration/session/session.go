@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
 )
 
 // Status represents the session lifecycle state.
@@ -53,12 +55,12 @@ type Session struct {
 	Status Status
 
 	// BufferedWriters for log files.
-	coordLog   *BufferedWriter            // coordinator/output.log
-	coordRaw   *BufferedWriter            // coordinator/raw.jsonl
-	workerLogs map[string]*BufferedWriter // workerID -> workers/{id}/output.log
-	workerRaws map[string]*BufferedWriter // workerID -> workers/{id}/raw.jsonl
-	messageLog *BufferedWriter            // messages.jsonl
-	mcpLog     *BufferedWriter            // mcp_requests.jsonl
+	coordRaw       *BufferedWriter            // coordinator/raw.jsonl
+	coordMessages  *BufferedWriter            // coordinator/messages.jsonl (structured chat)
+	workerRaws     map[string]*BufferedWriter // workerID -> workers/{id}/raw.jsonl
+	workerMessages map[string]*BufferedWriter // workerID -> workers/{id}/messages.jsonl
+	messageLog     *BufferedWriter            // messages.jsonl (inter-agent messages)
+	mcpLog         *BufferedWriter            // mcp_requests.jsonl
 
 	// Metadata for tracking workers and token usage.
 	workers    []WorkerMetadata
@@ -120,9 +122,9 @@ const (
 	workersDir     = "workers"
 
 	// File names.
-	outputLogFile             = "output.log"
 	rawJSONLFile              = "raw.jsonl"
-	messagesJSONLFile         = "messages.jsonl"
+	messagesJSONLFile         = "messages.jsonl" // Inter-agent messages (root level)
+	chatMessagesFile          = "messages.jsonl" // Chat messages (coordinator/worker directories)
 	mcpRequestsFile           = "mcp_requests.jsonl"
 	summaryFile               = "summary.md"
 	accountabilitySummaryFile = "accountability_summary.md"
@@ -139,7 +141,7 @@ const (
 //	{dir}/
 //	├── metadata.json                # Session metadata with status=running
 //	├── coordinator/
-//	│   ├── output.log               # Coordinator conversation stream
+//	│   ├── messages.jsonl           # Coordinator chat messages (structured JSONL)
 //	│   └── raw.jsonl                # Raw Claude API JSON responses
 //	├── workers/                     # Worker directories created on demand
 //	├── messages.jsonl               # Inter-agent message log
@@ -170,29 +172,29 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 		return nil, fmt.Errorf("creating workers directory: %w", err)
 	}
 
-	// Create coordinator output.log with BufferedWriter
-	coordLogPath := filepath.Join(coordPath, outputLogFile)
-	coordLogFile, err := os.OpenFile(coordLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted dir parameter
-	if err != nil {
-		return nil, fmt.Errorf("creating coordinator output log: %w", err)
-	}
-	coordLog := NewBufferedWriter(coordLogFile)
-
 	// Create coordinator raw.jsonl with BufferedWriter
 	coordRawPath := filepath.Join(coordPath, rawJSONLFile)
 	coordRawFile, err := os.OpenFile(coordRawPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted dir parameter
 	if err != nil {
-		_ = coordLog.Close()
 		return nil, fmt.Errorf("creating coordinator raw.jsonl: %w", err)
 	}
 	coordRaw := NewBufferedWriter(coordRawFile)
 
-	// Create messages.jsonl with BufferedWriter
+	// Create coordinator messages.jsonl with BufferedWriter (structured chat messages)
+	coordMsgsPath := filepath.Join(coordPath, chatMessagesFile)
+	coordMsgsFile, err := os.OpenFile(coordMsgsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted dir parameter
+	if err != nil {
+		_ = coordRaw.Close()
+		return nil, fmt.Errorf("creating coordinator messages.jsonl: %w", err)
+	}
+	coordMessages := NewBufferedWriter(coordMsgsFile)
+
+	// Create messages.jsonl with BufferedWriter (inter-agent messages)
 	messagesPath := filepath.Join(dir, messagesJSONLFile)
 	messageLogFile, err := os.OpenFile(messagesPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted dir parameter
 	if err != nil {
-		_ = coordLog.Close()
 		_ = coordRaw.Close()
+		_ = coordMessages.Close()
 		return nil, fmt.Errorf("creating messages.jsonl: %w", err)
 	}
 	messageLog := NewBufferedWriter(messageLogFile)
@@ -201,8 +203,8 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 	mcpPath := filepath.Join(dir, mcpRequestsFile)
 	mcpLogFile, err := os.OpenFile(mcpPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted dir parameter
 	if err != nil {
-		_ = coordLog.Close()
 		_ = coordRaw.Close()
+		_ = coordMessages.Close()
 		_ = messageLog.Close()
 		return nil, fmt.Errorf("creating mcp_requests.jsonl: %w", err)
 	}
@@ -212,19 +214,19 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 
 	// Create session struct first so we can apply options
 	sess := &Session{
-		ID:         id,
-		Dir:        dir,
-		StartTime:  startTime,
-		Status:     StatusRunning,
-		coordLog:   coordLog,
-		coordRaw:   coordRaw,
-		workerLogs: make(map[string]*BufferedWriter),
-		workerRaws: make(map[string]*BufferedWriter),
-		messageLog: messageLog,
-		mcpLog:     mcpLog,
-		workers:    []WorkerMetadata{},
-		tokenUsage: TokenUsageSummary{},
-		closed:     false,
+		ID:             id,
+		Dir:            dir,
+		StartTime:      startTime,
+		Status:         StatusRunning,
+		coordRaw:       coordRaw,
+		coordMessages:  coordMessages,
+		workerRaws:     make(map[string]*BufferedWriter),
+		workerMessages: make(map[string]*BufferedWriter),
+		messageLog:     messageLog,
+		mcpLog:         mcpLog,
+		workers:        []WorkerMetadata{},
+		tokenUsage:     TokenUsageSummary{},
+		closed:         false,
 	}
 
 	// Apply any provided options to set application context fields
@@ -245,8 +247,8 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 	}
 
 	if err := meta.Save(dir); err != nil {
-		_ = coordLog.Close()
 		_ = coordRaw.Close()
+		_ = coordMessages.Close()
 		_ = messageLog.Close()
 		_ = mcpLog.Close()
 		return nil, fmt.Errorf("saving initial metadata: %w", err)
@@ -255,9 +257,9 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 	return sess, nil
 }
 
-// WriteCoordinatorEvent writes a coordinator event to the coordinator output.log.
-// Format: {ISO8601_timestamp} [{role}] {content}\n
-func (s *Session) WriteCoordinatorEvent(timestamp time.Time, role, content string) error {
+// WriteCoordinatorMessage writes a structured chat message to coordinator/messages.jsonl.
+// The message is serialized to JSON and appended as a single JSONL line.
+func (s *Session) WriteCoordinatorMessage(msg chatrender.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -265,14 +267,19 @@ func (s *Session) WriteCoordinatorEvent(timestamp time.Time, role, content strin
 		return os.ErrClosed
 	}
 
-	line := fmt.Sprintf("%s [%s] %s\n", timestamp.Format(time.RFC3339), role, content)
-	return s.coordLog.Write([]byte(line))
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshaling coordinator message: %w", err)
+	}
+
+	// Append newline for JSONL format
+	data = append(data, '\n')
+	return s.coordMessages.Write(data)
 }
 
-// WriteWorkerEvent writes a worker event to the worker's output.log.
-// Lazy-creates worker subdirectory and files if needed.
-// Format: {ISO8601_timestamp} {content}\n
-func (s *Session) WriteWorkerEvent(workerID string, timestamp time.Time, content string) error {
+// WriteWorkerMessage writes a structured chat message to workers/{workerID}/messages.jsonl.
+// Lazy-creates worker subdirectory and messages.jsonl file if needed.
+func (s *Session) WriteWorkerMessage(workerID string, msg chatrender.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -280,14 +287,20 @@ func (s *Session) WriteWorkerEvent(workerID string, timestamp time.Time, content
 		return os.ErrClosed
 	}
 
-	// Get or create worker log
-	writer, err := s.getOrCreateWorkerLog(workerID)
+	// Get or create worker messages writer
+	writer, err := s.getOrCreateWorkerMessages(workerID)
 	if err != nil {
 		return err
 	}
 
-	line := fmt.Sprintf("%s %s\n", timestamp.Format(time.RFC3339), content)
-	return writer.Write([]byte(line))
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshaling worker message: %w", err)
+	}
+
+	// Append newline for JSONL format
+	data = append(data, '\n')
+	return writer.Write(data)
 }
 
 // WriteCoordinatorRawJSON appends raw JSON to coordinator/raw.jsonl.
@@ -386,13 +399,6 @@ func (s *Session) Close(status Status) error {
 
 	var firstErr error
 
-	// Close all worker log writers
-	for _, w := range s.workerLogs {
-		if err := w.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-
 	// Close all worker raw writers
 	for _, w := range s.workerRaws {
 		if err := w.Close(); err != nil && firstErr == nil {
@@ -400,11 +406,18 @@ func (s *Session) Close(status Status) error {
 		}
 	}
 
-	// Close coordinator logs
-	if err := s.coordLog.Close(); err != nil && firstErr == nil {
+	// Close all worker message writers
+	for _, w := range s.workerMessages {
+		if err := w.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	// Close coordinator writers
+	if err := s.coordRaw.Close(); err != nil && firstErr == nil {
 		firstErr = err
 	}
-	if err := s.coordRaw.Close(); err != nil && firstErr == nil {
+	if err := s.coordMessages.Close(); err != nil && firstErr == nil {
 		firstErr = err
 	}
 
@@ -453,32 +466,6 @@ func (s *Session) Close(status Status) error {
 	return firstErr
 }
 
-// getOrCreateWorkerLog returns the BufferedWriter for a worker's output.log,
-// creating the worker directory and file if needed.
-// Caller must hold s.mu.
-func (s *Session) getOrCreateWorkerLog(workerID string) (*BufferedWriter, error) {
-	if writer, ok := s.workerLogs[workerID]; ok {
-		return writer, nil
-	}
-
-	// Create worker directory
-	workerPath := filepath.Join(s.Dir, workersDir, workerID)
-	if err := os.MkdirAll(workerPath, 0750); err != nil {
-		return nil, fmt.Errorf("creating worker directory: %w", err)
-	}
-
-	// Create output.log
-	logPath := filepath.Join(workerPath, outputLogFile)
-	file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted workerID parameter
-	if err != nil {
-		return nil, fmt.Errorf("creating worker output log: %w", err)
-	}
-
-	writer := NewBufferedWriter(file)
-	s.workerLogs[workerID] = writer
-	return writer, nil
-}
-
 // getOrCreateWorkerRaw returns the BufferedWriter for a worker's raw.jsonl,
 // creating the worker directory and file if needed.
 // Caller must hold s.mu.
@@ -502,6 +489,32 @@ func (s *Session) getOrCreateWorkerRaw(workerID string) (*BufferedWriter, error)
 
 	writer := NewBufferedWriter(file)
 	s.workerRaws[workerID] = writer
+	return writer, nil
+}
+
+// getOrCreateWorkerMessages returns the BufferedWriter for a worker's messages.jsonl,
+// creating the worker directory and file if needed.
+// Caller must hold s.mu.
+func (s *Session) getOrCreateWorkerMessages(workerID string) (*BufferedWriter, error) {
+	if writer, ok := s.workerMessages[workerID]; ok {
+		return writer, nil
+	}
+
+	// Create worker directory
+	workerPath := filepath.Join(s.Dir, workersDir, workerID)
+	if err := os.MkdirAll(workerPath, 0750); err != nil {
+		return nil, fmt.Errorf("creating worker directory: %w", err)
+	}
+
+	// Create messages.jsonl
+	msgsPath := filepath.Join(workerPath, chatMessagesFile)
+	file, err := os.OpenFile(msgsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted workerID parameter
+	if err != nil {
+		return nil, fmt.Errorf("creating worker messages.jsonl: %w", err)
+	}
+
+	writer := NewBufferedWriter(file)
+	s.workerMessages[workerID] = writer
 	return writer, nil
 }
 
@@ -699,19 +712,37 @@ func (s *Session) AttachToBrokers(
 //   - CoordinatorError → ProcessError
 //   - CoordinatorStatusChange/Ready/Working → ProcessStatusChange/Ready/Working
 func (s *Session) handleCoordinatorProcessEvent(event events.ProcessEvent) {
-	now := time.Now()
+	now := time.Now().UTC()
 
 	switch event.Type {
 	case events.ProcessOutput:
-		// Write to coordinator output.log
-		if err := s.WriteCoordinatorEvent(now, string(event.Role), event.Output); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write coordinator event", "error", err)
+		// Detect tool calls by 🔧 prefix
+		isToolCall := strings.HasPrefix(event.Output, "🔧")
+		msg := chatrender.Message{
+			Role:       string(event.Role),
+			Content:    event.Output,
+			IsToolCall: isToolCall,
+			Timestamp:  &now,
+		}
+		if err := s.WriteCoordinatorMessage(msg); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write coordinator message", "error", err)
 		}
 		// Write raw JSON if present
 		if len(event.RawJSON) > 0 {
 			if err := s.WriteCoordinatorRawJSON(now, event.RawJSON); err != nil {
 				log.Warn(log.CatOrch, "Session: failed to write coordinator raw JSON", "error", err)
 			}
+		}
+
+	case events.ProcessIncoming:
+		// User input - role is "user"
+		msg := chatrender.Message{
+			Role:      "user",
+			Content:   event.Message,
+			Timestamp: &now,
+		}
+		if err := s.WriteCoordinatorMessage(msg); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write coordinator incoming message", "error", err)
 		}
 
 	case events.ProcessTokenUsage:
@@ -721,31 +752,33 @@ func (s *Session) handleCoordinatorProcessEvent(event events.ProcessEvent) {
 		}
 
 	case events.ProcessError:
-		// Write error to coordinator output.log
+		// Write error as system message
 		errMsg := "unknown error"
 		if event.Error != nil {
 			errMsg = event.Error.Error()
 		}
-		if err := s.WriteCoordinatorEvent(now, "error", errMsg); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write coordinator error", "error", err)
+		msg := chatrender.Message{
+			Role:      "system",
+			Content:   "Error: " + errMsg,
+			Timestamp: &now,
+		}
+		if err := s.WriteCoordinatorMessage(msg); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write coordinator error message", "error", err)
 		}
 
 	case events.ProcessStatusChange, events.ProcessReady, events.ProcessWorking:
-		// Status changes are informational - optionally log them
-		if err := s.WriteCoordinatorEvent(now, "status", string(event.Status)); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write coordinator status", "error", err)
-		}
+		// Status changes are not user-visible chat - skip writing to messages.jsonl
 	}
 }
 
 // attachProcessBroker subscribes to the process event broker for worker events.
 //
 // The subscriber goroutine handles:
-//   - ProcessOutput: writes to worker output.log and raw.jsonl (if RawJSON present)
+//   - ProcessOutput: writes to worker messages.jsonl and raw.jsonl (if RawJSON present)
 //   - ProcessSpawned: updates metadata workers list
 //   - ProcessStatusChange: updates worker metadata
 //   - ProcessTokenUsage: updates metadata token counts
-//   - ProcessError: writes error to worker log
+//   - ProcessError: writes error to worker messages.jsonl
 func (s *Session) attachProcessBroker(ctx context.Context, broker *pubsub.Broker[events.ProcessEvent]) {
 	sub := broker.Subscribe(ctx)
 
@@ -807,22 +840,34 @@ func (s *Session) AttachV2EventBus(ctx context.Context, broker *pubsub.Broker[an
 
 // handleProcessEvent processes a process event (worker) and writes to appropriate logs.
 func (s *Session) handleProcessEvent(event events.ProcessEvent) {
-	now := time.Now()
+	now := time.Now().UTC()
 	workerID := event.ProcessID
 
 	switch event.Type {
 	case events.ProcessSpawned:
 		// Add worker to metadata
 		s.addWorker(workerID, now)
-		// Log the spawn event
-		if err := s.WriteWorkerEvent(workerID, now, "Worker spawned"); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write worker spawn event", "error", err, "workerID", workerID)
+		// Log the spawn event as a system message
+		msg := chatrender.Message{
+			Role:      "system",
+			Content:   "Worker spawned",
+			Timestamp: &now,
+		}
+		if err := s.WriteWorkerMessage(workerID, msg); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write worker spawn message", "error", err, "workerID", workerID)
 		}
 
 	case events.ProcessOutput:
-		// Write to worker output.log
-		if err := s.WriteWorkerEvent(workerID, now, event.Output); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write worker output", "error", err, "workerID", workerID)
+		// Detect tool calls by 🔧 prefix
+		isToolCall := strings.HasPrefix(event.Output, "🔧")
+		msg := chatrender.Message{
+			Role:       "assistant",
+			Content:    event.Output,
+			IsToolCall: isToolCall,
+			Timestamp:  &now,
+		}
+		if err := s.WriteWorkerMessage(workerID, msg); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write worker output message", "error", err, "workerID", workerID)
 		}
 		// Write raw JSON if present
 		if len(event.RawJSON) > 0 {
@@ -842,11 +887,7 @@ func (s *Session) handleProcessEvent(event events.ProcessEvent) {
 		if event.Status == events.ProcessStatusRetired {
 			s.retireWorker(workerID, now, phaseStr)
 		}
-		// Log the status change
-		statusMsg := fmt.Sprintf("Status: %s, Phase: %s", event.Status, phaseStr)
-		if err := s.WriteWorkerEvent(workerID, now, statusMsg); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write worker status change", "error", err, "workerID", workerID)
-		}
+		// Status changes are not user-visible chat - skip writing to messages.jsonl
 
 	case events.ProcessTokenUsage:
 		// Update token usage in metadata
@@ -855,19 +896,33 @@ func (s *Session) handleProcessEvent(event events.ProcessEvent) {
 		}
 
 	case events.ProcessIncoming:
-		// Log incoming message notification
-		if err := s.WriteWorkerEvent(workerID, now, fmt.Sprintf("Incoming message: %s", event.Message)); err != nil {
+		// Preserve sender role (default to "coordinator" for coordinator→worker messages)
+		role := event.Sender
+		if role == "" {
+			role = "coordinator"
+		}
+		msg := chatrender.Message{
+			Role:      role,
+			Content:   event.Message,
+			Timestamp: &now,
+		}
+		if err := s.WriteWorkerMessage(workerID, msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write worker incoming message", "error", err, "workerID", workerID)
 		}
 
 	case events.ProcessError:
-		// Write error to worker log
+		// Write error as system message
 		errMsg := "unknown error"
 		if event.Error != nil {
 			errMsg = event.Error.Error()
 		}
-		if err := s.WriteWorkerEvent(workerID, now, fmt.Sprintf("Error: %s", errMsg)); err != nil {
-			log.Warn(log.CatOrch, "Session: failed to write worker error", "error", err, "workerID", workerID)
+		msg := chatrender.Message{
+			Role:      "system",
+			Content:   "Error: " + errMsg,
+			Timestamp: &now,
+		}
+		if err := s.WriteWorkerMessage(workerID, msg); err != nil {
+			log.Warn(log.CatOrch, "Session: failed to write worker error message", "error", err, "workerID", workerID)
 		}
 	}
 }
