@@ -363,6 +363,11 @@ func (i *Initializer) run() {
 			"subsystem", "init",
 			"sessionID", i.cfg.RestoredSession.Metadata.SessionID)
 		i.transitionTo(InitReady)
+		i.publishEvent(InitializerEvent{
+			Type:  InitEventReady,
+			Phase: InitReady,
+		})
+		close(i.readyChan)
 		return
 	}
 

@@ -217,10 +217,12 @@ func (s *simpleProcessSpawner) SpawnProcess(ctx context.Context, id string, role
 
 	// Simple config: no MCP, custom system prompt
 	cfg := client.Config{
-		WorkDir:      s.workDir,
-		SystemPrompt: s.systemPrompt,
-		Prompt:       s.initialPrompt,
-		MCPConfig:    "", // No MCP tools
+		WorkDir:         s.workDir,
+		SystemPrompt:    s.systemPrompt,
+		Prompt:          s.initialPrompt,
+		MCPConfig:       "", // No MCP tools
+		SkipPermissions: true,
+		DisallowedTools: []string{"AskUserQuestion"},
 	}
 
 	// Spawn the underlying AI process
@@ -281,11 +283,13 @@ func (d *simpleMessageDeliverer) Deliver(_ context.Context, processID, content s
 	// Spawn/resume session with the message as prompt
 	// Use context.Background() because the process lifetime outlives this function
 	headlessProc, err := d.client.Spawn(context.Background(), client.Config{
-		WorkDir:      d.workDir,
-		SessionID:    sessionID,
-		Prompt:       content,
-		SystemPrompt: d.systemPrompt,
-		MCPConfig:    "", // No MCP tools for simple chat
+		WorkDir:         d.workDir,
+		SessionID:       sessionID,
+		Prompt:          content,
+		SystemPrompt:    d.systemPrompt,
+		MCPConfig:       "", // No MCP tools for simple chat
+		SkipPermissions: true,
+		DisallowedTools: []string{"AskUserQuestion"},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to resume session for process %s: %w", processID, err)
