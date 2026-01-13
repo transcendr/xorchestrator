@@ -285,13 +285,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Handle tab switching with Ctrl+H (previous tab) and Ctrl+L (next tab)
-		// Vim-style directional navigation
-		if msg.Type == tea.KeyCtrlH {
+		// Handle tab switching with Ctrl+K (previous tab) and Ctrl+J (next tab)
+		if msg.Type == tea.KeyCtrlK {
 			m = m.PrevTab()
 			return m, nil
 		}
-		if msg.Type == tea.KeyCtrlL {
+		if msg.Type == tea.KeyCtrlJ {
 			m = m.NextTab()
 			return m, nil
 		}

@@ -357,6 +357,10 @@ var LogOverlay = struct {
 var App = struct {
 	ToggleChatPanel key.Binding
 	ChatFocus       key.Binding
+	ChatNextTab     key.Binding
+	ChatPrevTab     key.Binding
+	ChatNextSession key.Binding
+	ChatPrevSession key.Binding
 }{
 	ToggleChatPanel: key.NewBinding(
 		key.WithKeys("ctrl+w"),
@@ -365,6 +369,22 @@ var App = struct {
 	ChatFocus: key.NewBinding(
 		key.WithKeys("tab"),
 		key.WithHelp("tab", "switch chat/board focus"),
+	),
+	ChatNextTab: key.NewBinding(
+		key.WithKeys("ctrl+j"),
+		key.WithHelp("ctrl+j", "next chat tab"),
+	),
+	ChatPrevTab: key.NewBinding(
+		key.WithKeys("ctrl+k"),
+		key.WithHelp("ctrl+k", "prev chat tab"),
+	),
+	ChatNextSession: key.NewBinding(
+		key.WithKeys("ctrl+n"),
+		key.WithHelp("ctrl+n", "next chat session"),
+	),
+	ChatPrevSession: key.NewBinding(
+		key.WithKeys("ctrl+p"),
+		key.WithHelp("ctrl+p", "prev chat session"),
 	),
 }
 

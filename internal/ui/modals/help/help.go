@@ -214,6 +214,16 @@ func (m Model) renderKanbanContent() string {
 	navCol.WriteString(renderKeyDesc("h/l", "left/right"))
 	navCol.WriteString(renderKeyDesc("j/k", "up/down"))
 	navCol.WriteString(renderBinding(keys.Kanban.SwitchMode))
+	navCol.WriteString(renderBinding(keys.App.ToggleChatPanel))
+	navCol.WriteString(renderBinding(keys.App.ChatFocus))
+	navCol.WriteString(renderBinding(keys.App.ChatNextTab))
+	navCol.WriteString(renderBinding(keys.App.ChatPrevTab))
+	navCol.WriteString(renderBinding(keys.App.ChatNextSession))
+	navCol.WriteString(renderBinding(keys.App.ChatPrevSession))
+	navCol.WriteString(renderBinding(keys.Kanban.Orchestrate))
+	if m.flags.Enabled(flags.FlagSessionResume) {
+		navCol.WriteString(renderBinding(keys.Kanban.OrchestrateResume))
+	}
 
 	// Actions column
 	var actionsCol strings.Builder
@@ -238,18 +248,12 @@ func (m Model) renderKanbanContent() string {
 	viewsCol.WriteString(renderBinding(keys.Kanban.PrevView))
 	viewsCol.WriteString(renderBinding(keys.Kanban.ViewMenu))
 	viewsCol.WriteString(renderBinding(keys.Kanban.SearchFromColumn))
-	viewsCol.WriteString(renderBinding(keys.Kanban.Orchestrate))
-	if m.flags.Enabled(flags.FlagSessionResume) {
-		viewsCol.WriteString(renderBinding(keys.Kanban.OrchestrateResume))
-	}
 
 	// General column
 	var generalCol strings.Builder
 	generalCol.WriteString(sectionStyle.Render("General"))
 	generalCol.WriteString("\n")
 	generalCol.WriteString(renderBinding(keys.Common.Help))
-	generalCol.WriteString(renderBinding(keys.App.ToggleChatPanel))
-	generalCol.WriteString(renderBinding(keys.App.ChatFocus))
 	generalCol.WriteString(renderBinding(keys.Kanban.ToggleStatus))
 	generalCol.WriteString(renderBinding(keys.Kanban.Escape))
 	generalCol.WriteString(renderBinding(keys.Kanban.QuitConfirm))

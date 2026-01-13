@@ -1,24 +1,24 @@
-                                                                                                                                   
-                                                                                                                                   
-╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│  Keybindings                                                                                                                    │
-│─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
-│                                                                                                                                 │
-│  Actions                         Views                            Navigation                General                             │
-│  enter      open tree view       ctrl+j/n   next view             h/l        left/right     ?          toggle help              │
-│  r          refresh issues       ctrl+k/p   previous view         j/k        up/down        ctrl+w     toggle chat panel        │
-│  y          copy issue ID        ctrl+v     view menu             ^space     search mode    tab        switch chat/board focus  │
-│  a          add column           /          search column                                   w          toggle status bar        │
-│  e          edit column          ctrl+o     orchestration mode                              esc        go back                  │
-│  d          delete column                                                                   ctrl+c     quit                     │
-│  ctrl+h     move column left                                                                                                    │
-│  ctrl+l     move column right                                                                                                   │
-│  ctrl+e     edit issue                                                                                                          │
-│  ctrl+d     delete issue                                                                                                        │
-│                                                                                                                                 │
-│                                                                                                                                 │
-│  Press ? or Esc to close                                                                                                        │
-╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-                                                                                                                                   
-                                                                                                                                   
-                                                                                                                                   
+                                                                                                                                    
+                                                                                                                                    
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│  Keybindings                                                                                                                     │
+│──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
+│                                                                                                                                  │
+│  Actions                         Views                       Navigation                            General                       │
+│  enter      open tree view       ctrl+j/n   next view        h/l        left/right                 ?          toggle help        │
+│  r          refresh issues       ctrl+k/p   previous view    j/k        up/down                    w          toggle status bar  │
+│  y          copy issue ID        ctrl+v     view menu        ^space     search mode                esc        go back            │
+│  a          add column           /          search column    ctrl+w     toggle chat panel          ctrl+c     quit               │
+│  e          edit column                                      tab        switch chat/board focus                                  │
+│  d          delete column                                    ctrl+j     next chat tab                                            │
+│  ctrl+h     move column left                                 ctrl+k     prev chat tab                                            │
+│  ctrl+l     move column right                                ctrl+n     next chat session                                        │
+│  ctrl+e     edit issue                                       ctrl+p     prev chat session                                        │
+│  ctrl+d     delete issue                                     ctrl+o     orchestration mode                                       │
+│                                                                                                                                  │
+│                                                                                                                                  │
+│  Press ? or Esc to close                                                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                                                                                    
+                                                                                                                                    
+                                                                                                                                    

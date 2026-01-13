@@ -531,67 +531,67 @@ func TestModel_Update_CtrlC_NotFocused_NoAction(t *testing.T) {
 // Tab Switching Keybinding Tests
 // ============================================================================
 
-func TestModel_Update_CtrlH_PrevTab(t *testing.T) {
+func TestModel_Update_CtrlK_PrevTab(t *testing.T) {
 	m := New(DefaultConfig()).SetSize(40, 20).Toggle().Focus()
 
 	// Start at TabChat (0), switch to TabSessions (1)
 	m.activeTab = TabSessions
 
-	// Ctrl+H should go to previous tab
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlH})
+	// Ctrl+K should go to previous tab
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
 
-	require.Equal(t, TabChat, m.activeTab, "Ctrl+H should switch to previous tab")
+	require.Equal(t, TabChat, m.activeTab, "Ctrl+K should switch to previous tab")
 }
 
-func TestModel_Update_CtrlL_NextTab(t *testing.T) {
+func TestModel_Update_CtrlJ_NextTab(t *testing.T) {
 	m := New(DefaultConfig()).SetSize(40, 20).Toggle().Focus()
 
 	// Start at TabChat (0)
 	require.Equal(t, TabChat, m.activeTab)
 
-	// Ctrl+L should go to next tab
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlL})
+	// Ctrl+J should go to next tab
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
 
-	require.Equal(t, TabSessions, m.activeTab, "Ctrl+L should switch to next tab")
+	require.Equal(t, TabSessions, m.activeTab, "Ctrl+J should switch to next tab")
 }
 
-func TestModel_Update_CtrlH_WrapsAround(t *testing.T) {
+func TestModel_Update_CtrlK_WrapsAround(t *testing.T) {
 	m := New(DefaultConfig()).SetSize(40, 20).Toggle().Focus()
 
 	// Start at TabChat (0)
 	require.Equal(t, TabChat, m.activeTab)
 
-	// Ctrl+H should wrap to last tab (TabWorkflows)
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlH})
+	// Ctrl+K should wrap to last tab (TabWorkflows)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
 
-	require.Equal(t, TabWorkflows, m.activeTab, "Ctrl+H should wrap to last tab")
+	require.Equal(t, TabWorkflows, m.activeTab, "Ctrl+K should wrap to last tab")
 }
 
-func TestModel_Update_CtrlL_WrapsAround(t *testing.T) {
+func TestModel_Update_CtrlJ_WrapsAround(t *testing.T) {
 	m := New(DefaultConfig()).SetSize(40, 20).Toggle().Focus()
 
 	// Start at TabWorkflows (2) - the last tab
 	m.activeTab = TabWorkflows
 
-	// Ctrl+L should wrap to first tab (TabChat = 0)
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlL})
+	// Ctrl+J should wrap to first tab (TabChat = 0)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
 
-	require.Equal(t, TabChat, m.activeTab, "Ctrl+L should wrap to first tab")
+	require.Equal(t, TabChat, m.activeTab, "Ctrl+J should wrap to first tab")
 }
 
-func TestModel_Update_CtrlHL_NotProcessedWhenNotFocused(t *testing.T) {
+func TestModel_Update_CtrlJK_NotProcessedWhenNotFocused(t *testing.T) {
 	m := New(DefaultConfig()).SetSize(40, 20).Toggle()
 	// Not focused
 	require.False(t, m.Focused())
 	initialTab := m.activeTab
 
-	// Ctrl+H should not be processed when not focused
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlH})
-	require.Equal(t, initialTab, m.activeTab, "Ctrl+H should be ignored when not focused")
+	// Ctrl+K should not be processed when not focused
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
+	require.Equal(t, initialTab, m.activeTab, "Ctrl+K should be ignored when not focused")
 
-	// Ctrl+L should not be processed when not focused
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlL})
-	require.Equal(t, initialTab, m.activeTab, "Ctrl+L should be ignored when not focused")
+	// Ctrl+J should not be processed when not focused
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	require.Equal(t, initialTab, m.activeTab, "Ctrl+J should be ignored when not focused")
 }
 
 // ============================================================================
@@ -4533,16 +4533,16 @@ func TestWorkflowsTab_TabSwitchingKeysStillWork(t *testing.T) {
 	m := New(cfg).SetSize(60, 20).Toggle().Focus()
 	m.activeTab = TabWorkflows
 
-	// Test Ctrl+H (previous tab)
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlH})
-	require.Equal(t, TabSessions, m.activeTab, "Ctrl+H should go to previous tab")
+	// Test Ctrl+K (previous tab)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
+	require.Equal(t, TabSessions, m.activeTab, "Ctrl+K should go to previous tab")
 
 	// Go back to Workflows tab
 	m.activeTab = TabWorkflows
 
-	// Test Ctrl+L (next tab)
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlL})
-	require.Equal(t, TabChat, m.activeTab, "Ctrl+L should go to next tab (wraps to Chat)")
+	// Test Ctrl+J (next tab)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	require.Equal(t, TabChat, m.activeTab, "Ctrl+J should go to next tab (wraps to Chat)")
 
 	// Go back to Workflows tab
 	m.activeTab = TabWorkflows
