@@ -238,6 +238,8 @@ func (m Model) renderKanbanContent() string {
 	generalCol.WriteString(sectionStyle.Render("General"))
 	generalCol.WriteString("\n")
 	generalCol.WriteString(renderBinding(keys.Common.Help))
+	generalCol.WriteString(renderBinding(keys.App.ToggleChatPanel))
+	generalCol.WriteString(renderBinding(keys.App.ChatFocus))
 	generalCol.WriteString(renderBinding(keys.Kanban.ToggleStatus))
 	generalCol.WriteString(renderBinding(keys.Kanban.Escape))
 	generalCol.WriteString(renderBinding(keys.Kanban.QuitConfirm))

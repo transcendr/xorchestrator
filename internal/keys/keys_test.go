@@ -163,3 +163,22 @@ func TestDiffViewerFullHelp(t *testing.T) {
 	// Third row: close
 	require.Contains(t, help[2], DiffViewer.Close)
 }
+
+// ============================================================================
+// App ChatFocus Keybinding Tests
+// ============================================================================
+
+func TestApp_ChatFocus_Keys(t *testing.T) {
+	keys := App.ChatFocus.Keys()
+	require.Equal(t, []string{"tab"}, keys, "ChatFocus should be bound to tab")
+}
+
+func TestApp_ChatFocus_HelpKey(t *testing.T) {
+	help := App.ChatFocus.Help()
+	require.Equal(t, "tab", help.Key, "ChatFocus help key should be 'tab'")
+}
+
+func TestApp_ChatFocus_HelpDesc(t *testing.T) {
+	help := App.ChatFocus.Help()
+	require.Equal(t, "switch chat/board focus", help.Desc, "ChatFocus help desc should be 'switch chat/board focus'")
+}

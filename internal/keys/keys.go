@@ -356,10 +356,15 @@ var LogOverlay = struct {
 // App contains keybindings for app-level actions (cross-mode).
 var App = struct {
 	ToggleChatPanel key.Binding
+	ChatFocus       key.Binding
 }{
 	ToggleChatPanel: key.NewBinding(
 		key.WithKeys("ctrl+w"),
 		key.WithHelp("ctrl+w", "toggle chat panel"),
+	),
+	ChatFocus: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "switch chat/board focus"),
 	),
 }
 
