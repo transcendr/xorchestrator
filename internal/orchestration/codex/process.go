@@ -283,8 +283,10 @@ func (p *Process) parseStderr() {
 }
 
 // waitForCompletion waits for the process to exit and updates status.
+// It closes the errors channel when done to signal completion to consumers.
 func (p *Process) waitForCompletion() {
 	defer p.wg.Done()
+	defer close(p.errors) // Signal that no more errors will be sent
 
 	log.Debug(log.CatOrch, "Waiting for process to complete", "subsystem", "codex")
 	err := p.cmd.Wait()
