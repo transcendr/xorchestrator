@@ -1,6 +1,8 @@
 # Perles
 
-Perles is a terminal UI for [beads](https://github.com/steveyegge/beads) issue tracking, powered by a custom **BQL (Beads Query Language)**. Search with boolean logic, filter by dates, traverse dependency trees, and build custom kanban views — without leaving your terminal. BQL also drives custom configured kanban boards, each column is defined by a query, so you can slice your issues however you want.
+Perles is a terminal UI for [beads](https://github.com/steveyegge/beads) issue tracking, powered by a custom **BQL (Beads Query Language)**. Search with boolean logic, filter by dates, traverse dependency trees, and build custom kanban views without leaving your terminal. Each kanban swimlane column is defined by a BQL query, so you can slice your issues however you want.
+
+Perles has its own [Orchestration Mode](ORCHESTRATION.md) that spawns a headless coordinator agent that can manage and recycle multiple headless worker agents for you with built-in multi-agent workflows or user defined workflows.
 
 <p align="center">
   <img src="./assets/search.png" width="1440" alt="search">
@@ -16,6 +18,9 @@ Perles is a terminal UI for [beads](https://github.com/steveyegge/beads) issue t
 </p>
 <p align="center">
   <img src="./assets/delete-issue.png" width="1440" alt="board">
+</p>
+<p align="center">
+  <img src="./assets/orchestration-workflow-loaded.png" width="1440" alt="search">
 </p>
 
 ## Requirements
