@@ -99,6 +99,7 @@ type Model struct {
 	activeSessionID   string                  // Currently active session ID
 	processToSession  map[string]string       // Reverse lookup: ProcessID -> SessionID for O(1) event routing
 	sessionListCursor int                     // Cursor position in Sessions tab list
+	sessionCounter    int                     // Monotonically increasing counter for session IDs (never decrements)
 
 	// Confirmation state for session retirement
 	pendingRetireSessionID string // Session ID pending retirement confirmation (empty = no pending)
@@ -159,6 +160,7 @@ func New(cfg Config) Model {
 		sessionOrder:     []string{DefaultSessionID},
 		activeSessionID:  DefaultSessionID,
 		processToSession: map[string]string{ChatPanelProcessID: DefaultSessionID},
+		sessionCounter:   1, // session-1 already created
 		// Initialize workflow state from config
 		workflowRegistry: cfg.WorkflowRegistry,
 	}
@@ -681,10 +683,12 @@ func (m Model) SpawnAssistantForSession(processID string) (Model, tea.Cmd) {
 	return m, spinnerTick()
 }
 
-// NextSessionID generates the next sequential session ID based on the number of existing sessions.
+// NextSessionID generates the next sequential session ID using a monotonically increasing counter.
 // IDs are formatted as "session-1", "session-2", etc.
-func (m Model) NextSessionID() string {
-	return fmt.Sprintf("session-%d", len(m.sessions)+1)
+// The counter never decrements, preventing ID collisions after session deletion.
+func (m *Model) NextSessionID() string {
+	m.sessionCounter++
+	return fmt.Sprintf("session-%d", m.sessionCounter)
 }
 
 // SendMessage submits a SendToProcessCommand to send a user message to the active session's assistant.

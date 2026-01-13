@@ -3244,19 +3244,45 @@ func TestNewSessionCreatedSwitchesFromSessionsTab(t *testing.T) {
 }
 
 func TestSessionIDGeneration(t *testing.T) {
-	// Test that NextSessionID generates sequential IDs
+	// Test that NextSessionID generates sequential IDs using atomic counter
 	m := New(DefaultConfig())
 
-	// Initially has session-1, so next should be session-2
+	// Initially has session-1 (counter=1), so next should be session-2
 	require.Equal(t, "session-2", m.NextSessionID())
 
-	// Add session-2
-	m, _ = m.CreateSession("session-2")
+	// Counter increments each call, regardless of actual sessions created
 	require.Equal(t, "session-3", m.NextSessionID())
-
-	// Add session-3
-	m, _ = m.CreateSession("session-3")
 	require.Equal(t, "session-4", m.NextSessionID())
+}
+
+func TestSessionIDGeneration_NoCollisionAfterDeletion(t *testing.T) {
+	// Test that session IDs don't collide after deletion
+	// This was the bug: using len(sessions)+1 caused collision after delete
+	m := New(DefaultConfig())
+
+	// Create session-2 and session-3
+	session2ID := m.NextSessionID() // "session-2"
+	m, _ = m.CreateSession(session2ID)
+	session3ID := m.NextSessionID() // "session-3"
+	m, _ = m.CreateSession(session3ID)
+
+	require.Equal(t, 3, m.SessionCount()) // session-1, session-2, session-3
+
+	// Delete session-1 (need session-2 to have process ID for retire to work)
+	m = m.SetSessionProcessID(session2ID, "proc-2")
+	m, _ = m.RetireSession(DefaultSessionID)
+
+	require.Equal(t, 2, m.SessionCount()) // session-2, session-3
+
+	// Next ID should be session-4, NOT session-3 (which would collide)
+	nextID := m.NextSessionID()
+	require.Equal(t, "session-4", nextID, "Session ID should not collide after deletion")
+
+	// Verify we can create a session with this ID without collision
+	m, newSession := m.CreateSession(nextID)
+	require.NotNil(t, newSession)
+	require.Equal(t, "session-4", newSession.ID)
+	require.Equal(t, 3, m.SessionCount())
 }
 
 func TestSpawnAssistantForSession(t *testing.T) {
