@@ -552,11 +552,11 @@ orchestration:
 
   # Claude-specific settings (only used when client: claude)
   claude:
-    model: sonnet  # sonnet (default), opus, or haiku
+    model: opus  # sonnet (default), opus, or haiku
 
   # Codex-specific settings (only used when client: codex)
   codex:
-	model: gpt-5.2-codex  # gpt-5.2-codex (default)
+    model: gpt-5.2-codex  # gpt-5.2-codex (default)
 
   # Amp-specific settings (only used when client: amp)
   amp:
