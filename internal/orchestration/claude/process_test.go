@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -929,4 +931,87 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestFindExecutable(t *testing.T) {
+	t.Run("finds claude in .claude/local", func(t *testing.T) {
+		// Create temp home directory
+		tempHome := t.TempDir()
+		originalHome := os.Getenv("HOME")
+		t.Setenv("HOME", tempHome)
+		defer func() { _ = os.Setenv("HOME", originalHome) }()
+
+		// Create the expected path
+		claudeDir := filepath.Join(tempHome, ".claude", "local")
+		require.NoError(t, os.MkdirAll(claudeDir, 0755))
+		claudePath := filepath.Join(claudeDir, "claude")
+		require.NoError(t, os.WriteFile(claudePath, []byte("#!/bin/bash\n"), 0755))
+
+		// Should find it
+		path, err := findExecutable()
+		require.NoError(t, err)
+		require.Equal(t, claudePath, path)
+	})
+
+	t.Run("finds claude in .claude root", func(t *testing.T) {
+		// Create temp home directory
+		tempHome := t.TempDir()
+		originalHome := os.Getenv("HOME")
+		t.Setenv("HOME", tempHome)
+		defer func() { _ = os.Setenv("HOME", originalHome) }()
+
+		// Create the expected path (not in local, just in .claude)
+		claudeDir := filepath.Join(tempHome, ".claude")
+		require.NoError(t, os.MkdirAll(claudeDir, 0755))
+		claudePath := filepath.Join(claudeDir, "claude")
+		require.NoError(t, os.WriteFile(claudePath, []byte("#!/bin/bash\n"), 0755))
+
+		// Should find it
+		path, err := findExecutable()
+		require.NoError(t, err)
+		require.Equal(t, claudePath, path)
+	})
+
+	t.Run("prefers .claude/local over .claude", func(t *testing.T) {
+		// Create temp home directory
+		tempHome := t.TempDir()
+		originalHome := os.Getenv("HOME")
+		t.Setenv("HOME", tempHome)
+		defer func() { _ = os.Setenv("HOME", originalHome) }()
+
+		// Create both paths
+		localDir := filepath.Join(tempHome, ".claude", "local")
+		require.NoError(t, os.MkdirAll(localDir, 0755))
+		localPath := filepath.Join(localDir, "claude")
+		require.NoError(t, os.WriteFile(localPath, []byte("#!/bin/bash\n"), 0755))
+
+		rootPath := filepath.Join(tempHome, ".claude", "claude")
+		require.NoError(t, os.WriteFile(rootPath, []byte("#!/bin/bash\n"), 0755))
+
+		// Should prefer local
+		path, err := findExecutable()
+		require.NoError(t, err)
+		require.Equal(t, localPath, path)
+	})
+
+	t.Run("skips directories", func(t *testing.T) {
+		// Create temp home directory
+		tempHome := t.TempDir()
+		originalHome := os.Getenv("HOME")
+		t.Setenv("HOME", tempHome)
+		defer func() { _ = os.Setenv("HOME", originalHome) }()
+
+		// Create a directory named "claude" instead of a file
+		claudeDir := filepath.Join(tempHome, ".claude", "local", "claude")
+		require.NoError(t, os.MkdirAll(claudeDir, 0755))
+
+		// Create the actual file in .claude root
+		rootPath := filepath.Join(tempHome, ".claude", "claude")
+		require.NoError(t, os.WriteFile(rootPath, []byte("#!/bin/bash\n"), 0755))
+
+		// Should skip the directory and find the file
+		path, err := findExecutable()
+		require.NoError(t, err)
+		require.Equal(t, rootPath, path)
+	})
 }

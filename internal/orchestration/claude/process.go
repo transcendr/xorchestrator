@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +18,34 @@ import (
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/client"
 )
+
+// findExecutable returns the path to the claude executable.
+// It checks common installation locations before falling back to PATH lookup.
+// This handles cases where claude is installed via pnpm/npm and uses an alias
+// rather than being directly in PATH.
+func findExecutable() (string, error) {
+	// Common installation paths to check
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		knownPaths := []string{
+			filepath.Join(homeDir, ".claude", "local", "claude"),
+			filepath.Join(homeDir, ".claude", "claude"),
+		}
+		for _, path := range knownPaths {
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				log.Debug(log.CatOrch, "Found claude executable", "subsystem", "claude", "path", path)
+				return path, nil
+			}
+		}
+	}
+
+	// Fall back to PATH lookup
+	path, err := exec.LookPath("claude")
+	if err != nil {
+		return "", fmt.Errorf("claude executable not found in known locations or PATH: %w", err)
+	}
+	return path, nil
+}
 
 // Config holds configuration for spawning a Claude process.
 type Config struct {
@@ -151,11 +181,17 @@ func Spawn(ctx context.Context, cfg Config) (*Process, error) {
 		procCtx, cancel = context.WithCancel(ctx)
 	}
 
+	claudePath, err := findExecutable()
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
 	args := buildArgs(cfg)
-	log.Debug(log.CatOrch, "Spawning claude process", "subsystem", "claude", "args", strings.Join(args, " "), "workDir", cfg.WorkDir)
+	log.Debug(log.CatOrch, "Spawning claude process", "subsystem", "claude", "executable", claudePath, "args", strings.Join(args, " "), "workDir", cfg.WorkDir)
 
 	// #nosec G204 -- args are built from Config struct, not user input
-	cmd := exec.CommandContext(procCtx, "claude", args...)
+	cmd := exec.CommandContext(procCtx, claudePath, args...)
 	cmd.Dir = cfg.WorkDir
 
 	stdout, err := cmd.StdoutPipe()
