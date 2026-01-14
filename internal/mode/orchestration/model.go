@@ -20,6 +20,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/flags"
 	"github.com/zjrosen/perles/internal/git"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode"
@@ -793,17 +794,19 @@ func (m *Model) Cleanup() {
 			)
 		}
 
-		if err := m.gitExecutor.RemoveWorktree(worktreePath); err != nil {
-			log.Warn(log.CatOrch, "Failed to remove worktree", "path", worktreePath, "error", err)
-			// Update exit message to indicate failure
-			if worktreeBranch != "" {
-				m.exitMessage = fmt.Sprintf(
-					"Warning: Failed to remove worktree at %s.\nYour work is preserved on branch '%s'.\nTo resume: git checkout %s\nTo manually clean up: git worktree remove %s",
-					worktreePath, worktreeBranch, worktreeBranch, worktreePath,
-				)
+		if m.services.Flags.Enabled(flags.FlagRemoveWorktree) {
+			if err := m.gitExecutor.RemoveWorktree(worktreePath); err != nil {
+				log.Warn(log.CatOrch, "Failed to remove worktree", "path", worktreePath, "error", err)
+				// Update exit message to indicate failure
+				if worktreeBranch != "" {
+					m.exitMessage = fmt.Sprintf(
+						"Warning: Failed to remove worktree at %s.\nYour work is preserved on branch '%s'.\nTo resume: git checkout %s\nTo manually clean up: git worktree remove %s",
+						worktreePath, worktreeBranch, worktreeBranch, worktreePath,
+					)
+				}
+			} else {
+				log.Info(log.CatOrch, "Worktree removed", "path", worktreePath, "branch", worktreeBranch)
 			}
-		} else {
-			log.Info(log.CatOrch, "Worktree removed", "path", worktreePath, "branch", worktreeBranch)
 		}
 	}
 

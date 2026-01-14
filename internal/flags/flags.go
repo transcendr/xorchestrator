@@ -12,6 +12,9 @@ import (
 const (
 	// FlagSessionResume controls whether session resumption (ctrl+r) is enabled.
 	FlagSessionResume = "session-resume"
+
+	// FlagRemoveWorktree controls if existing orchestration mode removes the worktree.
+	FlagRemoveWorktree = "remove-worktree"
 )
 
 // Registry holds feature flag state loaded from configuration.

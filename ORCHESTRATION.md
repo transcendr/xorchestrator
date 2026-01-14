@@ -5,7 +5,7 @@
 
 Orchestration mode is a multi-agent workspace where a single coordinator agent handles spawning, replacing and retiring other headless agents through
 built-in MCP tools. The coordinator agent delegates sub-tasks to multiple worker agents so you don't have to manually stop and start sessions on your own. 
-This allows for structured workflow instructions that can manage and orchestration multiple headless multiple AI agents.
+This allows for structured workflow instructions that can manage and orchestrate multiple headless AI agents.
 
 - **Coordinator** A single headless agent that receives workflow instructions and manages the session.
 - **Workers** Multiple headless agents who execute specific sub-tasks (coding, testing, reviewing, documenting)
@@ -57,9 +57,7 @@ If you don't want to use worktree you can disable this prompt in your config by 
   <img src="./assets/orchestration-worktree.png" width="1440" alt="search">
 </p>
 
-> When exiting orchestration mode the worktree branch is automatically removed, if you have any uncommitted changes you will be warned before existing as they will be lost when removing a worktree.
-
-When using a worktree you can specify a different base branch to create the worktree from along with an optional branch name.
+When using a worktree you can specify a different base branch to create the worktree from along with an optional branch name. If you are just doing research or converting a research proposal into an epic and tasks you likely do not have to use a worktree since you are not changing any code. Worktree's are primarily meant for when you are running multiple "Cook" workflows on different epics in parallel.
 
 <p align="center">
   <img src="./assets/orchestration-worktree-branch.png" width="1440" alt="search">

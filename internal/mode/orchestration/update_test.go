@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/flags"
 	"github.com/zjrosen/perles/internal/git"
 	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/mode"
@@ -1449,6 +1450,7 @@ func TestIntegration_UncommittedChanges_CleanWorktreeShowsQuitModal(t *testing.T
 	m := New(Config{
 		VimMode: true,
 		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
 			GitExecutorFactory: func(path string) git.GitExecutor {
 				require.Equal(t, "/tmp/test-worktree", path, "factory should receive worktree path")
 				return mockExecutor
@@ -1492,6 +1494,7 @@ func TestIntegration_UncommittedChanges_DirtyWorktreeShowsUncommittedModal(t *te
 	m := New(Config{
 		VimMode: true,
 		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
 			GitExecutorFactory: func(path string) git.GitExecutor {
 				return mockExecutor
 			},
@@ -1529,6 +1532,7 @@ func TestIntegration_UncommittedChanges_CancelReturnsToOrchestration(t *testing.
 	m := New(Config{
 		VimMode: true,
 		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
 			GitExecutorFactory: func(path string) git.GitExecutor {
 				return mockExecutor
 			},
@@ -1567,6 +1571,7 @@ func TestIntegration_UncommittedChanges_DiscardExits(t *testing.T) {
 	m := New(Config{
 		VimMode: true,
 		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
 			GitExecutorFactory: func(path string) git.GitExecutor {
 				return mockExecutor
 			},
@@ -1607,6 +1612,7 @@ func TestIntegration_UncommittedChanges_GitErrorAssumesDirty(t *testing.T) {
 	m := New(Config{
 		VimMode: true,
 		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
 			GitExecutorFactory: func(path string) git.GitExecutor {
 				return mockExecutor
 			},
@@ -1667,6 +1673,7 @@ func TestIntegration_UncommittedChanges_VerifiesWorktreePath(t *testing.T) {
 	m := New(Config{
 		VimMode: true,
 		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
 			GitExecutorFactory: func(path string) git.GitExecutor {
 				capturedPath = path
 				return mockExecutor
@@ -1699,6 +1706,7 @@ func TestIntegration_UncommittedChanges_CtrlCTriggersFlow(t *testing.T) {
 	m := New(Config{
 		VimMode: true,
 		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
 			GitExecutorFactory: func(path string) git.GitExecutor {
 				return mockExecutor
 			},

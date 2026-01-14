@@ -12,7 +12,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zjrosen/perles/internal/flags"
 	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/session"
@@ -1388,8 +1390,13 @@ func TestView_Golden_CommandPaneWithTraceID(t *testing.T) {
 // ============================================================================
 
 func TestModel_Cleanup_RemovesWorktree(t *testing.T) {
-	// Test that Cleanup() removes the worktree directory
-	m := New(Config{WorkDir: "/test/dir"})
+	// Test that Cleanup() removes the worktree directory when flag is enabled
+	m := New(Config{
+		WorkDir: "/test/dir",
+		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
+		},
+	})
 
 	// Set up mock git executor that expects RemoveWorktree to be called
 	mockGit := mocks.NewMockGitExecutor(t)
@@ -1407,8 +1414,13 @@ func TestModel_Cleanup_RemovesWorktree(t *testing.T) {
 }
 
 func TestModel_Cleanup_HandlesRemoveError(t *testing.T) {
-	// Test that Cleanup() handles RemoveWorktree errors gracefully
-	m := New(Config{WorkDir: "/test/dir"})
+	// Test that Cleanup() handles RemoveWorktree errors gracefully when flag is enabled
+	m := New(Config{
+		WorkDir: "/test/dir",
+		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
+		},
+	})
 
 	// Set up mock git executor that returns an error
 	mockGit := mocks.NewMockGitExecutor(t)
@@ -1468,8 +1480,13 @@ func TestModel_Cleanup_NoGitExecutor_NoOp(t *testing.T) {
 }
 
 func TestModel_ExitMessage_ShowsBranchName(t *testing.T) {
-	// Test that exit message includes the branch name
-	m := New(Config{WorkDir: "/test/dir"})
+	// Test that exit message includes the branch name when flag is enabled
+	m := New(Config{
+		WorkDir: "/test/dir",
+		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
+		},
+	})
 
 	// Set up mock git executor
 	mockGit := mocks.NewMockGitExecutor(t)
@@ -1489,8 +1506,13 @@ func TestModel_ExitMessage_ShowsBranchName(t *testing.T) {
 }
 
 func TestModel_ExitMessage_ShowsResumeInstructions(t *testing.T) {
-	// Test that exit message shows git checkout instructions
-	m := New(Config{WorkDir: "/test/dir"})
+	// Test that exit message shows git checkout instructions when flag is enabled
+	m := New(Config{
+		WorkDir: "/test/dir",
+		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
+		},
+	})
 
 	// Set up mock git executor
 	mockGit := mocks.NewMockGitExecutor(t)
@@ -1511,8 +1533,13 @@ func TestModel_ExitMessage_ShowsResumeInstructions(t *testing.T) {
 }
 
 func TestModel_ExitMessage_EmptyBranch_NoMessage(t *testing.T) {
-	// Test that exit message is empty when branch name is missing
-	m := New(Config{WorkDir: "/test/dir"})
+	// Test that exit message is empty when branch name is missing (even with flag enabled)
+	m := New(Config{
+		WorkDir: "/test/dir",
+		Services: mode.Services{
+			Flags: flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
+		},
+	})
 
 	// Set up mock git executor
 	mockGit := mocks.NewMockGitExecutor(t)

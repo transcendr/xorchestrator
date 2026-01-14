@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/zjrosen/perles/internal/flags"
 	"github.com/zjrosen/perles/internal/git"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/events"
@@ -1003,7 +1004,7 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 // This implements a single-modal flow: only ONE modal is ever shown.
 func (m *Model) showQuitModal() {
 	// Check for uncommitted changes FIRST (before showing any modal)
-	if m.worktreePath != "" {
+	if m.worktreePath != "" && m.services.Flags.Enabled(flags.FlagRemoveWorktree) {
 		worktreeExecutor := m.worktreeExecutorFactory(m.worktreePath)
 		hasChanges, err := worktreeExecutor.HasUncommittedChanges()
 		if err != nil {
