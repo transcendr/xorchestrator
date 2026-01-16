@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/client"
@@ -202,12 +203,23 @@ func (w WorkflowConfig) IsEnabled() bool {
 	return w.Enabled == nil || *w.Enabled
 }
 
+// SoundEventConfig configures a single sound event with optional override sounds.
+type SoundEventConfig struct {
+	// Enabled controls whether this sound event plays.
+	Enabled bool `mapstructure:"enabled"`
+
+	// OverrideSounds is a list of custom sound file paths to play instead of defaults.
+	// If empty or nil, uses the embedded default sound.
+	// Multiple paths enable random selection for variety.
+	// Paths must be under ~/.perles/sounds/
+	OverrideSounds []string `mapstructure:"override_sounds"`
+}
+
 // SoundConfig holds audio feedback configuration for orchestration.
 type SoundConfig struct {
-	// EnabledSounds controls which sounds are enabled.
-	// Keys are sound identifiers using underscores (e.g., "review_verdict_approve", "chat_welcome").
-	// Values are booleans where true enables the sound.
-	EnabledSounds map[string]bool `mapstructure:"enabled_sounds"`
+	// Events maps sound event identifiers to their configuration.
+	// Keys are identifiers using underscores (e.g., "review_verdict_approve", "chat_welcome").
+	Events map[string]SoundEventConfig `mapstructure:"events"`
 }
 
 // DefaultTracesFilePath returns the default path for trace file export.
@@ -353,6 +365,103 @@ func ValidateOrchestration(orch OrchestrationConfig) error {
 	return nil
 }
 
+// maxSoundFileSize is the maximum allowed size for override sound files (1MB).
+const maxSoundFileSize = 1 * 1024 * 1024
+
+// SoundSecurityBoundary returns the security boundary directory for sound files.
+// All override sound paths must be under this directory.
+// Returns ~/.perles/sounds/ or empty string if home dir unavailable.
+func SoundSecurityBoundary() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".perles", "sounds")
+}
+
+// ValidateSound checks sound configuration for errors.
+// Returns nil if the configuration is valid.
+// Validates:
+// - All override paths are under ~/.perles/sounds/
+// - Paths cannot escape the boundary via symlinks or path traversal
+// - Only .wav extension is allowed (case-insensitive)
+// - Override sound files must exist
+// - Override sound files must be <= 1MB
+func ValidateSound(sound SoundConfig) error {
+	if sound.Events == nil {
+		return nil
+	}
+
+	boundary := SoundSecurityBoundary()
+	if boundary == "" {
+		// Cannot validate paths without home directory
+		// Only check if there are actual override paths configured
+		for eventName, eventConfig := range sound.Events {
+			if len(eventConfig.OverrideSounds) > 0 {
+				return fmt.Errorf("sound.events.%s: cannot validate override paths (home directory unavailable)", eventName)
+			}
+		}
+		return nil
+	}
+
+	for eventName, eventConfig := range sound.Events {
+		for i, path := range eventConfig.OverrideSounds {
+			if err := validateSoundPath(path, eventName, i, boundary); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateSoundPath validates a single sound file path against security and format requirements.
+func validateSoundPath(path, eventName string, index int, boundary string) error {
+	// Clean the path first to normalize it
+	cleanPath := filepath.Clean(path)
+
+	// Check WAV extension (case-insensitive) before anything else
+	ext := filepath.Ext(cleanPath)
+	if !strings.EqualFold(ext, ".wav") {
+		return fmt.Errorf("sound.events.%s.override_sounds[%d]: only WAV format is supported, got %q", eventName, index, ext)
+	}
+
+	// Resolve symlinks to get the real path
+	realPath, err := filepath.EvalSymlinks(cleanPath)
+	if err != nil {
+		// File doesn't exist or symlink is broken
+		if os.IsNotExist(err) {
+			return fmt.Errorf("sound.events.%s.override_sounds[%d]: file not found: %q", eventName, index, path)
+		}
+		return fmt.Errorf("sound.events.%s.override_sounds[%d]: cannot resolve path: %w", eventName, index, err)
+	}
+
+	// Resolve the boundary path as well to handle platform symlinks
+	// (e.g., macOS symlinks /var/folders to /private/var/folders)
+	realBoundary, err := filepath.EvalSymlinks(boundary)
+	if err != nil {
+		// Boundary directory doesn't exist - this is okay, the files just can't be validated
+		// But since we have override files, we need the boundary to exist
+		return fmt.Errorf("sound.events.%s.override_sounds[%d]: security boundary directory does not exist: %s", eventName, index, boundary)
+	}
+
+	// Check security boundary using the resolved real paths
+	// This prevents symlink attacks that point outside the boundary
+	if !strings.HasPrefix(realPath, realBoundary+string(filepath.Separator)) && realPath != realBoundary {
+		return fmt.Errorf("sound.events.%s.override_sounds[%d]: path must be under %s, got %q", eventName, index, boundary, path)
+	}
+
+	// File exists (EvalSymlinks succeeded), now check size
+	info, err := os.Stat(realPath)
+	if err != nil {
+		return fmt.Errorf("sound.events.%s.override_sounds[%d]: cannot stat file: %w", eventName, index, err)
+	}
+	if info.Size() > maxSoundFileSize {
+		return fmt.Errorf("sound.events.%s.override_sounds[%d]: file too large: %d bytes (max %d)", eventName, index, info.Size(), maxSoundFileSize)
+	}
+
+	return nil
+}
+
 // ValidateSessionStorage checks session storage configuration for errors.
 // Returns nil if the configuration is valid (empty values use defaults).
 func ValidateSessionStorage(storage SessionStorageConfig) error {
@@ -492,10 +601,12 @@ func Defaults() Config {
 			},
 		},
 		Sound: SoundConfig{
-			EnabledSounds: map[string]bool{
-				"review_verdict_approve": false,
-				"review_verdict_deny":    false,
-				"chat_welcome":           false,
+			Events: map[string]SoundEventConfig{
+				"review_verdict_approve": {Enabled: false},
+				"review_verdict_deny":    {Enabled: false},
+				"chat_welcome":           {Enabled: false},
+				"workflow_complete":      {Enabled: false},
+				"orchestration_welcome":  {Enabled: false},
 			},
 		},
 	}
@@ -625,27 +736,33 @@ orchestration:
   #   - name: "Research Proposal"
   #     description: "Custom description for research workflow"
 
-  # Distributed tracing configuration
-  # Enables end-to-end visibility into orchestration request flows
-  # tracing:
-  #   enabled: false                 # Enable/disable tracing (default: false)
-  #   exporter: file                 # Export backend: none, file, stdout, otlp (default: file)
-  #   file_path: ~/.config/perles/traces/traces.jsonl  # Output file for file exporter
-  #   otlp_endpoint: localhost:4317  # OTLP collector endpoint (for otlp exporter)
-  #   sample_rate: 1.0               # Trace sampling rate 0.0-1.0 (default: 1.0)
-  #
-  # Example: Enable tracing with file export
-  # tracing:
-  #   enabled: true
-  #   exporter: file
-  #   file_path: ~/.config/perles/traces/traces.jsonl
-  #
-  # Example: Send traces to Jaeger via OTLP
-  # tracing:
-  #   enabled: true
-  #   exporter: otlp
-  #   otlp_endpoint: jaeger.internal:4317
-  #   sample_rate: 0.1  # Sample 10% of traces
+  # Sound Notifications
+  # Audio feedback for orchestration events. All events are disabled by default.
+  # To override the default sounds use the override_sounds for each event
+  # Custom sounds must be WAV files located in ~/.perles/sounds/
+  sound:
+    events:
+      # Plays when entering chat mode
+      # chat_welcome:
+      #   enabled: true
+      #   override_sounds:
+      #     - ~/.perles/sounds/my-welcome.wav
+
+      # Plays when entering orchestration mode
+      # orchestration_welcome:
+      #   enabled: true
+
+      # Plays when a workflow completes
+      # workflow_complete:
+      #   enabled: true
+
+      # Plays when a review is approved
+      # review_verdict_approve:
+      #   enabled: true
+
+      # Plays when a review is denied
+      # review_verdict_deny:
+      #   enabled: true
 `
 }
 

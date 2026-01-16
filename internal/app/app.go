@@ -143,7 +143,7 @@ func NewWithConfig(
 		Clipboard:  shared.SystemClipboard{},
 		Clock:      shared.RealClock{},
 		Flags:      flagService,
-		Sounds:     sound.NewSystemSoundService(flagService, cfg.Sound.EnabledSounds),
+		Sounds:     sound.NewSystemSoundService(flagService, cfg.Sound.Events),
 		GitExecutorFactory: func(path string) git.GitExecutor {
 			return git.NewRealExecutor(path)
 		},
@@ -415,6 +415,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.currentMode = mode.ModeOrchestration
+
+		// Play welcome sound for orchestration mode (mirrors chat_welcome pattern)
+		if m.services.Sounds != nil {
+			m.services.Sounds.Play("greeting", "orchestration_welcome")
+		}
 
 		// Get orchestration config from services.Config
 		orchConfig := m.services.Config.Orchestration

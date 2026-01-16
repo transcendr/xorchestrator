@@ -2,11 +2,13 @@ package sound
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"runtime"
 	"sync/atomic"
 
+	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/flags"
 	"github.com/zjrosen/perles/internal/log"
 )
@@ -35,7 +37,7 @@ const maxConcurrentSounds = 2
 // It supports a master kill switch via flags and granular per-sound configuration.
 type SystemSoundService struct {
 	flags          *flags.Registry
-	enabledSounds  map[string]bool
+	eventConfigs   map[string]config.SoundEventConfig
 	audioAvailable bool
 	audioCommand   string
 	audioArgs      []string
@@ -44,8 +46,8 @@ type SystemSoundService struct {
 
 // NewSystemSoundService creates a sound service with the given configuration.
 // flags provides the master kill switch (FlagSoundEnabled).
-// enabledSounds controls which sounds are enabled (nil enables all sounds).
-func NewSystemSoundService(flagsRegistry *flags.Registry, enabledSounds map[string]bool) *SystemSoundService {
+// eventConfigs maps event names to their configurations (nil uses all defaults).
+func NewSystemSoundService(flagsRegistry *flags.Registry, eventConfigs map[string]config.SoundEventConfig) *SystemSoundService {
 	cmd, args := detectAudioCommand()
 	available := cmd != ""
 
@@ -57,7 +59,7 @@ func NewSystemSoundService(flagsRegistry *flags.Registry, enabledSounds map[stri
 
 	return &SystemSoundService{
 		flags:          flagsRegistry,
-		enabledSounds:  enabledSounds,
+		eventConfigs:   eventConfigs,
 		audioAvailable: available,
 		audioCommand:   cmd,
 		audioArgs:      args,
@@ -66,10 +68,10 @@ func NewSystemSoundService(flagsRegistry *flags.Registry, enabledSounds map[stri
 
 // Play plays the sound file asynchronously if the use case is enabled.
 // soundFile is the filename (without extension) to play from embedded sounds.
-// useCase is checked against the enabledSounds config map for permission.
+// useCase is checked against the eventConfigs map for permission and override sounds.
 // Does nothing if:
 //   - Master flag FlagSoundEnabled is disabled
-//   - The specific use case is disabled in enabledSounds config
+//   - The specific use case is disabled in eventConfigs
 //   - No audio player is available on this platform
 //   - The sound file is unknown (not in embedded files)
 //   - Maximum concurrent sounds limit is reached
@@ -80,11 +82,24 @@ func (s *SystemSoundService) Play(soundFile, useCase string) {
 		return
 	}
 
-	// Granular config check - use useCase for permission
-	if s.enabledSounds != nil {
-		if enabled, exists := s.enabledSounds[useCase]; exists && !enabled {
-			log.Debug(log.CatConfig, "Sound disabled by config", "soundFile", soundFile, "useCase", useCase)
-			return
+	// Check event configuration
+	if s.eventConfigs != nil {
+		if eventConfig, exists := s.eventConfigs[useCase]; exists {
+			// Per-event enabled check
+			if !eventConfig.Enabled {
+				log.Debug(log.CatConfig, "Sound disabled by config", "soundFile", soundFile, "useCase", useCase)
+				return
+			}
+
+			// Check for override sounds
+			if len(eventConfig.OverrideSounds) > 0 {
+				// Random selection for variety using math/rand/v2 (auto-seeded)
+				// Using math/rand for non-security-critical random selection
+				idx := rand.IntN(len(eventConfig.OverrideSounds)) //nolint:gosec // Random sound selection, not security-critical
+				overridePath := eventConfig.OverrideSounds[idx]
+				s.playExternalFile(overridePath, soundFile, useCase)
+				return
+			}
 		}
 	}
 
@@ -111,6 +126,93 @@ func (s *SystemSoundService) Play(soundFile, useCase string) {
 
 	// Play asynchronously
 	go s.playAsync(soundFile, data)
+}
+
+// playExternalFile plays a sound file from the filesystem (for override sounds).
+// soundFile is the original embedded sound name used for fallback mapping.
+// Falls back to embedded default if file is unavailable at runtime.
+func (s *SystemSoundService) playExternalFile(filePath, soundFile, useCase string) {
+	if !s.audioAvailable {
+		log.Debug(log.CatConfig, "No audio player available for external file", "path", filePath, "useCase", useCase)
+		return
+	}
+
+	// Concurrency limit check - atomic increment then check
+	if s.concurrent.Add(1) > maxConcurrentSounds {
+		s.concurrent.Add(-1)
+		log.Debug(log.CatConfig, "Concurrent sound limit reached", "path", filePath, "useCase", useCase)
+		return
+	}
+
+	go s.playExternalAsync(filePath, soundFile, useCase)
+}
+
+// playExternalAsync handles external file playback in a goroutine.
+// Falls back to embedded default if file is unavailable at runtime.
+func (s *SystemSoundService) playExternalAsync(filePath, soundFile, useCase string) {
+	defer s.concurrent.Add(-1)
+
+	// Verify file exists at runtime (for graceful fallback)
+	if _, err := os.Stat(filePath); err != nil {
+		log.Debug(log.CatConfig, "Override sound file not found, falling back to default",
+			"path", filePath, "soundFile", soundFile, "useCase", useCase, "error", err)
+		// Fall back to embedded default
+		s.playEmbeddedFallback(soundFile, useCase)
+		return
+	}
+
+	// Build command args and execute
+	args := s.buildArgs(filePath)
+	cmd := exec.Command(s.audioCommand, args...) //nolint:gosec // audioCommand validated at construction
+	if err := cmd.Run(); err != nil {
+		log.Debug(log.CatConfig, "External audio playback failed", "path", filePath, "useCase", useCase, "error", err)
+		return
+	}
+}
+
+// playEmbeddedFallback plays the embedded default sound as a fallback.
+// Used when an override file is unavailable at runtime.
+func (s *SystemSoundService) playEmbeddedFallback(soundFile, useCase string) {
+	// Look up the embedded sound file
+	filename := "sounds/" + soundFile + ".wav"
+	data, err := soundFiles.ReadFile(filename)
+	if err != nil {
+		log.Debug(log.CatConfig, "Fallback sound file not found", "soundFile", soundFile, "useCase", useCase, "error", err)
+		return
+	}
+
+	// Note: We don't increment concurrent again - already counted by playExternalFile
+	// Just do the playback synchronously in this goroutine
+	tmpFile, err := os.CreateTemp("", "perles-sound-*.wav")
+	if err != nil {
+		log.Debug(log.CatConfig, "Failed to create temp file for fallback", "soundFile", soundFile, "error", err)
+		return
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		if err := os.Remove(tmpPath); err != nil {
+			log.Debug(log.CatConfig, "Failed to remove temp file", "name", soundFile, "error", err)
+		}
+	}()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			log.Debug(log.CatConfig, "Failed to close temp file after write error", "name", soundFile, "error", closeErr)
+		}
+		log.Debug(log.CatConfig, "Failed to write temp file for fallback", "soundFile", soundFile, "error", err)
+		return
+	}
+	if err := tmpFile.Close(); err != nil {
+		log.Debug(log.CatConfig, "Failed to close temp file for fallback", "soundFile", soundFile, "error", err)
+		return
+	}
+
+	args := s.buildArgs(tmpPath)
+	cmd := exec.Command(s.audioCommand, args...) //nolint:gosec // audioCommand validated at construction
+	if err := cmd.Run(); err != nil {
+		log.Debug(log.CatConfig, "Fallback audio playback failed", "soundFile", soundFile, "error", err)
+		return
+	}
 }
 
 // playAsync handles the actual playback in a goroutine.

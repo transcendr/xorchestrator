@@ -8,9 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/orchestration/v2/handler"
+	"github.com/zjrosen/perles/internal/sound"
 )
 
 // ===========================================================================
@@ -333,3 +335,231 @@ func TestSignalWorkflowCompleteHandler_NoSessionProvider(t *testing.T) {
 	// Event should still be emitted
 	require.Len(t, result.Events, 1)
 }
+
+// ===========================================================================
+// Sound Service Tests
+// ===========================================================================
+
+func TestSignalWorkflowCompleteHandler_PlaysCompletionSound(t *testing.T) {
+	sessionProvider := &mockSessionMetadataProvider{}
+	soundService := mocks.NewMockSoundService(t)
+
+	// Expect sound to be played on first completion
+	soundService.EXPECT().Play("complete", "workflow_complete").Once()
+
+	h := handler.NewSignalWorkflowCompleteHandler(
+		handler.WithSessionMetadataProvider(sessionProvider),
+		handler.WithWorkflowSoundService(soundService),
+	)
+
+	cmd := command.NewSignalWorkflowCompleteCommand(
+		command.SourceMCPTool,
+		command.WorkflowStatusSuccess,
+		"Completed all tasks",
+		"epic-123",
+		5,
+	)
+
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	// Sound service mock expectations are automatically verified on cleanup
+}
+
+func TestSignalWorkflowCompleteHandler_NoSoundOnDuplicateCall(t *testing.T) {
+	// Set an existing completion timestamp to simulate a previous call
+	originalTimestamp := time.Date(2026, 1, 13, 10, 0, 0, 0, time.UTC)
+	sessionProvider := &mockSessionMetadataProvider{
+		workflowCompletedAt: originalTimestamp,
+	}
+	soundService := mocks.NewMockSoundService(t)
+
+	// Sound should NOT be played on duplicate call - no expectations set
+
+	h := handler.NewSignalWorkflowCompleteHandler(
+		handler.WithSessionMetadataProvider(sessionProvider),
+		handler.WithWorkflowSoundService(soundService),
+	)
+
+	cmd := command.NewSignalWorkflowCompleteCommand(
+		command.SourceMCPTool,
+		command.WorkflowStatusSuccess,
+		"Duplicate completion",
+		"",
+		0,
+	)
+
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify it was a subsequent call
+	workflowResult := result.Data.(*handler.SignalWorkflowCompleteResult)
+	assert.False(t, workflowResult.IsFirstCall)
+	// If Play was called, the mock would fail due to unexpected call
+}
+
+func TestSignalWorkflowCompleteHandler_DefaultNoopSoundService(t *testing.T) {
+	sessionProvider := &mockSessionMetadataProvider{}
+
+	// Create handler WITHOUT sound service option - should use NoopSoundService
+	h := handler.NewSignalWorkflowCompleteHandler(
+		handler.WithSessionMetadataProvider(sessionProvider),
+	)
+
+	cmd := command.NewSignalWorkflowCompleteCommand(
+		command.SourceMCPTool,
+		command.WorkflowStatusSuccess,
+		"Using default sound service",
+		"",
+		0,
+	)
+
+	result, err := h.Handle(context.Background(), cmd)
+
+	// Should succeed without panic - NoopSoundService handles the Play call
+	require.NoError(t, err)
+	require.True(t, result.Success)
+}
+
+func TestWithWorkflowSoundService_SetsService(t *testing.T) {
+	soundService := mocks.NewMockSoundService(t)
+
+	h := handler.NewSignalWorkflowCompleteHandler(
+		handler.WithWorkflowSoundService(soundService),
+	)
+
+	// Verify the handler was created with the sound service
+	require.NotNil(t, h)
+	// The soundService field is not exported, so we verify by testing behavior
+	// through the PlaysCompletionSound test instead
+}
+
+func TestWithWorkflowSoundService_NilIgnored(t *testing.T) {
+	h := handler.NewSignalWorkflowCompleteHandler(
+		handler.WithWorkflowSoundService(nil), // nil should be ignored
+	)
+
+	// Should still have NoopSoundService as the default
+	// We verify by testing that Play doesn't panic
+	require.NotNil(t, h)
+
+	// Test that the handler works with a successful completion
+	sessionProvider := &mockSessionMetadataProvider{}
+	h2 := handler.NewSignalWorkflowCompleteHandler(
+		handler.WithSessionMetadataProvider(sessionProvider),
+		handler.WithWorkflowSoundService(nil), // nil should be ignored
+	)
+
+	cmd := command.NewSignalWorkflowCompleteCommand(
+		command.SourceMCPTool,
+		command.WorkflowStatusSuccess,
+		"Testing nil sound service",
+		"",
+		0,
+	)
+
+	result, err := h2.Handle(context.Background(), cmd)
+
+	// Should succeed without panic - NoopSoundService handles the Play call
+	require.NoError(t, err)
+	require.True(t, result.Success)
+}
+
+func TestSignalWorkflowCompleteHandler_SoundPlaysForAllStatuses(t *testing.T) {
+	// Sound should play on first completion regardless of status
+	tests := []struct {
+		name   string
+		status command.WorkflowStatus
+	}{
+		{"success", command.WorkflowStatusSuccess},
+		{"partial", command.WorkflowStatusPartial},
+		{"aborted", command.WorkflowStatusAborted},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sessionProvider := &mockSessionMetadataProvider{}
+			soundService := mocks.NewMockSoundService(t)
+
+			// Expect sound for all statuses
+			soundService.EXPECT().Play("complete", "workflow_complete").Once()
+
+			h := handler.NewSignalWorkflowCompleteHandler(
+				handler.WithSessionMetadataProvider(sessionProvider),
+				handler.WithWorkflowSoundService(soundService),
+			)
+
+			cmd := command.NewSignalWorkflowCompleteCommand(
+				command.SourceMCPTool,
+				tc.status,
+				"Workflow finished",
+				"",
+				0,
+			)
+
+			result, err := h.Handle(context.Background(), cmd)
+
+			require.NoError(t, err)
+			assert.True(t, result.Success)
+		})
+	}
+}
+
+func TestSignalWorkflowCompleteHandler_SoundServiceTypeCheck(t *testing.T) {
+	// Verify default constructor uses NoopSoundService
+	h := handler.NewSignalWorkflowCompleteHandler()
+
+	// Access soundService field to verify type (exported for testing)
+	// Since soundService is not exported, we verify through behavior
+	require.NotNil(t, h)
+
+	// The handler should work without any sound service configuration
+	cmd := command.NewSignalWorkflowCompleteCommand(
+		command.SourceMCPTool,
+		command.WorkflowStatusSuccess,
+		"Type check test",
+		"",
+		0,
+	)
+
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+	require.True(t, result.Success)
+}
+
+// Helper to verify soundService is indeed NoopSoundService when not provided
+func TestNewSignalWorkflowCompleteHandler_DefaultSoundService(t *testing.T) {
+	sessionProvider := &mockSessionMetadataProvider{}
+
+	// Create handler without sound service option - should use NoopSoundService by default
+	h := handler.NewSignalWorkflowCompleteHandler(
+		handler.WithSessionMetadataProvider(sessionProvider),
+	)
+
+	require.NotNil(t, h)
+
+	// Verify by behavior: a first completion should trigger sound play,
+	// but NoopSoundService does nothing (doesn't panic), so this test
+	// just confirms the handler works correctly with defaults
+	cmd := command.NewSignalWorkflowCompleteCommand(
+		command.SourceMCPTool,
+		command.WorkflowStatusSuccess,
+		"Default sound service test",
+		"",
+		0,
+	)
+
+	result, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+	require.True(t, result.Success)
+
+	// Verify it was first call (sound would have played if not NoopSoundService)
+	workflowResult := result.Data.(*handler.SignalWorkflowCompleteResult)
+	require.True(t, workflowResult.IsFirstCall)
+}
+
+// Ensure the sound package import is used to satisfy LSP
+var _ = sound.NoopSoundService{}

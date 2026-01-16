@@ -9,6 +9,7 @@ import (
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/sound"
 )
 
 // ===========================================================================
@@ -35,6 +36,7 @@ type SessionMetadataProvider interface {
 // It updates session metadata with workflow completion status and publishes events.
 type SignalWorkflowCompleteHandler struct {
 	sessionProvider SessionMetadataProvider
+	soundService    sound.SoundService
 }
 
 // SignalWorkflowCompleteHandlerOption configures SignalWorkflowCompleteHandler.
@@ -47,9 +49,21 @@ func WithSessionMetadataProvider(provider SessionMetadataProvider) SignalWorkflo
 	}
 }
 
+// WithWorkflowSoundService sets the sound service for audio feedback on workflow completion.
+// If svc is nil, the handler keeps its default NoopSoundService.
+func WithWorkflowSoundService(svc sound.SoundService) SignalWorkflowCompleteHandlerOption {
+	return func(h *SignalWorkflowCompleteHandler) {
+		if svc != nil {
+			h.soundService = svc
+		}
+	}
+}
+
 // NewSignalWorkflowCompleteHandler creates a new SignalWorkflowCompleteHandler.
 func NewSignalWorkflowCompleteHandler(opts ...SignalWorkflowCompleteHandlerOption) *SignalWorkflowCompleteHandler {
-	h := &SignalWorkflowCompleteHandler{}
+	h := &SignalWorkflowCompleteHandler{
+		soundService: sound.NoopSoundService{},
+	}
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -109,6 +123,11 @@ func (h *SignalWorkflowCompleteHandler) Handle(ctx context.Context, cmd command.
 		Summary:     workflowCmd.Summary,
 		CompletedAt: completedAt,
 		IsFirstCall: isFirstCall,
+	}
+
+	// 4. Play completion sound only on first call (not on duplicate signals)
+	if isFirstCall {
+		h.soundService.Play("complete", "workflow_complete")
 	}
 
 	return SuccessWithEvents(result, event), nil

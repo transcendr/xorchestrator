@@ -382,5 +382,7 @@ func registerHandlers(
 	// Workflow Completion handlers (1)
 	// ============================================================
 	cmdProcessor.RegisterHandler(command.CmdSignalWorkflowComplete,
-		handler.NewSignalWorkflowCompleteHandler(handler.WithSessionMetadataProvider(sessionMetadataProvider)))
+		handler.NewSignalWorkflowCompleteHandler(
+			handler.WithSessionMetadataProvider(sessionMetadataProvider),
+			handler.WithWorkflowSoundService(soundService)))
 }

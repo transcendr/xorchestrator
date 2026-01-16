@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 
@@ -1044,27 +1046,30 @@ func TestSessionStorageConfig_ApplicationNameOverridePreserved(t *testing.T) {
 func TestConfig_SoundDefaults(t *testing.T) {
 	cfg := Defaults()
 
-	// Verify Sound field exists and has EnabledSounds map
-	require.NotNil(t, cfg.Sound.EnabledSounds, "EnabledSounds map should not be nil")
+	// Verify Sound field exists and has Events map
+	require.NotNil(t, cfg.Sound.Events, "Events map should not be nil")
 
-	// Verify both review_verdict sounds are disabled by default
-	require.False(t, cfg.Sound.EnabledSounds["review_verdict_approve"], "review_verdict_approve should be disabled by default")
-	require.False(t, cfg.Sound.EnabledSounds["review_verdict_deny"], "review_verdict_deny should be disabled by default")
+	// Verify all five sound events exist and are disabled by default
+	require.False(t, cfg.Sound.Events["review_verdict_approve"].Enabled, "review_verdict_approve should be disabled by default")
+	require.False(t, cfg.Sound.Events["review_verdict_deny"].Enabled, "review_verdict_deny should be disabled by default")
+	require.False(t, cfg.Sound.Events["chat_welcome"].Enabled, "chat_welcome should be disabled by default")
+	require.False(t, cfg.Sound.Events["workflow_complete"].Enabled, "workflow_complete should be disabled by default")
+	require.False(t, cfg.Sound.Events["orchestration_welcome"].Enabled, "orchestration_welcome should be disabled by default")
 }
 
 func TestConfig_LoadSoundConfig(t *testing.T) {
 	// Test that SoundConfig can be created with explicit values
 	cfg := SoundConfig{
-		EnabledSounds: map[string]bool{
-			"review_verdict_approve": true,
-			"review_verdict_deny":    false,
-			"custom_sound":           true,
+		Events: map[string]SoundEventConfig{
+			"review_verdict_approve": {Enabled: true},
+			"review_verdict_deny":    {Enabled: false},
+			"custom_sound":           {Enabled: true},
 		},
 	}
 
-	require.True(t, cfg.EnabledSounds["review_verdict_approve"])
-	require.False(t, cfg.EnabledSounds["review_verdict_deny"])
-	require.True(t, cfg.EnabledSounds["custom_sound"])
+	require.True(t, cfg.Events["review_verdict_approve"].Enabled)
+	require.False(t, cfg.Events["review_verdict_deny"].Enabled)
+	require.True(t, cfg.Events["custom_sound"].Enabled)
 }
 
 func TestConfig_EnableSpecificSound(t *testing.T) {
@@ -1072,40 +1077,362 @@ func TestConfig_EnableSpecificSound(t *testing.T) {
 	cfg := Defaults()
 
 	// Verify initial state - all sounds disabled by default
-	require.False(t, cfg.Sound.EnabledSounds["review_verdict_approve"])
-	require.False(t, cfg.Sound.EnabledSounds["review_verdict_deny"])
+	require.False(t, cfg.Sound.Events["review_verdict_approve"].Enabled)
+	require.False(t, cfg.Sound.Events["review_verdict_deny"].Enabled)
 
 	// Enable one specific sound
-	cfg.Sound.EnabledSounds["review_verdict_approve"] = true
+	cfg.Sound.Events["review_verdict_approve"] = SoundEventConfig{Enabled: true}
 
 	// Verify only the specific sound is enabled
-	require.True(t, cfg.Sound.EnabledSounds["review_verdict_approve"], "review_verdict_approve should be enabled")
-	require.False(t, cfg.Sound.EnabledSounds["review_verdict_deny"], "review_verdict_deny should remain disabled")
+	require.True(t, cfg.Sound.Events["review_verdict_approve"].Enabled, "review_verdict_approve should be enabled")
+	require.False(t, cfg.Sound.Events["review_verdict_deny"].Enabled, "review_verdict_deny should remain disabled")
 }
 
 func TestSoundConfig_ZeroValue(t *testing.T) {
-	// Test that zero value SoundConfig has nil EnabledSounds
+	// Test that zero value SoundConfig has nil Events
 	cfg := SoundConfig{}
-	require.Nil(t, cfg.EnabledSounds, "EnabledSounds zero value should be nil")
+	require.Nil(t, cfg.Events, "Events zero value should be nil")
 }
 
 func TestSoundConfig_EmptyMap(t *testing.T) {
-	// Test that SoundConfig can have an empty map (all sounds disabled)
+	// Test that SoundConfig can have an empty Events map (all sounds disabled)
 	cfg := SoundConfig{
-		EnabledSounds: map[string]bool{},
+		Events: map[string]SoundEventConfig{},
 	}
-	require.NotNil(t, cfg.EnabledSounds)
-	require.Empty(t, cfg.EnabledSounds)
+	require.NotNil(t, cfg.Events)
+	require.Empty(t, cfg.Events)
 }
 
 func TestConfig_SoundField(t *testing.T) {
 	// Verify Config includes Sound field
 	cfg := Config{
 		Sound: SoundConfig{
-			EnabledSounds: map[string]bool{
-				"test_sound": true,
+			Events: map[string]SoundEventConfig{
+				"test_sound": {Enabled: true},
 			},
 		},
 	}
-	require.True(t, cfg.Sound.EnabledSounds["test_sound"])
+	require.True(t, cfg.Sound.Events["test_sound"].Enabled)
+}
+
+// Tests for SoundEventConfig struct
+
+func TestSoundEventConfig_WithOverrideSounds(t *testing.T) {
+	// Test that SoundEventConfig can have multiple override sounds
+	cfg := SoundEventConfig{
+		Enabled: true,
+		OverrideSounds: []string{
+			"~/.config/perles/sounds/custom1.wav",
+			"~/.config/perles/sounds/custom2.wav",
+		},
+	}
+	require.True(t, cfg.Enabled)
+	require.Len(t, cfg.OverrideSounds, 2)
+	require.Equal(t, "~/.config/perles/sounds/custom1.wav", cfg.OverrideSounds[0])
+	require.Equal(t, "~/.config/perles/sounds/custom2.wav", cfg.OverrideSounds[1])
+}
+
+func TestSoundEventConfig_DisabledWithOverrides(t *testing.T) {
+	// Test that enabled=false works even with override sounds configured
+	cfg := SoundEventConfig{
+		Enabled:        false,
+		OverrideSounds: []string{"~/.config/perles/sounds/custom.wav"},
+	}
+	require.False(t, cfg.Enabled)
+	require.Len(t, cfg.OverrideSounds, 1)
+}
+
+func TestSoundEventConfig_EnabledNoOverrides(t *testing.T) {
+	// Test that enabled=true with empty overrides uses default embedded sound
+	cfg := SoundEventConfig{
+		Enabled:        true,
+		OverrideSounds: nil,
+	}
+	require.True(t, cfg.Enabled)
+	require.Nil(t, cfg.OverrideSounds)
+}
+
+func TestSoundConfig_FullConfig(t *testing.T) {
+	// Test complete SoundConfig with all three events and various override configurations
+	cfg := SoundConfig{
+		Events: map[string]SoundEventConfig{
+			"chat_welcome": {
+				Enabled: true,
+				OverrideSounds: []string{
+					"~/.config/perles/sounds/welcome1.wav",
+					"~/.config/perles/sounds/welcome2.wav",
+				},
+			},
+			"review_verdict_approve": {
+				Enabled:        true,
+				OverrideSounds: nil, // Uses embedded default
+			},
+			"review_verdict_deny": {
+				Enabled: false, // Disabled entirely
+			},
+		},
+	}
+
+	// Verify chat_welcome
+	require.True(t, cfg.Events["chat_welcome"].Enabled)
+	require.Len(t, cfg.Events["chat_welcome"].OverrideSounds, 2)
+
+	// Verify review_verdict_approve
+	require.True(t, cfg.Events["review_verdict_approve"].Enabled)
+	require.Nil(t, cfg.Events["review_verdict_approve"].OverrideSounds)
+
+	// Verify review_verdict_deny
+	require.False(t, cfg.Events["review_verdict_deny"].Enabled)
+}
+
+func TestDefaults_SoundEventConfigValues(t *testing.T) {
+	// Verify Defaults() returns correct SoundEventConfig values for all events
+	cfg := Defaults()
+
+	// All events should exist in the map
+	require.Len(t, cfg.Sound.Events, 5)
+
+	// Check each event has correct default values
+	for _, eventName := range []string{"review_verdict_approve", "review_verdict_deny", "chat_welcome", "workflow_complete", "orchestration_welcome"} {
+		eventConfig, exists := cfg.Sound.Events[eventName]
+		require.True(t, exists, "Event %q should exist in defaults", eventName)
+		require.False(t, eventConfig.Enabled, "Event %q should be disabled by default", eventName)
+		require.Nil(t, eventConfig.OverrideSounds, "Event %q should have nil OverrideSounds by default", eventName)
+	}
+}
+
+// Tests for ValidateSound
+
+func TestValidateSound_NilEvents(t *testing.T) {
+	// Empty/nil config should be valid
+	err := ValidateSound(SoundConfig{Events: nil})
+	require.NoError(t, err)
+}
+
+func TestValidateSound_EmptyOverrideSounds(t *testing.T) {
+	// Config with empty override_sounds list should pass
+	cfg := SoundConfig{
+		Events: map[string]SoundEventConfig{
+			"chat_welcome": {
+				Enabled:        true,
+				OverrideSounds: []string{},
+			},
+		},
+	}
+	err := ValidateSound(cfg)
+	require.NoError(t, err)
+}
+
+func TestValidateSound_ValidPathUnderSecurityBoundary(t *testing.T) {
+	// Create a temp directory structure that mimics ~/.config/perles/sounds/
+	tempDir := t.TempDir()
+	soundsDir := filepath.Join(tempDir, ".config", "perles", "sounds")
+	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
+
+	// Create a valid WAV file (small file under 1MB)
+	wavFile := filepath.Join(soundsDir, "test.wav")
+	// Write minimal WAV header + some data (valid header not required for this test)
+	require.NoError(t, os.WriteFile(wavFile, make([]byte, 100), 0o644))
+
+	// Use a custom boundary for testing
+	err := validateSoundPath(wavFile, "test_event", 0, soundsDir)
+	require.NoError(t, err)
+}
+
+func TestValidateSound_PathOutsideSecurityBoundary(t *testing.T) {
+	// Create two separate directories
+	tempDir := t.TempDir()
+	soundsDir := filepath.Join(tempDir, "sounds")
+	outsideDir := filepath.Join(tempDir, "outside")
+	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
+	require.NoError(t, os.MkdirAll(outsideDir, 0o755))
+
+	// Create a WAV file outside the security boundary
+	wavFile := filepath.Join(outsideDir, "test.wav")
+	require.NoError(t, os.WriteFile(wavFile, make([]byte, 100), 0o644))
+
+	// Validate should fail because path is outside boundary
+	err := validateSoundPath(wavFile, "test_event", 0, soundsDir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "path must be under")
+}
+
+func TestValidateSound_PathTraversalRejected(t *testing.T) {
+	// Create directory structure
+	tempDir := t.TempDir()
+	soundsDir := filepath.Join(tempDir, "sounds")
+	outsideDir := filepath.Join(tempDir, "outside")
+	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
+	require.NoError(t, os.MkdirAll(outsideDir, 0o755))
+
+	// Create a WAV file outside the boundary
+	wavFile := filepath.Join(outsideDir, "secret.wav")
+	require.NoError(t, os.WriteFile(wavFile, make([]byte, 100), 0o644))
+
+	// Try to access via path traversal (../../../etc/passwd pattern)
+	traversalPath := filepath.Join(soundsDir, "..", "outside", "secret.wav")
+
+	err := validateSoundPath(traversalPath, "test_event", 0, soundsDir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "path must be under")
+}
+
+func TestValidateSound_SymlinkOutsideBoundaryRejected(t *testing.T) {
+	// Skip on Windows as symlinks require elevated privileges
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping symlink test on Windows")
+	}
+
+	// Create directory structure
+	tempDir := t.TempDir()
+	soundsDir := filepath.Join(tempDir, "sounds")
+	outsideDir := filepath.Join(tempDir, "outside")
+	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
+	require.NoError(t, os.MkdirAll(outsideDir, 0o755))
+
+	// Create a WAV file outside the boundary
+	realFile := filepath.Join(outsideDir, "secret.wav")
+	require.NoError(t, os.WriteFile(realFile, make([]byte, 100), 0o644))
+
+	// Create a symlink inside the boundary pointing to the file outside
+	symlinkPath := filepath.Join(soundsDir, "link.wav")
+	require.NoError(t, os.Symlink(realFile, symlinkPath))
+
+	// Validation should reject because the real path is outside boundary
+	err := validateSoundPath(symlinkPath, "test_event", 0, soundsDir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "path must be under")
+}
+
+func TestValidateSound_NonWAVExtensionRejected(t *testing.T) {
+	tempDir := t.TempDir()
+	soundsDir := filepath.Join(tempDir, "sounds")
+	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
+
+	// Test various non-WAV extensions
+	extensions := []string{".mp3", ".ogg", ".flac", ".m4a", ".aac", ".txt"}
+	for _, ext := range extensions {
+		t.Run(ext, func(t *testing.T) {
+			testFile := filepath.Join(soundsDir, "test"+ext)
+			require.NoError(t, os.WriteFile(testFile, make([]byte, 100), 0o644))
+
+			err := validateSoundPath(testFile, "test_event", 0, soundsDir)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "only WAV format is supported")
+		})
+	}
+}
+
+func TestValidateSound_MissingFileRejected(t *testing.T) {
+	tempDir := t.TempDir()
+	soundsDir := filepath.Join(tempDir, "sounds")
+	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
+
+	// Reference a file that doesn't exist
+	missingFile := filepath.Join(soundsDir, "nonexistent.wav")
+
+	err := validateSoundPath(missingFile, "test_event", 0, soundsDir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "file not found")
+}
+
+func TestValidateSound_FileOver1MBRejected(t *testing.T) {
+	tempDir := t.TempDir()
+	soundsDir := filepath.Join(tempDir, "sounds")
+	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
+
+	// Create a file larger than 1MB
+	largeFile := filepath.Join(soundsDir, "large.wav")
+	largeData := make([]byte, maxSoundFileSize+1)
+	require.NoError(t, os.WriteFile(largeFile, largeData, 0o644))
+
+	err := validateSoundPath(largeFile, "test_event", 0, soundsDir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "file too large")
+}
+
+func TestValidateSound_CaseInsensitiveExtension(t *testing.T) {
+	tempDir := t.TempDir()
+	soundsDir := filepath.Join(tempDir, "sounds")
+	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
+
+	// Test various case variations of .wav extension
+	extensions := []string{".WAV", ".Wav", ".waV", ".WaV"}
+	for _, ext := range extensions {
+		t.Run(ext, func(t *testing.T) {
+			testFile := filepath.Join(soundsDir, "test"+ext)
+			require.NoError(t, os.WriteFile(testFile, make([]byte, 100), 0o644))
+
+			err := validateSoundPath(testFile, "test_event", 0, soundsDir)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateSound_ExactlyMaxSizePasses(t *testing.T) {
+	tempDir := t.TempDir()
+	soundsDir := filepath.Join(tempDir, "sounds")
+	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
+
+	// Create a file exactly at the size limit
+	maxFile := filepath.Join(soundsDir, "maxsize.wav")
+	maxData := make([]byte, maxSoundFileSize)
+	require.NoError(t, os.WriteFile(maxFile, maxData, 0o644))
+
+	err := validateSoundPath(maxFile, "test_event", 0, soundsDir)
+	require.NoError(t, err)
+}
+
+func TestValidateSound_IntegrationWithSoundConfig(t *testing.T) {
+	// Test the full ValidateSound function with a SoundConfig
+	// Events with no override sounds should always pass validation
+	cfg := SoundConfig{
+		Events: map[string]SoundEventConfig{
+			"chat_welcome": {
+				Enabled:        true,
+				OverrideSounds: nil, // No overrides, uses embedded
+			},
+			"review_verdict_approve": {
+				Enabled:        true,
+				OverrideSounds: []string{}, // Empty list, uses embedded
+			},
+			"review_verdict_deny": {
+				Enabled: false,
+			},
+		},
+	}
+
+	// This should pass because there are no override sounds to validate
+	err := ValidateSound(cfg)
+	require.NoError(t, err)
+}
+
+func TestValidateSound_MultipleEventsWithErrors(t *testing.T) {
+	tempDir := t.TempDir()
+	soundsDir := filepath.Join(tempDir, "sounds")
+	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
+
+	// Create one valid and one invalid file
+	validFile := filepath.Join(soundsDir, "valid.wav")
+	require.NoError(t, os.WriteFile(validFile, make([]byte, 100), 0o644))
+
+	invalidFile := filepath.Join(soundsDir, "invalid.mp3")
+	require.NoError(t, os.WriteFile(invalidFile, make([]byte, 100), 0o644))
+
+	// Test that validation catches invalid file in any event
+	err := validateSoundPath(invalidFile, "chat_welcome", 0, soundsDir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "only WAV format is supported")
+	require.Contains(t, err.Error(), "chat_welcome")
+}
+
+func TestSoundSecurityBoundary(t *testing.T) {
+	// Test that SoundSecurityBoundary returns the expected path
+	boundary := SoundSecurityBoundary()
+
+	// Should be non-empty (unless home dir is unavailable)
+	if home, err := os.UserHomeDir(); err == nil {
+		expected := filepath.Join(home, ".perles", "sounds")
+		require.Equal(t, expected, boundary)
+	}
 }

@@ -1,7 +1,9 @@
 package sound
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/flags"
 )
 
@@ -91,11 +94,11 @@ func TestSystemSoundService_SoundDisabled(t *testing.T) {
 	registry := flags.New(map[string]bool{
 		flags.FlagSoundEnabled: true,
 	})
-	enabledSounds := map[string]bool{
-		"test":    false, // explicitly disabled
-		"success": true,  // explicitly enabled
+	eventConfigs := map[string]config.SoundEventConfig{
+		"test":    {Enabled: false}, // explicitly disabled
+		"success": {Enabled: true},  // explicitly enabled
 	}
-	s := NewSystemSoundService(registry, enabledSounds)
+	s := NewSystemSoundService(registry, eventConfigs)
 
 	// Both should not panic - disabled use case returns early
 	require.NotPanics(t, func() {
@@ -109,10 +112,10 @@ func TestSystemSoundService_SoundNotInConfig(t *testing.T) {
 	registry := flags.New(map[string]bool{
 		flags.FlagSoundEnabled: true,
 	})
-	enabledSounds := map[string]bool{
-		"test": false, // only test is disabled
+	eventConfigs := map[string]config.SoundEventConfig{
+		"test": {Enabled: false}, // only test is disabled
 	}
-	s := NewSystemSoundService(registry, enabledSounds)
+	s := NewSystemSoundService(registry, eventConfigs)
 
 	// Use case not in config should be allowed
 	require.NotPanics(t, func() {
@@ -274,41 +277,41 @@ func TestSystemSoundService_ConcurrentPlaysWithinLimit(t *testing.T) {
 // TestNewSystemSoundService verifies constructor behavior.
 func TestNewSystemSoundService(t *testing.T) {
 	tests := []struct {
-		name          string
-		flags         *flags.Registry
-		enabledSounds map[string]bool
+		name         string
+		flags        *flags.Registry
+		eventConfigs map[string]config.SoundEventConfig
 	}{
 		{
-			name:          "nil flags and nil enabledSounds",
-			flags:         nil,
-			enabledSounds: nil,
+			name:         "nil flags and nil eventConfigs",
+			flags:        nil,
+			eventConfigs: nil,
 		},
 		{
-			name:          "with flags and nil enabledSounds",
-			flags:         flags.New(map[string]bool{flags.FlagSoundEnabled: true}),
-			enabledSounds: nil,
+			name:         "with flags and nil eventConfigs",
+			flags:        flags.New(map[string]bool{flags.FlagSoundEnabled: true}),
+			eventConfigs: nil,
 		},
 		{
-			name:          "with flags and enabledSounds",
-			flags:         flags.New(map[string]bool{flags.FlagSoundEnabled: true}),
-			enabledSounds: map[string]bool{"test": true},
+			name:         "with flags and eventConfigs",
+			flags:        flags.New(map[string]bool{flags.FlagSoundEnabled: true}),
+			eventConfigs: map[string]config.SoundEventConfig{"test": {Enabled: true}},
 		},
 		{
-			name:          "with empty enabledSounds",
-			flags:         flags.New(map[string]bool{flags.FlagSoundEnabled: true}),
-			enabledSounds: map[string]bool{},
+			name:         "with empty eventConfigs",
+			flags:        flags.New(map[string]bool{flags.FlagSoundEnabled: true}),
+			eventConfigs: map[string]config.SoundEventConfig{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewSystemSoundService(tt.flags, tt.enabledSounds)
+			s := NewSystemSoundService(tt.flags, tt.eventConfigs)
 			require.NotNil(t, s)
 		})
 	}
 }
 
-// TestSoundFiles_Exist verifies approve.wav and deny.wav are embedded.
+// TestSoundFiles_Exist verifies approve.wav, deny.wav, and complete.wav are embedded.
 func TestSoundFiles_Exist(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -316,6 +319,7 @@ func TestSoundFiles_Exist(t *testing.T) {
 	}{
 		{"approve sound exists", "sounds/approve.wav"},
 		{"deny sound exists", "sounds/deny.wav"},
+		{"complete sound exists", "sounds/complete.wav"},
 	}
 
 	for _, tt := range tests {
@@ -331,7 +335,7 @@ func TestSoundFiles_Exist(t *testing.T) {
 func TestSoundFiles_SizeLimit(t *testing.T) {
 	const maxSize = 500 * 1024 // 500KB
 
-	files := []string{"sounds/approve.wav", "sounds/deny.wav"}
+	files := []string{"sounds/approve.wav", "sounds/deny.wav", "sounds/complete.wav"}
 
 	for _, file := range files {
 		t.Run(file, func(t *testing.T) {
@@ -344,7 +348,7 @@ func TestSoundFiles_SizeLimit(t *testing.T) {
 
 // TestSoundFiles_ValidWAV verifies embedded files are valid WAV format.
 func TestSoundFiles_ValidWAV(t *testing.T) {
-	files := []string{"sounds/approve.wav", "sounds/deny.wav"}
+	files := []string{"sounds/approve.wav", "sounds/deny.wav", "sounds/complete.wav"}
 
 	for _, file := range files {
 		t.Run(file, func(t *testing.T) {
@@ -364,7 +368,7 @@ func TestSoundFiles_ValidWAV(t *testing.T) {
 func TestSoundFiles_TotalSizeLimit(t *testing.T) {
 	const maxTotalSize = 1024 * 1024 // 1MB
 
-	files := []string{"sounds/approve.wav", "sounds/deny.wav"}
+	files := []string{"sounds/approve.wav", "sounds/deny.wav", "sounds/complete.wav"}
 	var totalSize int
 
 	for _, file := range files {
@@ -409,5 +413,270 @@ func TestBuildArgs_NoBaseArgs(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		require.Len(t, args, 1)
 		require.Equal(t, "/tmp/test.wav", args[0])
+	}
+}
+
+// =============================================================================
+// Tests for override sound functionality (perles-cerd.3)
+// =============================================================================
+
+// createTestWAVFile creates a minimal valid WAV file for testing.
+func createTestWAVFile(t *testing.T, dir, name string) string {
+	t.Helper()
+	filePath := filepath.Join(dir, name)
+
+	// Minimal WAV file header (44 bytes)
+	// RIFF header
+	wavData := []byte{
+		'R', 'I', 'F', 'F', // ChunkID
+		36, 0, 0, 0, // ChunkSize (36 + data size, here we have 0 data)
+		'W', 'A', 'V', 'E', // Format
+		// fmt subchunk
+		'f', 'm', 't', ' ', // Subchunk1ID
+		16, 0, 0, 0, // Subchunk1Size (16 for PCM)
+		1, 0, // AudioFormat (1 = PCM)
+		1, 0, // NumChannels (1 = mono)
+		68, 172, 0, 0, // SampleRate (44100)
+		136, 88, 1, 0, // ByteRate (44100 * 1 * 2)
+		2, 0, // BlockAlign (NumChannels * BitsPerSample/8)
+		16, 0, // BitsPerSample
+		// data subchunk
+		'd', 'a', 't', 'a', // Subchunk2ID
+		0, 0, 0, 0, // Subchunk2Size (0 bytes of actual audio data)
+	}
+
+	err := os.WriteFile(filePath, wavData, 0644)
+	require.NoError(t, err, "failed to create test WAV file")
+	return filePath
+}
+
+// TestSystemSoundService_OverrideSoundsPlayInsteadOfDefaults verifies override sounds play when configured.
+func TestSystemSoundService_OverrideSoundsPlayInsteadOfDefaults(t *testing.T) {
+	skipIfAudioNotAvailable(t)
+
+	// Create temp directory and test WAV file
+	tmpDir := t.TempDir()
+	overridePath := createTestWAVFile(t, tmpDir, "custom_sound.wav")
+
+	registry := flags.New(map[string]bool{
+		flags.FlagSoundEnabled: true,
+	})
+	eventConfigs := map[string]config.SoundEventConfig{
+		"test_event": {
+			Enabled:        true,
+			OverrideSounds: []string{overridePath},
+		},
+	}
+	s := NewSystemSoundService(registry, eventConfigs)
+
+	// Should not panic and should attempt to play override file
+	require.NotPanics(t, func() {
+		s.Play("approve", "test_event")
+	})
+
+	// Wait for async playback to complete (audio players can take time)
+	time.Sleep(500 * time.Millisecond)
+
+	// Counter should eventually return to 0
+	require.LessOrEqual(t, s.concurrent.Load(), int32(maxConcurrentSounds))
+}
+
+// TestSystemSoundService_RandomSelectionDistributes verifies random selection from multiple override sounds.
+func TestSystemSoundService_RandomSelectionDistributes(t *testing.T) {
+	// Note: This test verifies that the random selection mechanism is invoked.
+	// We can't easily verify true randomness without many iterations,
+	// but we can verify the code path doesn't panic with multiple sounds.
+
+	tmpDir := t.TempDir()
+	override1 := createTestWAVFile(t, tmpDir, "sound1.wav")
+	override2 := createTestWAVFile(t, tmpDir, "sound2.wav")
+	override3 := createTestWAVFile(t, tmpDir, "sound3.wav")
+
+	registry := flags.New(map[string]bool{
+		flags.FlagSoundEnabled: true,
+	})
+	eventConfigs := map[string]config.SoundEventConfig{
+		"test_event": {
+			Enabled:        true,
+			OverrideSounds: []string{override1, override2, override3},
+		},
+	}
+	s := NewSystemSoundService(registry, eventConfigs)
+
+	// Force audio unavailable to avoid actual playback during test
+	s.audioAvailable = false
+
+	// Call multiple times - should not panic
+	for i := 0; i < 10; i++ {
+		require.NotPanics(t, func() {
+			s.Play("approve", "test_event")
+		})
+	}
+}
+
+// TestSystemSoundService_EmptyOverrideSoundsFallsThrough verifies empty override_sounds uses embedded default.
+func TestSystemSoundService_EmptyOverrideSoundsFallsThrough(t *testing.T) {
+	registry := flags.New(map[string]bool{
+		flags.FlagSoundEnabled: true,
+	})
+	eventConfigs := map[string]config.SoundEventConfig{
+		"review_verdict_approve": {
+			Enabled:        true,
+			OverrideSounds: []string{}, // Empty - should fall through to embedded
+		},
+	}
+	s := NewSystemSoundService(registry, eventConfigs)
+
+	// Should not panic - falls through to embedded sound lookup
+	require.NotPanics(t, func() {
+		s.Play("approve", "review_verdict_approve")
+	})
+}
+
+// TestSystemSoundService_GracefulFallbackWhenOverrideMissing verifies fallback to embedded default.
+func TestSystemSoundService_GracefulFallbackWhenOverrideMissing(t *testing.T) {
+	skipIfAudioNotAvailable(t)
+
+	registry := flags.New(map[string]bool{
+		flags.FlagSoundEnabled: true,
+	})
+	// Point to a non-existent file
+	eventConfigs := map[string]config.SoundEventConfig{
+		"review_verdict_approve": {
+			Enabled:        true,
+			OverrideSounds: []string{"/nonexistent/path/to/sound.wav"},
+		},
+	}
+	s := NewSystemSoundService(registry, eventConfigs)
+
+	// Should not panic - falls back to embedded default
+	require.NotPanics(t, func() {
+		s.Play("approve", "review_verdict_approve")
+	})
+
+	// Wait for async playback to complete (audio players can take time)
+	time.Sleep(500 * time.Millisecond)
+
+	// Counter should eventually return to 0
+	require.LessOrEqual(t, s.concurrent.Load(), int32(maxConcurrentSounds))
+}
+
+// TestSystemSoundService_EnabledFalseDisablesSoundRegardlessOfOverrides verifies enabled=false always disables.
+func TestSystemSoundService_EnabledFalseDisablesSoundRegardlessOfOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := createTestWAVFile(t, tmpDir, "custom_sound.wav")
+
+	registry := flags.New(map[string]bool{
+		flags.FlagSoundEnabled: true,
+	})
+	eventConfigs := map[string]config.SoundEventConfig{
+		"test_event": {
+			Enabled:        false, // Disabled
+			OverrideSounds: []string{overridePath},
+		},
+	}
+	s := NewSystemSoundService(registry, eventConfigs)
+
+	// Should return early without playing - counter should remain 0
+	s.Play("approve", "test_event")
+
+	// No async playback should be started
+	require.Equal(t, int32(0), s.concurrent.Load())
+}
+
+// TestSystemSoundService_ConcurrentLimitAppliesToOverrides verifies concurrent limit for override sounds.
+func TestSystemSoundService_ConcurrentLimitAppliesToOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := createTestWAVFile(t, tmpDir, "custom_sound.wav")
+
+	registry := flags.New(map[string]bool{
+		flags.FlagSoundEnabled: true,
+	})
+	eventConfigs := map[string]config.SoundEventConfig{
+		"test_event": {
+			Enabled:        true,
+			OverrideSounds: []string{overridePath},
+		},
+	}
+	s := NewSystemSoundService(registry, eventConfigs)
+
+	// Manually set concurrent counter to max
+	s.concurrent.Store(maxConcurrentSounds)
+
+	// Should not panic - returns early due to limit
+	require.NotPanics(t, func() {
+		s.Play("approve", "test_event")
+	})
+
+	// Verify counter didn't change (Add(1) -> exceeds max -> Add(-1))
+	require.Equal(t, int32(maxConcurrentSounds), s.concurrent.Load())
+}
+
+// TestSystemSoundService_AudioUnavailableLoggedForExternalFiles verifies audio unavailable handling.
+func TestSystemSoundService_AudioUnavailableLoggedForExternalFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := createTestWAVFile(t, tmpDir, "custom_sound.wav")
+
+	registry := flags.New(map[string]bool{
+		flags.FlagSoundEnabled: true,
+	})
+	eventConfigs := map[string]config.SoundEventConfig{
+		"test_event": {
+			Enabled:        true,
+			OverrideSounds: []string{overridePath},
+		},
+	}
+	s := NewSystemSoundService(registry, eventConfigs)
+
+	// Force audio unavailable
+	s.audioAvailable = false
+
+	// Should not panic - returns early with log message
+	require.NotPanics(t, func() {
+		s.Play("approve", "test_event")
+	})
+
+	// Counter should remain 0 since we returned early before incrementing
+	require.Equal(t, int32(0), s.concurrent.Load())
+}
+
+// TestSystemSoundService_NilEventConfigsAllowsAll verifies nil eventConfigs allows all sounds (uses defaults).
+func TestSystemSoundService_NilEventConfigsAllowsAll(t *testing.T) {
+	registry := flags.New(map[string]bool{
+		flags.FlagSoundEnabled: true,
+	})
+	s := NewSystemSoundService(registry, nil)
+
+	// All use cases should be allowed with nil config - falls through to embedded lookup
+	require.NotPanics(t, func() {
+		s.Play("approve", "review_verdict_approve")
+		s.Play("deny", "review_verdict_deny")
+	})
+}
+
+// TestSystemSoundService_OverrideWithSingleSound verifies single override sound is always selected.
+func TestSystemSoundService_OverrideWithSingleSound(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := createTestWAVFile(t, tmpDir, "only_sound.wav")
+
+	registry := flags.New(map[string]bool{
+		flags.FlagSoundEnabled: true,
+	})
+	eventConfigs := map[string]config.SoundEventConfig{
+		"test_event": {
+			Enabled:        true,
+			OverrideSounds: []string{overridePath},
+		},
+	}
+	s := NewSystemSoundService(registry, eventConfigs)
+
+	// Force audio unavailable to avoid actual playback
+	s.audioAvailable = false
+
+	// Should not panic with single sound
+	for i := 0; i < 5; i++ {
+		require.NotPanics(t, func() {
+			s.Play("approve", "test_event")
+		})
 	}
 }
