@@ -76,12 +76,18 @@ func NewProcessSessionDeliverer(
 	extensions map[string]any,
 	opts ...ProcessSessionDelivererOption,
 ) *ProcessSessionDeliverer {
+	// Defensive shallow copy to prevent accidental mutation races
+	extCopy := make(map[string]any, len(extensions))
+	for k, v := range extensions {
+		extCopy[k] = v
+	}
+
 	d := &ProcessSessionDeliverer{
 		sessionProvider: sessionProvider,
 		client:          aiClient,
 		resumer:         resumer,
 		timeout:         DefaultDeliveryTimeout,
-		extensions:      extensions,
+		extensions:      extCopy,
 	}
 	for _, opt := range opts {
 		opt(d)

@@ -154,7 +154,8 @@ func TestProcessSessionDeliverer_Deliver_Success(t *testing.T) {
 	mockResumer.On("ResumeProcess", "worker-1", mockProc).Return(nil)
 
 	// Create deliverer with the real implementation
-	deliverer := NewProcessSessionDeliverer(sessionProvider, mockClient, mockResumer)
+	extensions := map[string]any{"claude.model": "haiku"}
+	deliverer := NewProcessSessionDeliverer(sessionProvider, mockClient, mockResumer, extensions)
 
 	// Execute
 	err := deliverer.Deliver(context.Background(), "worker-1", "Hello worker!")
@@ -175,6 +176,7 @@ func TestProcessSessionDeliverer_Deliver_SessionNotFound(t *testing.T) {
 		sessionProvider,
 		&mockHeadlessClient{},
 		&mockProcessResumer{},
+		nil, // extensions
 	)
 
 	// Execute
@@ -195,6 +197,7 @@ func TestProcessSessionDeliverer_Deliver_EmptySessionID(t *testing.T) {
 		sessionProvider,
 		&mockHeadlessClient{},
 		&mockProcessResumer{},
+		nil, // extensions
 	)
 
 	// Execute
@@ -216,6 +219,7 @@ func TestProcessSessionDeliverer_Deliver_MCPConfigError(t *testing.T) {
 		sessionProvider,
 		&mockHeadlessClient{},
 		&mockProcessResumer{},
+		nil, // extensions
 	)
 
 	// Execute
@@ -241,6 +245,7 @@ func TestProcessSessionDeliverer_Deliver_SpawnError(t *testing.T) {
 		sessionProvider,
 		mockClient,
 		&mockProcessResumer{},
+		nil, // extensions
 	)
 
 	// Execute
@@ -272,6 +277,7 @@ func TestProcessSessionDeliverer_Deliver_ResumeProcessError(t *testing.T) {
 		sessionProvider,
 		mockClient,
 		mockResumer,
+		nil, // extensions
 	)
 
 	// Execute
@@ -300,6 +306,7 @@ func TestProcessSessionDeliverer_Deliver_ContextCancellation(t *testing.T) {
 		sessionProvider,
 		&mockHeadlessClient{},
 		&mockProcessResumer{},
+		nil, // extensions
 		WithDeliveryTimeout(100*time.Millisecond),
 	)
 
@@ -328,6 +335,7 @@ func TestProcessSessionDeliverer_Deliver_Timeout(t *testing.T) {
 		slowSessionProvider,
 		&mockHeadlessClient{},
 		&mockProcessResumer{},
+		nil, // extensions
 		WithDeliveryTimeout(10*time.Millisecond), // Very short timeout
 	)
 
@@ -348,6 +356,7 @@ func TestProcessSessionDeliverer_WithDeliveryTimeout(t *testing.T) {
 		sessionProvider,
 		mockClient,
 		nil, // resumer not used in this test
+		nil, // extensions
 		WithDeliveryTimeout(5*time.Second),
 	)
 
@@ -357,4 +366,110 @@ func TestProcessSessionDeliverer_WithDeliveryTimeout(t *testing.T) {
 func TestDefaultDeliveryTimeout(t *testing.T) {
 	// Verify default timeout is 3 seconds as specified in acceptance criteria
 	assert.Equal(t, 3*time.Second, DefaultDeliveryTimeout)
+}
+
+func TestProcessSessionDeliverer_Deliver_PassesExtensions(t *testing.T) {
+	// Setup
+	sessionProvider := &mockSessionProvider{
+		sessionID: "session-123",
+		mcpConfig: `{"servers":[]}`,
+		workDir:   "/test/workdir",
+	}
+
+	mockClient := &mockHeadlessClient{}
+	mockProc := &mockHeadlessProcess{}
+	mockResumer := &mockProcessResumer{}
+
+	// Extensions to test
+	testExtensions := map[string]any{
+		"claude.model": "haiku",
+		"amp.mode":     "smart",
+	}
+
+	// Expect Spawn to be called with Extensions in config
+	mockClient.On("Spawn", mock.Anything, mock.MatchedBy(func(cfg client.Config) bool {
+		// Verify extensions are present
+		if cfg.Extensions == nil {
+			t.Log("Extensions is nil")
+			return false
+		}
+		// Verify model is set correctly
+		model, ok := cfg.Extensions["claude.model"]
+		if !ok || model != "haiku" {
+			t.Logf("claude.model not found or incorrect: %v", model)
+			return false
+		}
+		// Verify amp mode is set correctly
+		mode, ok := cfg.Extensions["amp.mode"]
+		if !ok || mode != "smart" {
+			t.Logf("amp.mode not found or incorrect: %v", mode)
+			return false
+		}
+		return true
+	})).Return(mockProc, nil)
+
+	// Expect ResumeProcess to be called
+	mockResumer.On("ResumeProcess", "worker-1", mockProc).Return(nil)
+
+	// Create deliverer with extensions
+	deliverer := NewProcessSessionDeliverer(sessionProvider, mockClient, mockResumer, testExtensions)
+
+	// Execute
+	err := deliverer.Deliver(context.Background(), "worker-1", "Hello worker!")
+
+	// Assert
+	require.NoError(t, err)
+	mockClient.AssertExpectations(t)
+	mockResumer.AssertExpectations(t)
+}
+
+func TestProcessSessionDeliverer_Deliver_ExtensionsDefensiveCopy(t *testing.T) {
+	// Verify that extensions are defensively copied to prevent mutation races
+
+	// Setup
+	sessionProvider := &mockSessionProvider{
+		sessionID: "session-123",
+		mcpConfig: `{}`,
+		workDir:   "/test",
+	}
+
+	mockClient := &mockHeadlessClient{}
+	mockProc := &mockHeadlessProcess{}
+	mockResumer := &mockProcessResumer{}
+
+	// Original extensions
+	originalExtensions := map[string]any{
+		"claude.model": "haiku",
+	}
+
+	// Create deliverer
+	deliverer := NewProcessSessionDeliverer(sessionProvider, mockClient, mockResumer, originalExtensions)
+
+	// Mutate the original map AFTER creating deliverer
+	originalExtensions["claude.model"] = "opus"
+	originalExtensions["new.key"] = "should not appear"
+
+	// Expect Spawn to be called with ORIGINAL values (defensive copy)
+	mockClient.On("Spawn", mock.Anything, mock.MatchedBy(func(cfg client.Config) bool {
+		model, ok := cfg.Extensions["claude.model"]
+		if !ok || model != "haiku" {
+			t.Logf("Expected haiku, got: %v", model)
+			return false
+		}
+		// Should NOT have the newly added key
+		if _, exists := cfg.Extensions["new.key"]; exists {
+			t.Log("new.key should not exist (defensive copy failed)")
+			return false
+		}
+		return true
+	})).Return(mockProc, nil)
+
+	mockResumer.On("ResumeProcess", "worker-1", mockProc).Return(nil)
+
+	// Execute
+	err := deliverer.Deliver(context.Background(), "worker-1", "Hello")
+
+	// Assert
+	require.NoError(t, err)
+	mockClient.AssertExpectations(t)
 }
