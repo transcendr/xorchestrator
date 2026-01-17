@@ -2555,7 +2555,7 @@ func TestInitializer_ReopenSession_SetsSessionIDAndDir(t *testing.T) {
 }
 
 // ===========================================================================
-// Per-Phase Timeout Tests (Task perles-mo45.5)
+// Per-Phase Timeout Tests (Task xorchestrator-mo45.5)
 // ===========================================================================
 
 func TestInitializer_WorktreeTimeout(t *testing.T) {

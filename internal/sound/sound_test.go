@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/config"
 )
 
 // skipIfAudioNotAvailable skips the test if no audio player is available.
@@ -354,7 +354,7 @@ func TestBuildArgs_NoBaseArgs(t *testing.T) {
 }
 
 // =============================================================================
-// Tests for override sound functionality (perles-cerd.3)
+// Tests for override sound functionality (xorchestrator-cerd.3)
 // =============================================================================
 
 // createTestWAVFile creates a minimal valid WAV file for testing.

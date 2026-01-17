@@ -51,8 +51,8 @@ debug.log
 # Beads
 .beads/
 
-# Perles remove apps own perles config
-.perles/
+# Xorchestrator - remove app's own xorchestrator config
+.xorchestrator/
 
 # Docs (top-level only, not nested docs/)
 /docs/

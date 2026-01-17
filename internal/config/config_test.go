@@ -1124,21 +1124,21 @@ func TestSoundEventConfig_WithOverrideSounds(t *testing.T) {
 	cfg := SoundEventConfig{
 		Enabled: true,
 		OverrideSounds: []string{
-			"~/.config/perles/sounds/custom1.wav",
-			"~/.config/perles/sounds/custom2.wav",
+			"~/.config/xorchestrator/sounds/custom1.wav",
+			"~/.config/xorchestrator/sounds/custom2.wav",
 		},
 	}
 	require.True(t, cfg.Enabled)
 	require.Len(t, cfg.OverrideSounds, 2)
-	require.Equal(t, "~/.config/perles/sounds/custom1.wav", cfg.OverrideSounds[0])
-	require.Equal(t, "~/.config/perles/sounds/custom2.wav", cfg.OverrideSounds[1])
+	require.Equal(t, "~/.config/xorchestrator/sounds/custom1.wav", cfg.OverrideSounds[0])
+	require.Equal(t, "~/.config/xorchestrator/sounds/custom2.wav", cfg.OverrideSounds[1])
 }
 
 func TestSoundEventConfig_DisabledWithOverrides(t *testing.T) {
 	// Test that enabled=false works even with override sounds configured
 	cfg := SoundEventConfig{
 		Enabled:        false,
-		OverrideSounds: []string{"~/.config/perles/sounds/custom.wav"},
+		OverrideSounds: []string{"~/.config/xorchestrator/sounds/custom.wav"},
 	}
 	require.False(t, cfg.Enabled)
 	require.Len(t, cfg.OverrideSounds, 1)
@@ -1161,8 +1161,8 @@ func TestSoundConfig_FullConfig(t *testing.T) {
 			"chat_welcome": {
 				Enabled: true,
 				OverrideSounds: []string{
-					"~/.config/perles/sounds/welcome1.wav",
-					"~/.config/perles/sounds/welcome2.wav",
+					"~/.config/xorchestrator/sounds/welcome1.wav",
+					"~/.config/xorchestrator/sounds/welcome2.wav",
 				},
 			},
 			"review_verdict_approve": {
@@ -1226,9 +1226,9 @@ func TestValidateSound_EmptyOverrideSounds(t *testing.T) {
 }
 
 func TestValidateSound_ValidPathUnderSecurityBoundary(t *testing.T) {
-	// Create a temp directory structure that mimics ~/.config/perles/sounds/
+	// Create a temp directory structure that mimics ~/.config/xorchestrator/sounds/
 	tempDir := t.TempDir()
-	soundsDir := filepath.Join(tempDir, ".config", "perles", "sounds")
+	soundsDir := filepath.Join(tempDir, ".config", "xorchestrator", "sounds")
 	require.NoError(t, os.MkdirAll(soundsDir, 0o755))
 
 	// Create a valid WAV file (small file under 1MB)
@@ -1434,7 +1434,7 @@ func TestSoundSecurityBoundary(t *testing.T) {
 
 	// Should be non-empty (unless home dir is unavailable)
 	if home, err := os.UserHomeDir(); err == nil {
-		expected := filepath.Join(home, ".perles", "sounds")
+		expected := filepath.Join(home, ".xorchestrator", "sounds")
 		require.Equal(t, expected, boundary)
 	}
 }

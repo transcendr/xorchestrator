@@ -141,7 +141,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid sound configuration: %w", err)
 	}
 
-	// Working directory is always the current directory (where perles was invoked)
+	// Working directory is always the current directory (where xorchestrator was invoked)
 	workDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting current directory: %w", err)

@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"sync/atomic"
 
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/log"
 )
 
 // SoundService plays audio feedback. Implementations handle all errors
@@ -172,7 +172,7 @@ func (s *SystemSoundService) playEmbeddedFallback(soundFile, useCase string) {
 
 	// Note: We don't increment concurrent again - already counted by playExternalFile
 	// Just do the playback synchronously in this goroutine
-	tmpFile, err := os.CreateTemp("", "perles-sound-*.wav")
+	tmpFile, err := os.CreateTemp("", "xorchestrator-sound-*.wav")
 	if err != nil {
 		log.Debug(log.CatConfig, "Failed to create temp file for fallback", "soundFile", soundFile, "error", err)
 		return

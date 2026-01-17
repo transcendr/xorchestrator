@@ -4560,7 +4560,7 @@ func TestModel_TimeoutsConfigPassthrough(t *testing.T) {
 
 	// Set session storage config to avoid git executor calls during session creation
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app-timeouts",
 	}
 
@@ -4632,7 +4632,7 @@ func TestModel_ClientAgnosticTimeouts(t *testing.T) {
 
 			// Set session storage config
 			m.sessionStorageConfig = config.SessionStorageConfig{
-				BaseDir:         "/tmp/perles-test-sessions",
+				BaseDir:         "/tmp/xorchestrator-test-sessions",
 				ApplicationName: "test-app-" + string(clientType),
 			}
 
@@ -4709,7 +4709,7 @@ func TestModel_ConfigYAMLRespected(t *testing.T) {
 
 			// Set session storage config
 			m.sessionStorageConfig = config.SessionStorageConfig{
-				BaseDir:         "/tmp/perles-test-sessions",
+				BaseDir:         "/tmp/xorchestrator-test-sessions",
 				ApplicationName: "test-app-yaml-" + tc.name,
 			}
 

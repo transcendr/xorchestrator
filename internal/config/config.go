@@ -243,7 +243,7 @@ type SoundEventConfig struct {
 	// OverrideSounds is a list of custom sound file paths to play instead of defaults.
 	// If empty or nil, uses the embedded default sound.
 	// Multiple paths enable random selection for variety.
-	// Paths must be under ~/.perles/sounds/
+	// Paths must be under ~/.xorchestrator/sounds/
 	OverrideSounds []string `mapstructure:"override_sounds"`
 }
 
@@ -402,19 +402,19 @@ const maxSoundFileSize = 1 * 1024 * 1024
 
 // SoundSecurityBoundary returns the security boundary directory for sound files.
 // All override sound paths must be under this directory.
-// Returns ~/.perles/sounds/ or empty string if home dir unavailable.
+// Returns ~/.xorchestrator/sounds/ or empty string if home dir unavailable.
 func SoundSecurityBoundary() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".perles", "sounds")
+	return filepath.Join(home, ".xorchestrator", "sounds")
 }
 
 // ValidateSound checks sound configuration for errors.
 // Returns nil if the configuration is valid.
 // Validates:
-// - All override paths are under ~/.perles/sounds/
+// - All override paths are under ~/.xorchestrator/sounds/
 // - Paths cannot escape the boundary via symlinks or path traversal
 // - Only .wav extension is allowed (case-insensitive)
 // - Override sound files must exist
@@ -773,14 +773,14 @@ orchestration:
   # Sound Notifications
   # Audio feedback for orchestration events. All events are disabled by default.
   # To override the default sounds use the override_sounds for each event
-  # Custom sounds must be WAV files located in ~/.perles/sounds/
+  # Custom sounds must be WAV files located in ~/.xorchestrator/sounds/
   sound:
     events:
       # Plays when entering chat mode
       # chat_welcome:
       #   enabled: true
       #   override_sounds:
-      #     - ~/.perles/sounds/my-welcome.wav
+      #     - ~/.xorchestrator/sounds/my-welcome.wav
 
       # Plays when entering orchestration mode
       # orchestration_welcome:

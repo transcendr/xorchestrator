@@ -11,8 +11,8 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/git"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/git"
 )
 
 // newTestInitializer creates an Initializer in a specific state for testing.
@@ -831,7 +831,7 @@ func TestWorktreeErrorMessage_InvalidBranchName_StringContains(t *testing.T) {
 }
 
 // ===========================================================================
-// timeoutErrorMessage Tests (Task perles-mo45.6)
+// timeoutErrorMessage Tests (Task xorchestrator-mo45.6)
 // ===========================================================================
 
 func TestTimeoutErrorMessage_AllPhases(t *testing.T) {
