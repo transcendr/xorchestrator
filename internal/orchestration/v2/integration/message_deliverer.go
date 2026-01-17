@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/zjrosen/perles/internal/orchestration/client"
@@ -78,9 +79,7 @@ func NewProcessSessionDeliverer(
 ) *ProcessSessionDeliverer {
 	// Defensive shallow copy to prevent accidental mutation races
 	extCopy := make(map[string]any, len(extensions))
-	for k, v := range extensions {
-		extCopy[k] = v
-	}
+	maps.Copy(extCopy, extensions)
 
 	d := &ProcessSessionDeliverer{
 		sessionProvider: sessionProvider,
