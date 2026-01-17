@@ -139,14 +139,3 @@ func TestNew_WithEmptyFlags(t *testing.T) {
 	require.NotNil(t, r)
 	require.False(t, r.Enabled("any"))
 }
-
-func TestFlagSoundEnabled_Constant(t *testing.T) {
-	// Verify the constant has the expected value
-	require.Equal(t, "sound-enabled", FlagSoundEnabled)
-}
-
-func TestRegistry_SoundEnabled_DefaultFalse(t *testing.T) {
-	// Unknown flags (including FlagSoundEnabled when not configured) default to false
-	r := New(map[string]bool{})
-	require.False(t, r.Enabled(FlagSoundEnabled))
-}

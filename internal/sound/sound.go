@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 
 	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/flags"
 	"github.com/zjrosen/perles/internal/log"
 )
 
@@ -34,9 +33,8 @@ func (NoopSoundService) Play(_, _ string) {}
 const maxConcurrentSounds = 2
 
 // SystemSoundService plays sounds via OS-native audio commands.
-// It supports a master kill switch via flags and granular per-sound configuration.
+// It supports granular per-event configuration.
 type SystemSoundService struct {
-	flags          *flags.Registry
 	eventConfigs   map[string]config.SoundEventConfig
 	audioAvailable bool
 	audioCommand   string
@@ -45,9 +43,8 @@ type SystemSoundService struct {
 }
 
 // NewSystemSoundService creates a sound service with the given configuration.
-// flags provides the master kill switch (FlagSoundEnabled).
 // eventConfigs maps event names to their configurations (nil uses all defaults).
-func NewSystemSoundService(flagsRegistry *flags.Registry, eventConfigs map[string]config.SoundEventConfig) *SystemSoundService {
+func NewSystemSoundService(eventConfigs map[string]config.SoundEventConfig) *SystemSoundService {
 	cmd, args := detectAudioCommand()
 	available := cmd != ""
 
@@ -58,7 +55,6 @@ func NewSystemSoundService(flagsRegistry *flags.Registry, eventConfigs map[strin
 	)
 
 	return &SystemSoundService{
-		flags:          flagsRegistry,
 		eventConfigs:   eventConfigs,
 		audioAvailable: available,
 		audioCommand:   cmd,
@@ -70,18 +66,11 @@ func NewSystemSoundService(flagsRegistry *flags.Registry, eventConfigs map[strin
 // soundFile is the filename (without extension) to play from embedded sounds.
 // useCase is checked against the eventConfigs map for permission and override sounds.
 // Does nothing if:
-//   - Master flag FlagSoundEnabled is disabled
 //   - The specific use case is disabled in eventConfigs
 //   - No audio player is available on this platform
 //   - The sound file is unknown (not in embedded files)
 //   - Maximum concurrent sounds limit is reached
 func (s *SystemSoundService) Play(soundFile, useCase string) {
-	// Master kill switch - if no flags registry, default to disabled
-	if s.flags == nil || !s.flags.Enabled(flags.FlagSoundEnabled) {
-		log.Debug(log.CatConfig, "Sound disabled by flag", "soundFile", soundFile, "useCase", useCase)
-		return
-	}
-
 	// Check event configuration
 	if s.eventConfigs != nil {
 		if eventConfig, exists := s.eventConfigs[useCase]; exists {

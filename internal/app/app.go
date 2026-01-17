@@ -143,7 +143,7 @@ func NewWithConfig(
 		Clipboard:  shared.SystemClipboard{},
 		Clock:      shared.RealClock{},
 		Flags:      flagService,
-		Sounds:     sound.NewSystemSoundService(flagService, cfg.Sound.Events),
+		Sounds:     sound.NewSystemSoundService(cfg.Sound.Events),
 		GitExecutorFactory: func(path string) git.GitExecutor {
 			return git.NewRealExecutor(path)
 		},

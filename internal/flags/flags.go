@@ -13,9 +13,6 @@ const (
 	// FlagSessionResume controls whether session resumption (ctrl+r) is enabled.
 	FlagSessionResume = "session-resume"
 
-	// FlagSoundEnabled controls whether audio feedback is enabled (master kill switch).
-	FlagSoundEnabled = "sound-enabled"
-
 	// FlagRemoveWorktree controls if existing orchestration mode removes the worktree.
 	FlagRemoveWorktree = "remove-worktree"
 )
