@@ -3,7 +3,7 @@ package codex
 import (
 	"encoding/json"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // codexEvent represents the raw Codex CLI JSONL event structure.

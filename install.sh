@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# Perles Install Script
+# Xorchestrator Install Script
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/zjrosen/perles/main/install.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/zjrosen/xorchestrator/main/install.sh | bash
 #
 # Environment Variables:
 #   INSTALL_DIR - Installation directory (default: $HOME/.local/bin)
@@ -13,7 +13,7 @@ set -e
 
 # Configuration
 OWNER="${OWNER:-zjrosen}"
-REPO="perles"
+REPO="xorchestrator"
 # Default to a per-user install path so root is not required.
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
@@ -181,7 +181,7 @@ verify_install() {
 
 main() {
     echo ""
-    echo "Perles Installer"
+    echo "Xorchestrator Installer"
     echo "================"
     echo ""
 

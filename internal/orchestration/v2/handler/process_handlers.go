@@ -14,13 +14,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/tracing"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/process"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/tracing"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/process"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/prompt"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
 )
 
 // ===========================================================================

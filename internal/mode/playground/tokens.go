@@ -2,7 +2,7 @@
 package playground
 
 import (
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // GetTokenColor returns the hex color value for a token.

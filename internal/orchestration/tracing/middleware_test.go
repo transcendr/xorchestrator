@@ -14,8 +14,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/processor"
 )
 
 // ===========================================================================

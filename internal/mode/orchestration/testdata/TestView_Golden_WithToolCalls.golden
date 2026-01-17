@@ -15,11 +15,11 @@
 │the ready tasks.                        ││                                    ││                                      │
 │                                        ││                                    ││Worker                                │
 │Coordinator                             ││                                    ││I'll start by checking for            │
-│├╴ mcp__perles-orchestrator__post_messag││                                    ││messages                              │
-│├╴ mcp__perles-orchestrator__spawn_worke││                                    ││                                      │
-│├╴ mcp__perles-orchestrator__spawn_worke││                                    ││Worker                                │
-│╰╴ mcp__perles-orchestrator__list_worker││                                    ││├╴ mcp__perles-worker__check_messages │
-│                                        ││                                    ││╰╴ mcp__perles-worker__post_message   │
+│├╴ mcp__xorchestrator-orchestrator__post││                                    ││messages                              │
+│├╴ mcp__xorchestrator-orchestrator__spaw││                                    ││                                      │
+│├╴ mcp__xorchestrator-orchestrator__spaw││                                    ││Worker                                │
+│╰╴ mcp__xorchestrator-orchestrator__list││                                    ││├╴ mcp__xorchestrator-worker__check_me│
+│                                        ││                                    ││╰╴ mcp__xorchestrator-worker__post_mes│
 │Coordinator                             ││                                    ││                                      │
 │I've spawned 2 workers. Monitoring      ││                                    ││Worker                                │
 │their progress.                         ││                                    ││Task completed successfully!          │

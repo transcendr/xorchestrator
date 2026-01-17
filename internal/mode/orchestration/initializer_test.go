@@ -14,12 +14,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/orchestration/amp"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/session"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/amp"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/session"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
 )
 
 func TestInitializer_CreatesSession(t *testing.T) {
@@ -64,10 +64,10 @@ func TestInitializer_SessionFolderStructure(t *testing.T) {
 
 	workDir := t.TempDir()
 	sessionID := "test-session-uuid"
-	sessionDir := filepath.Join(workDir, ".perles", "sessions", sessionID)
+	sessionDir := filepath.Join(workDir, ".xorchestrator", "sessions", sessionID)
 
 	// Verify the path construction matches what initializer.go does
-	expectedDir := filepath.Join(workDir, ".perles", "sessions", sessionID)
+	expectedDir := filepath.Join(workDir, ".xorchestrator", "sessions", sessionID)
 	require.Equal(t, expectedDir, sessionDir)
 
 	// The actual folder creation is done by session.New() which is already tested
@@ -391,7 +391,7 @@ func TestIntegration_SessionCreation(t *testing.T) {
 
 	workDir := t.TempDir()
 	sessionID := "integration-test-session"
-	sessionDir := filepath.Join(workDir, ".perles", "sessions", sessionID)
+	sessionDir := filepath.Join(workDir, ".xorchestrator", "sessions", sessionID)
 
 	// Import and use the session package directly to verify it works as expected
 	// This mimics what createWorkspace() does
@@ -581,7 +581,7 @@ func TestInitializer_Retry_ResetsProcessRepo(t *testing.T) {
 // ===========================================================================
 
 // ===========================================================================
-// createSession() Method Tests (Task perles-oph9.1)
+// createSession() Method Tests (Task xorchestrator-oph9.1)
 // ===========================================================================
 
 func TestInitializer_CreateSession_Success(t *testing.T) {
@@ -832,7 +832,7 @@ func TestInitializer_AgentProvider_AmpPartialExtensions(t *testing.T) {
 }
 
 // ===========================================================================
-// createMCPListener() Method Tests (Task perles-oph9.3)
+// createMCPListener() Method Tests (Task xorchestrator-oph9.3)
 // ===========================================================================
 
 func TestInitializer_CreateMCPListener_Success(t *testing.T) {
@@ -930,7 +930,7 @@ func TestInitializer_CreateMCPListener_ListenerAcceptsConnections(t *testing.T) 
 }
 
 // ===========================================================================
-// createMCPServer() Method Tests (Task perles-oph9.3)
+// createMCPServer() Method Tests (Task xorchestrator-oph9.3)
 // ===========================================================================
 
 func TestInitializer_CreateMCPServer_Success(t *testing.T) {
@@ -1284,7 +1284,7 @@ func TestRun_CancelsOnContextCancellation(t *testing.T) {
 }
 
 // ===========================================================================
-// cleanupResources() Tests (Task perles-oph9.13)
+// cleanupResources() Tests (Task xorchestrator-oph9.13)
 // ===========================================================================
 
 func TestCleanupResources_Idempotent(t *testing.T) {
@@ -1611,7 +1611,7 @@ func TestCleanupResources_ExistingTestStillPasses(t *testing.T) {
 }
 
 // ===========================================================================
-// Worktree Phase Tests (Task perles-v5cq.5)
+// Worktree Phase Tests (Task xorchestrator-v5cq.5)
 // ===========================================================================
 
 func TestInitializer_WorktreePhase_Success(t *testing.T) {
@@ -1642,7 +1642,7 @@ func TestInitializer_WorktreePhase_Success(t *testing.T) {
 
 	// Verify worktree state was set
 	require.Equal(t, worktreePath, init.WorktreePath())
-	require.Equal(t, "perles-session-test-ses", init.WorktreeBranch())
+	require.Equal(t, "xorchestrator-session-test-ses", init.WorktreeBranch())
 }
 
 func TestInitializer_WorktreePhase_NotGitRepo_Fails(t *testing.T) {
@@ -1782,11 +1782,11 @@ func TestInitializer_PruneWorktrees_CalledBeforeCreate(t *testing.T) {
 }
 
 func TestInitializer_BranchName_DefaultsToSessionID(t *testing.T) {
-	// Unit test: Verify branch name defaults to perles-session-{shortID}
+	// Unit test: Verify branch name defaults to xorchestrator-session-{shortID}
 	workDir := t.TempDir()
 	worktreePath := "/tmp/test-worktree"
 	sessionID := "12345678-90ab-cdef-1234-567890abcdef"
-	expectedBranch := "perles-session-12345678"
+	expectedBranch := "xorchestrator-session-12345678"
 
 	var capturedNewBranch, capturedBaseBranch string
 	mockGit := mocks.NewMockGitExecutor(t)
@@ -1823,7 +1823,7 @@ func TestInitializer_BranchName_UsesConfiguredBaseBranch(t *testing.T) {
 	worktreePath := "/tmp/test-worktree"
 	baseBranch := "develop"
 	sessionID := "test-sess"
-	expectedNewBranch := "perles-session-test-ses"
+	expectedNewBranch := "xorchestrator-session-test-ses"
 
 	var capturedNewBranch, capturedBaseBranch string
 	mockGit := mocks.NewMockGitExecutor(t)
@@ -1991,7 +1991,7 @@ func TestInitializer_WorktreeConfig_Fields(t *testing.T) {
 }
 
 // ===========================================================================
-// WorktreeBranchName Field Tests (Task perles-s8xg.2)
+// WorktreeBranchName Field Tests (Task xorchestrator-s8xg.2)
 // ===========================================================================
 
 func TestInitializerConfig_WorktreeBranchName_FieldExists(t *testing.T) {
@@ -2056,7 +2056,7 @@ func TestNewInitializer_WorktreeBranchName_PassedViaConfig(t *testing.T) {
 }
 
 // ===========================================================================
-// Session Restoration Tests (Phase 4e - perles-x977.5)
+// Session Restoration Tests (Phase 4e - xorchestrator-x977.5)
 // ===========================================================================
 
 func TestInitializerConfig_RestoredSession_FieldExists(t *testing.T) {

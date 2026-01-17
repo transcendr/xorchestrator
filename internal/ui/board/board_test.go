@@ -8,9 +8,9 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
 )
 
 func TestBoard_New_DefaultFocus(t *testing.T) {
@@ -508,7 +508,7 @@ func TestBoard_NewFromViews_MixedColumnTypes(t *testing.T) {
 			Name: "MixedView",
 			Columns: []config.ColumnConfig{
 				{Name: "BQL Column", Type: "bql", Query: "status = open"},
-				{Name: "Tree Column", Type: "tree", IssueID: "perles-123", TreeMode: "deps"},
+				{Name: "Tree Column", Type: "tree", IssueID: "xorchestrator-123", TreeMode: "deps"},
 				{Name: "Default Column", Query: "status = closed"}, // type defaults to bql
 			},
 		},
@@ -539,7 +539,7 @@ func TestBoard_MixedColumnTypes_Navigation(t *testing.T) {
 			Name: "MixedView",
 			Columns: []config.ColumnConfig{
 				{Name: "BQL", Type: "bql", Query: "status = open"},
-				{Name: "Tree", Type: "tree", IssueID: "perles-123"},
+				{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123"},
 				{Name: "BQL2", Type: "bql", Query: "status = closed"},
 			},
 		},
@@ -570,7 +570,7 @@ func TestBoard_TreeColumn_Color(t *testing.T) {
 		{
 			Name: "ColorView",
 			Columns: []config.ColumnConfig{
-				{Name: "Colored Tree", Type: "tree", IssueID: "perles-123", Color: "#EF4444"},
+				{Name: "Colored Tree", Type: "tree", IssueID: "xorchestrator-123", Color: "#EF4444"},
 			},
 		},
 	}
@@ -589,7 +589,7 @@ func TestBoard_TreeColumnLoadedMsg_UpdatesCorrectColumn(t *testing.T) {
 			Name: "MixedView",
 			Columns: []config.ColumnConfig{
 				{Name: "BQL", Type: "bql", Query: "status = open"},
-				{Name: "Tree", Type: "tree", IssueID: "perles-123"},
+				{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123"},
 			},
 		},
 	}
@@ -601,7 +601,7 @@ func TestBoard_TreeColumnLoadedMsg_UpdatesCorrectColumn(t *testing.T) {
 		ViewIndex:   0,
 		ColumnIndex: 1, // Tree is at index 1
 		ColumnTitle: "Tree",
-		RootID:      "perles-123",
+		RootID:      "xorchestrator-123",
 		Issues:      nil,
 		Err:         nil,
 	}
@@ -613,7 +613,7 @@ func TestBoard_TreeColumnLoadedMsg_UpdatesCorrectColumn(t *testing.T) {
 		ViewIndex:   1,
 		ColumnIndex: 1,
 		ColumnTitle: "Tree",
-		RootID:      "perles-123",
+		RootID:      "xorchestrator-123",
 		Issues:      nil,
 		Err:         nil,
 	}
@@ -638,7 +638,7 @@ func TestBoard_TreeColumn_Mode(t *testing.T) {
 				{
 					Name: "View",
 					Columns: []config.ColumnConfig{
-						{Name: "Tree", Type: "tree", IssueID: "perles-123", TreeMode: tt.treeMode},
+						{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123", TreeMode: tt.treeMode},
 					},
 				},
 			}

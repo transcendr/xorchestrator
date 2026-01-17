@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
 )
 
 // TestToggleNavigationMode tests entering and exiting navigation mode.

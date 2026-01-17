@@ -5,8 +5,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/panes"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // View styles

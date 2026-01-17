@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // ===========================================================================

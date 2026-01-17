@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"sync/atomic"
 
-	"github.com/zjrosen/perles/internal/flags"
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/flags"
+	"github.com/zjrosen/xorchestrator/internal/log"
 )
 
 // SoundService plays audio feedback. Implementations handle all errors
@@ -118,7 +118,7 @@ func (s *SystemSoundService) playAsync(name string, data []byte) {
 	defer s.concurrent.Add(-1)
 
 	// Write to temp file
-	tmpFile, err := os.CreateTemp("", "perles-sound-*.wav")
+	tmpFile, err := os.CreateTemp("", "xorchestrator-sound-*.wav")
 	if err != nil {
 		log.Debug(log.CatConfig, "Failed to create temp file", "name", name, "error", err)
 		return

@@ -12,16 +12,16 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/flags"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/session"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
+	"github.com/zjrosen/xorchestrator/internal/flags"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/mode"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/session"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/formmodal"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/modal"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/panes"
 )
 
 // testNow is a fixed reference time for reproducible golden tests.
@@ -610,7 +610,7 @@ func TestView_Golden_WithMessages(t *testing.T) {
 			Timestamp: testNow,
 			From:      message.ActorCoordinator,
 			To:        message.ActorAll,
-			Content:   "Starting epic perles-auth. 4 tasks identified.",
+			Content:   "Starting epic xorchestrator-auth. 4 tasks identified.",
 			Type:      message.MessageInfo,
 		},
 		{
@@ -634,7 +634,7 @@ func TestView_Golden_WithWorkers(t *testing.T) {
 
 	// Add workers with task IDs and phases
 	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
-	m = m.SetWorkerTask("worker-1", "perles-auth.1", events.ProcessPhaseImplementing)
+	m = m.SetWorkerTask("worker-1", "xorchestrator-auth.1", events.ProcessPhaseImplementing)
 	m = m.AddWorkerMessage("worker-1", "worker", "Reading auth/oauth.go\nFound existing setup\nAdding Google provider", false)
 	m = m.UpdateWorker("worker-2", events.ProcessStatusReady)
 	m = m.SetWorkerTask("worker-2", "", events.ProcessPhaseIdle) // Idle worker, no task
@@ -659,7 +659,7 @@ func TestView_Golden_FullState(t *testing.T) {
 			Timestamp: testNow,
 			From:      message.ActorCoordinator,
 			To:        message.ActorAll,
-			Content:   "Starting epic perles-auth.",
+			Content:   "Starting epic xorchestrator-auth.",
 			Type:      message.MessageInfo,
 		},
 		{
@@ -683,10 +683,10 @@ func TestView_Golden_FullState(t *testing.T) {
 
 	// Add workers with task context
 	m = m.UpdateWorker("worker-1", events.ProcessStatusReady)
-	m = m.SetWorkerTask("worker-1", "perles-auth.1", events.ProcessPhaseIdle)
+	m = m.SetWorkerTask("worker-1", "xorchestrator-auth.1", events.ProcessPhaseIdle)
 	m = m.AddWorkerMessage("worker-1", "worker", "OAuth setup complete", false)
 	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
-	m = m.SetWorkerTask("worker-2", "perles-auth.2", events.ProcessPhaseReviewing)
+	m = m.SetWorkerTask("worker-2", "xorchestrator-auth.2", events.ProcessPhaseReviewing)
 	m = m.AddWorkerMessage("worker-2", "worker", "Adding JWT validation\nProcessing...", false)
 
 	// Focus on workers pane by pressing Tab twice (Coordinator -> Message -> Worker)
@@ -736,7 +736,7 @@ func TestView_Golden_WorkerStopped(t *testing.T) {
 
 	// Add a working worker and a stopped worker
 	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
-	m = m.SetWorkerTask("worker-1", "perles-auth.1", events.ProcessPhaseImplementing)
+	m = m.SetWorkerTask("worker-1", "xorchestrator-auth.1", events.ProcessPhaseImplementing)
 	m = m.AddWorkerMessage("worker-1", "worker", "Working on OAuth provider integration...", false)
 
 	m = m.UpdateWorker("worker-2", events.ProcessStatusStopped)
@@ -762,10 +762,10 @@ func TestView_Golden_WithToolCalls(t *testing.T) {
 	m = m.AddChatMessage("coordinator", "Perfect! Now I'll spawn workers for the ready tasks.", false)
 
 	// Another group of tool calls
-	m = m.AddChatMessage("coordinator", "🔧 mcp__perles-orchestrator__post_message", false)
-	m = m.AddChatMessage("coordinator", "🔧 mcp__perles-orchestrator__spawn_worker", false)
-	m = m.AddChatMessage("coordinator", "🔧 mcp__perles-orchestrator__spawn_worker", false)
-	m = m.AddChatMessage("coordinator", "🔧 mcp__perles-orchestrator__list_workers", false)
+	m = m.AddChatMessage("coordinator", "🔧 mcp__xorchestrator-orchestrator__post_message", false)
+	m = m.AddChatMessage("coordinator", "🔧 mcp__xorchestrator-orchestrator__spawn_worker", false)
+	m = m.AddChatMessage("coordinator", "🔧 mcp__xorchestrator-orchestrator__spawn_worker", false)
+	m = m.AddChatMessage("coordinator", "🔧 mcp__xorchestrator-orchestrator__list_workers", false)
 
 	// Final response
 	m = m.AddChatMessage("coordinator", "I've spawned 2 workers. Monitoring their progress.", false)
@@ -773,8 +773,8 @@ func TestView_Golden_WithToolCalls(t *testing.T) {
 	// Add a worker with formatted output showing tool calls
 	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
 	m = m.AddWorkerMessage("worker-1", "worker", "I'll start by checking for messages", false)
-	m = m.AddWorkerMessage("worker-1", "worker", "🔧 mcp__perles-worker__check_messages", false)
-	m = m.AddWorkerMessage("worker-1", "worker", "🔧 mcp__perles-worker__post_message", false)
+	m = m.AddWorkerMessage("worker-1", "worker", "🔧 mcp__xorchestrator-worker__check_messages", false)
+	m = m.AddWorkerMessage("worker-1", "worker", "🔧 mcp__xorchestrator-worker__post_message", false)
 	m = m.AddWorkerMessage("worker-1", "worker", "Task completed successfully!", false)
 
 	view := m.View()
@@ -806,8 +806,8 @@ func TestView_Golden_FullscreenCoordinator(t *testing.T) {
 	m = m.AddChatMessage("coordinator", "🔧 MCPSearch", false)
 	m = m.AddChatMessage("coordinator", "🔧 MCPSearch", false)
 	m = m.AddChatMessage("coordinator", "Now I'll spawn workers for the ready tasks.", false)
-	m = m.AddChatMessage("coordinator", "🔧 mcp__perles-orchestrator__spawn_worker", false)
-	m = m.AddChatMessage("coordinator", "🔧 mcp__perles-orchestrator__spawn_worker", false)
+	m = m.AddChatMessage("coordinator", "🔧 mcp__xorchestrator-orchestrator__spawn_worker", false)
+	m = m.AddChatMessage("coordinator", "🔧 mcp__xorchestrator-orchestrator__spawn_worker", false)
 
 	// Enter navigation mode and fullscreen coordinator pane
 	m.navigationMode = true
@@ -828,7 +828,7 @@ func TestView_Golden_FullscreenMessages(t *testing.T) {
 			Timestamp: testNow,
 			From:      message.ActorCoordinator,
 			To:        message.ActorAll,
-			Content:   "Starting epic perles-auth. 4 tasks identified.",
+			Content:   "Starting epic xorchestrator-auth. 4 tasks identified.",
 			Type:      message.MessageInfo,
 		},
 		{
@@ -872,7 +872,7 @@ func TestView_Golden_FullscreenWorker(t *testing.T) {
 
 	// Add workers with messages, task IDs and phases
 	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
-	m = m.SetWorkerTask("worker-1", "perles-auth.1", events.ProcessPhaseImplementing)
+	m = m.SetWorkerTask("worker-1", "xorchestrator-auth.1", events.ProcessPhaseImplementing)
 	m = m.AddWorkerMessage("worker-1", "worker", "Reading auth/oauth.go", false)
 	m = m.AddWorkerMessage("worker-1", "worker", "Found existing OAuth setup", false)
 	m = m.AddWorkerMessage("worker-1", "worker", "🔧 Read", false)
@@ -883,7 +883,7 @@ func TestView_Golden_FullscreenWorker(t *testing.T) {
 	m = m.AddWorkerMessage("worker-1", "worker", "🔧 Bash", false)
 
 	m = m.UpdateWorker("worker-2", events.ProcessStatusReady)
-	m = m.SetWorkerTask("worker-2", "perles-auth.2", events.ProcessPhaseAwaitingReview)
+	m = m.SetWorkerTask("worker-2", "xorchestrator-auth.2", events.ProcessPhaseAwaitingReview)
 	m = m.AddWorkerMessage("worker-2", "worker", "Task complete", false)
 
 	// Enter navigation mode and fullscreen worker-1 (index 0)
@@ -1537,7 +1537,7 @@ func TestModel_Cleanup_RemovesWorktree(t *testing.T) {
 
 	// Set worktree path and branch (simulating successful worktree creation)
 	m.worktreePath = "/tmp/test-worktree"
-	m.worktreeBranch = "perles-session-abc12345"
+	m.worktreeBranch = "xorchestrator-session-abc12345"
 
 	// Call Cleanup
 	m.Cleanup()
@@ -1561,7 +1561,7 @@ func TestModel_Cleanup_HandlesRemoveError(t *testing.T) {
 
 	// Set worktree path and branch
 	m.worktreePath = "/tmp/test-worktree"
-	m.worktreeBranch = "perles-session-abc12345"
+	m.worktreeBranch = "xorchestrator-session-abc12345"
 
 	// Call Cleanup - should not panic
 	require.NotPanics(t, func() {
@@ -1600,7 +1600,7 @@ func TestModel_Cleanup_NoGitExecutor_NoOp(t *testing.T) {
 	// No git executor set
 	m.gitExecutor = nil
 	m.worktreePath = "/tmp/test-worktree"
-	m.worktreeBranch = "perles-session-abc12345"
+	m.worktreeBranch = "xorchestrator-session-abc12345"
 
 	// Call Cleanup - should not panic
 	require.NotPanics(t, func() {
@@ -1627,14 +1627,14 @@ func TestModel_ExitMessage_ShowsBranchName(t *testing.T) {
 
 	// Set worktree path and branch
 	m.worktreePath = "/tmp/test-worktree"
-	m.worktreeBranch = "perles-session-abc12345"
+	m.worktreeBranch = "xorchestrator-session-abc12345"
 
 	// Call Cleanup
 	m.Cleanup()
 
 	// Exit message should show branch name
 	exitMsg := m.ExitMessage()
-	require.Contains(t, exitMsg, "perles-session-abc12345")
+	require.Contains(t, exitMsg, "xorchestrator-session-abc12345")
 }
 
 func TestModel_ExitMessage_ShowsResumeInstructions(t *testing.T) {
@@ -1878,7 +1878,7 @@ func TestModel_DebugModePreserved(t *testing.T) {
 }
 
 // ============================================================================
-// worktreeCustomBranch Field Tests (Task perles-s8xg.2)
+// worktreeCustomBranch Field Tests (Task xorchestrator-s8xg.2)
 // ============================================================================
 
 func TestModel_WorktreeCustomBranch_FieldExists(t *testing.T) {
@@ -2220,7 +2220,7 @@ func TestRestoreFromSession_NilMapHandling(t *testing.T) {
 }
 
 // =============================================================================
-// ResumeSessionDir Config and Init Tests (perles-mewu.1)
+// ResumeSessionDir Config and Init Tests (xorchestrator-mewu.1)
 // =============================================================================
 
 func TestNew_ResumeSessionDir_PropagatesFromConfig(t *testing.T) {

@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for perles
+about: Suggest an idea for xorchestrator
 title: ''
 labels: enhancement
 assignees: ''

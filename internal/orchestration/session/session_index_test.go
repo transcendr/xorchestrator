@@ -39,9 +39,9 @@ func TestLoadSessionIndex_Valid(t *testing.T) {
 				StartTime:                 now,
 				EndTime:                   now.Add(time.Hour),
 				Status:                    StatusCompleted,
-				EpicID:                    "perles-abc",
+				EpicID:                    "xorchestrator-abc",
 				SessionDir:                "/test/dir",
-				AccountabilitySummaryPath: ".perles/sessions/session-123/accountability_summary.md",
+				AccountabilitySummaryPath: ".xorchestrator/sessions/session-123/accountability_summary.md",
 				WorkerCount:               3,
 				TasksCompleted:            5,
 				TotalCommits:              2,
@@ -51,9 +51,9 @@ func TestLoadSessionIndex_Valid(t *testing.T) {
 				StartTime:                 now.Add(2 * time.Hour),
 				EndTime:                   now.Add(4 * time.Hour),
 				Status:                    StatusFailed,
-				EpicID:                    "perles-def",
+				EpicID:                    "xorchestrator-def",
 				SessionDir:                "/test/dir2",
-				AccountabilitySummaryPath: ".perles/sessions/session-456/accountability_summary.md",
+				AccountabilitySummaryPath: ".xorchestrator/sessions/session-456/accountability_summary.md",
 				WorkerCount:               2,
 				TasksCompleted:            1,
 				TotalCommits:              0,
@@ -78,9 +78,9 @@ func TestLoadSessionIndex_Valid(t *testing.T) {
 	require.True(t, original.Sessions[0].StartTime.Equal(loaded.Sessions[0].StartTime))
 	require.True(t, original.Sessions[0].EndTime.Equal(loaded.Sessions[0].EndTime))
 	require.Equal(t, StatusCompleted, loaded.Sessions[0].Status)
-	require.Equal(t, "perles-abc", loaded.Sessions[0].EpicID)
+	require.Equal(t, "xorchestrator-abc", loaded.Sessions[0].EpicID)
 	require.Equal(t, "/test/dir", loaded.Sessions[0].SessionDir)
-	require.Equal(t, ".perles/sessions/session-123/accountability_summary.md", loaded.Sessions[0].AccountabilitySummaryPath)
+	require.Equal(t, ".xorchestrator/sessions/session-123/accountability_summary.md", loaded.Sessions[0].AccountabilitySummaryPath)
 	require.Equal(t, 3, loaded.Sessions[0].WorkerCount)
 	require.Equal(t, 5, loaded.Sessions[0].TasksCompleted)
 	require.Equal(t, 2, loaded.Sessions[0].TotalCommits)
@@ -292,9 +292,9 @@ func TestSessionIndexEntry_JSONRoundTrip(t *testing.T) {
 		StartTime:                 now,
 		EndTime:                   now.Add(2 * time.Hour),
 		Status:                    StatusCompleted,
-		EpicID:                    "perles-xyz.1",
+		EpicID:                    "xorchestrator-xyz.1",
 		SessionDir:                "/Users/test/project",
-		AccountabilitySummaryPath: ".perles/sessions/test-session-uuid/accountability_summary.md",
+		AccountabilitySummaryPath: ".xorchestrator/sessions/test-session-uuid/accountability_summary.md",
 		WorkerCount:               4,
 		TasksCompleted:            7,
 		TotalCommits:              3,

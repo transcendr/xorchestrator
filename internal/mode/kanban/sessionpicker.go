@@ -9,12 +9,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/orchestration/session"
-	"github.com/zjrosen/perles/internal/ui/commandpalette"
-	"github.com/zjrosen/perles/internal/ui/shared/toaster"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/mode"
+	"github.com/zjrosen/xorchestrator/internal/mode/shared"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/session"
+	"github.com/zjrosen/xorchestrator/internal/ui/commandpalette"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/toaster"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // buildSessionPickerItems converts session summaries to command palette items.

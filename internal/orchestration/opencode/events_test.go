@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 func TestParseEvent_StepStart(t *testing.T) {
@@ -236,7 +236,7 @@ func TestParseEvent_StepFinishWithNilCache(t *testing.T) {
 
 func TestGolden_ActualTextEvent(t *testing.T) {
 	// Exact JSON from actual opencode run
-	jsonLine := `{"type":"text","timestamp":1768539307196,"sessionID":"ses_43ad8482affef0ocxqD4UJi3Ym","part":{"id":"prt_bc5283112001cVq9ECSKmsy7GQ","sessionID":"ses_43ad8482affef0ocxqD4UJi3Ym","messageID":"msg_bc5281d3a001vFhgU23qpX5hvZ","type":"text","text":"Hi! I'm ready to help with your Perles project.\n\n**Current Status:**\n- No ready work available","time":{"start":1768539307195,"end":1768539307195}}}`
+	jsonLine := `{"type":"text","timestamp":1768539307196,"sessionID":"ses_43ad8482affef0ocxqD4UJi3Ym","part":{"id":"prt_bc5283112001cVq9ECSKmsy7GQ","sessionID":"ses_43ad8482affef0ocxqD4UJi3Ym","messageID":"msg_bc5281d3a001vFhgU23qpX5hvZ","type":"text","text":"Hi! I'm ready to help with your Xorchestrator project.\n\n**Current Status:**\n- No ready work available","time":{"start":1768539307195,"end":1768539307195}}}`
 
 	event, err := parseEvent([]byte(jsonLine))
 	require.NoError(t, err)

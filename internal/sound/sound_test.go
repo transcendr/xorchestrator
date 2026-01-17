@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/flags"
+	"github.com/zjrosen/xorchestrator/internal/flags"
 )
 
 // skipIfAudioNotAvailable skips the test if no audio player is available.

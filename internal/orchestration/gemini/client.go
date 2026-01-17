@@ -3,7 +3,7 @@ package gemini
 import (
 	"context"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 func init() {

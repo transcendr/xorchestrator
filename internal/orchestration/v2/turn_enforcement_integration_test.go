@@ -9,12 +9,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/handler"
-	"github.com/zjrosen/perles/internal/orchestration/v2/process"
-	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/handler"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/process"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/processor"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
 )
 
 // ===========================================================================

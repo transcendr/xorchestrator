@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
 )
 
 // ===========================================================================

@@ -43,7 +43,7 @@ Describe what the final deliverable should look like.
 
 ## How to Use This Template
 
-1. Copy this file to `~/.perles/workflows/`
+1. Copy this file to `~/.xorchestrator/workflows/`
 2. Rename it to reflect your workflow (e.g., `code_review.md`)
 3. Update the frontmatter:
    - `name`: Display name shown in the picker

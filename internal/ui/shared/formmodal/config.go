@@ -79,7 +79,7 @@
 package formmodal
 
 import (
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/modal"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

@@ -18,13 +18,13 @@ func TestMemoryTaskRepository_Get_ReturnsTask(t *testing.T) {
 	repo := NewMemoryTaskRepository()
 
 	task := &TaskAssignment{
-		TaskID:      "perles-abc.1",
+		TaskID:      "xorchestrator-abc.1",
 		Implementer: "worker-1",
 		Status:      TaskImplementing,
 	}
 	require.NoError(t, repo.Save(task))
 
-	got, err := repo.Get("perles-abc.1")
+	got, err := repo.Get("xorchestrator-abc.1")
 	require.NoError(t, err)
 	assert.Equal(t, task, got)
 }
@@ -41,7 +41,7 @@ func TestMemoryTaskRepository_Save_CreatesNewTask(t *testing.T) {
 	repo := NewMemoryTaskRepository()
 
 	task := &TaskAssignment{
-		TaskID:      "perles-abc.1",
+		TaskID:      "xorchestrator-abc.1",
 		Implementer: "worker-1",
 		Status:      TaskImplementing,
 		StartedAt:   time.Now(),
@@ -49,9 +49,9 @@ func TestMemoryTaskRepository_Save_CreatesNewTask(t *testing.T) {
 	err := repo.Save(task)
 	require.NoError(t, err)
 
-	got, err := repo.Get("perles-abc.1")
+	got, err := repo.Get("xorchestrator-abc.1")
 	require.NoError(t, err)
-	assert.Equal(t, "perles-abc.1", got.TaskID)
+	assert.Equal(t, "xorchestrator-abc.1", got.TaskID)
 	assert.Equal(t, "worker-1", got.Implementer)
 }
 
@@ -59,7 +59,7 @@ func TestMemoryTaskRepository_Save_UpdatesExistingTask(t *testing.T) {
 	repo := NewMemoryTaskRepository()
 
 	task := &TaskAssignment{
-		TaskID:      "perles-abc.1",
+		TaskID:      "xorchestrator-abc.1",
 		Implementer: "worker-1",
 		Status:      TaskImplementing,
 	}
@@ -70,7 +70,7 @@ func TestMemoryTaskRepository_Save_UpdatesExistingTask(t *testing.T) {
 	task.Status = TaskInReview
 	require.NoError(t, repo.Save(task))
 
-	got, err := repo.Get("perles-abc.1")
+	got, err := repo.Get("xorchestrator-abc.1")
 	require.NoError(t, err)
 	assert.Equal(t, "worker-2", got.Reviewer)
 	assert.Equal(t, TaskInReview, got.Status)
@@ -80,7 +80,7 @@ func TestMemoryTaskRepository_GetByWorker_FindsByImplementer(t *testing.T) {
 	repo := NewMemoryTaskRepository()
 
 	task := &TaskAssignment{
-		TaskID:      "perles-abc.1",
+		TaskID:      "xorchestrator-abc.1",
 		Implementer: "worker-1",
 		Status:      TaskImplementing,
 	}
@@ -95,7 +95,7 @@ func TestMemoryTaskRepository_GetByWorker_FindsByReviewer(t *testing.T) {
 	repo := NewMemoryTaskRepository()
 
 	task := &TaskAssignment{
-		TaskID:      "perles-abc.1",
+		TaskID:      "xorchestrator-abc.1",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      TaskInReview,
@@ -111,7 +111,7 @@ func TestMemoryTaskRepository_GetByWorker_ReturnsErrorForUnassigned(t *testing.T
 	repo := NewMemoryTaskRepository()
 
 	task := &TaskAssignment{
-		TaskID:      "perles-abc.1",
+		TaskID:      "xorchestrator-abc.1",
 		Implementer: "worker-1",
 		Status:      TaskImplementing,
 	}
@@ -126,15 +126,15 @@ func TestMemoryTaskRepository_GetByImplementer_ReturnsAllTasks(t *testing.T) {
 	repo := NewMemoryTaskRepository()
 
 	task1 := &TaskAssignment{
-		TaskID:      "perles-abc.1",
+		TaskID:      "xorchestrator-abc.1",
 		Implementer: "worker-1",
 	}
 	task2 := &TaskAssignment{
-		TaskID:      "perles-abc.2",
+		TaskID:      "xorchestrator-abc.2",
 		Implementer: "worker-1",
 	}
 	task3 := &TaskAssignment{
-		TaskID:      "perles-abc.3",
+		TaskID:      "xorchestrator-abc.3",
 		Implementer: "worker-2", // Different worker
 	}
 	require.NoError(t, repo.Save(task1))
@@ -149,8 +149,8 @@ func TestMemoryTaskRepository_GetByImplementer_ReturnsAllTasks(t *testing.T) {
 	for _, task := range tasks {
 		ids[task.TaskID] = true
 	}
-	assert.True(t, ids["perles-abc.1"])
-	assert.True(t, ids["perles-abc.2"])
+	assert.True(t, ids["xorchestrator-abc.1"])
+	assert.True(t, ids["xorchestrator-abc.2"])
 }
 
 func TestMemoryTaskRepository_GetByImplementer_ReturnsEmptySlice(t *testing.T) {
@@ -166,21 +166,21 @@ func TestMemoryTaskRepository_Delete_RemovesTask(t *testing.T) {
 	repo := NewMemoryTaskRepository()
 
 	task := &TaskAssignment{
-		TaskID:      "perles-abc.1",
+		TaskID:      "xorchestrator-abc.1",
 		Implementer: "worker-1",
 	}
 	require.NoError(t, repo.Save(task))
 
 	// Verify it exists
-	_, err := repo.Get("perles-abc.1")
+	_, err := repo.Get("xorchestrator-abc.1")
 	require.NoError(t, err)
 
 	// Delete it
-	err = repo.Delete("perles-abc.1")
+	err = repo.Delete("xorchestrator-abc.1")
 	require.NoError(t, err)
 
 	// Verify it's gone
-	_, err = repo.Get("perles-abc.1")
+	_, err = repo.Get("xorchestrator-abc.1")
 	assert.ErrorIs(t, err, ErrTaskNotFound)
 }
 
@@ -195,12 +195,12 @@ func TestMemoryTaskRepository_Delete_NoErrorForNonexistent(t *testing.T) {
 func TestMemoryTaskRepository_Reset(t *testing.T) {
 	repo := NewMemoryTaskRepository()
 
-	task := &TaskAssignment{TaskID: "perles-abc.1", Implementer: "worker-1"}
+	task := &TaskAssignment{TaskID: "xorchestrator-abc.1", Implementer: "worker-1"}
 	require.NoError(t, repo.Save(task))
 
 	repo.Reset()
 
-	_, err := repo.Get("perles-abc.1")
+	_, err := repo.Get("xorchestrator-abc.1")
 	assert.ErrorIs(t, err, ErrTaskNotFound)
 }
 
@@ -208,13 +208,13 @@ func TestMemoryTaskRepository_AddTask(t *testing.T) {
 	repo := NewMemoryTaskRepository()
 
 	task := &TaskAssignment{
-		TaskID:      "perles-abc.1",
+		TaskID:      "xorchestrator-abc.1",
 		Implementer: "worker-1",
 		Status:      TaskImplementing,
 	}
 	repo.AddTask(task)
 
-	got, err := repo.Get("perles-abc.1")
+	got, err := repo.Get("xorchestrator-abc.1")
 	require.NoError(t, err)
 	assert.Equal(t, task, got)
 }
@@ -507,5 +507,5 @@ func workerID(n int) string {
 }
 
 func taskID(n int) string {
-	return fmt.Sprintf("perles-test.%d", n)
+	return fmt.Sprintf("xorchestrator-test.%d", n)
 }

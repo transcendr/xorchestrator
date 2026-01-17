@@ -44,7 +44,7 @@
 // The mock client is automatically registered with the client package
 // when the mock package is imported:
 //
-//	import _ "github.com/zjrosen/perles/internal/orchestration/mock"
+//	import _ "github.com/zjrosen/xorchestrator/internal/orchestration/mock"
 //
 //	client, err := client.NewClient(client.ClientMock)
 package mock

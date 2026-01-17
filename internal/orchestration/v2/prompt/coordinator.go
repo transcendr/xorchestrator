@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/log"
 )
 
 // promptModeData holds data for rendering the prompt mode system prompt.

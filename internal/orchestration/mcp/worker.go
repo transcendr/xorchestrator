@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/orchestration/validation"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/prompt"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/validation"
 )
 
 // Validation constants for post_accountability_summary tool.
@@ -81,7 +81,7 @@ func NewWorkerServer(workerID string, msgStore MessageStore) *WorkerServer {
 	instructions := prompt.WorkerMCPInstructions(workerID)
 
 	ws := &WorkerServer{
-		Server:   NewServer("perles-worker", "1.0.0", WithInstructions(instructions)),
+		Server:   NewServer("xorchestrator-worker", "1.0.0", WithInstructions(instructions)),
 		workerID: workerID,
 		msgStore: msgStore,
 		dedup:    NewMessageDeduplicator(DefaultDeduplicationWindow),

@@ -8,12 +8,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/metrics"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
 )
 
 // mockProcess implements client.HeadlessProcess for testing.

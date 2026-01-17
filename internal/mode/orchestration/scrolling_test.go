@@ -8,10 +8,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/workflow"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/panes"
 )
 
 // =============================================================================

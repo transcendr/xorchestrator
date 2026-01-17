@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // Package-level styles for hot path rendering to avoid allocations per frame.

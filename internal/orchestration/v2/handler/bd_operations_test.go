@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
 )
 
 // ===========================================================================
@@ -20,12 +20,12 @@ import (
 
 func TestMarkTaskCompleteHandler_Success(t *testing.T) {
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().UpdateStatus("perles-abc1.2", beads.StatusClosed).Return(nil)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", "coordinator", "Task completed").Return(nil)
+	bdExecutor.EXPECT().UpdateStatus("xorchestrator-abc1.2", beads.StatusClosed).Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", "coordinator", "Task completed").Return(nil)
 
 	handler := NewMarkTaskCompleteHandler(bdExecutor, nil)
 
-	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "perles-abc1.2")
+	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "xorchestrator-abc1.2")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -34,19 +34,19 @@ func TestMarkTaskCompleteHandler_Success(t *testing.T) {
 
 func TestMarkTaskCompleteHandler_ReturnsResult(t *testing.T) {
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().UpdateStatus("perles-abc1.2", beads.StatusClosed).Return(nil)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", "coordinator", "Task completed").Return(nil)
+	bdExecutor.EXPECT().UpdateStatus("xorchestrator-abc1.2", beads.StatusClosed).Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", "coordinator", "Task completed").Return(nil)
 
 	handler := NewMarkTaskCompleteHandler(bdExecutor, nil)
 
-	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "perles-abc1.2")
+	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "xorchestrator-abc1.2")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
 
 	completeResult, ok := result.Data.(*MarkTaskCompleteResult)
 	require.True(t, ok, "expected MarkTaskCompleteResult, got: %T", result.Data)
-	require.Equal(t, "perles-abc1.2", completeResult.TaskID)
+	require.Equal(t, "xorchestrator-abc1.2", completeResult.TaskID)
 }
 
 func TestMarkTaskCompleteHandler_FailsOnUpdateStatusError(t *testing.T) {
@@ -55,7 +55,7 @@ func TestMarkTaskCompleteHandler_FailsOnUpdateStatusError(t *testing.T) {
 
 	handler := NewMarkTaskCompleteHandler(bdExecutor, nil)
 
-	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "perles-abc1.2")
+	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "xorchestrator-abc1.2")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error on BD UpdateTaskStatus failure")
@@ -70,7 +70,7 @@ func TestMarkTaskCompleteHandler_FailsOnAddCommentError(t *testing.T) {
 
 	handler := NewMarkTaskCompleteHandler(bdExecutor, nil)
 
-	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "perles-abc1.2")
+	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "xorchestrator-abc1.2")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error on BD AddComment failure")
@@ -86,46 +86,46 @@ func TestMarkTaskCompleteHandler_PanicsIfBDExecutorNil(t *testing.T) {
 
 func TestMarkTaskCompleteHandler_DeletesTaskFromRepository(t *testing.T) {
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().UpdateStatus("perles-abc1.2", beads.StatusClosed).Return(nil)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", "coordinator", "Task completed").Return(nil)
+	bdExecutor.EXPECT().UpdateStatus("xorchestrator-abc1.2", beads.StatusClosed).Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", "coordinator", "Task completed").Return(nil)
 
 	// Create task repo with a task
 	taskRepo := repository.NewMemoryTaskRepository()
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 	}
 	require.NoError(t, taskRepo.Save(task))
 
 	// Verify task exists before handler
-	_, err := taskRepo.Get("perles-abc1.2")
+	_, err := taskRepo.Get("xorchestrator-abc1.2")
 	require.NoError(t, err, "task should exist before handle")
 
 	handler := NewMarkTaskCompleteHandler(bdExecutor, taskRepo)
 
-	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "perles-abc1.2")
+	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "xorchestrator-abc1.2")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
 	require.True(t, result.Success)
 
 	// Verify task was deleted
-	_, err = taskRepo.Get("perles-abc1.2")
+	_, err = taskRepo.Get("xorchestrator-abc1.2")
 	require.ErrorIs(t, err, repository.ErrTaskNotFound, "task should be deleted after handle")
 }
 
 func TestMarkTaskCompleteHandler_SucceedsWhenTaskNotInRepo(t *testing.T) {
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().UpdateStatus("perles-abc1.2", beads.StatusClosed).Return(nil)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", "coordinator", "Task completed").Return(nil)
+	bdExecutor.EXPECT().UpdateStatus("xorchestrator-abc1.2", beads.StatusClosed).Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", "coordinator", "Task completed").Return(nil)
 
 	// Create empty task repo (task doesn't exist in memory)
 	taskRepo := repository.NewMemoryTaskRepository()
 
 	handler := NewMarkTaskCompleteHandler(bdExecutor, taskRepo)
 
-	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "perles-abc1.2")
+	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "xorchestrator-abc1.2")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	// Should succeed even though task wasn't in memory
@@ -135,13 +135,13 @@ func TestMarkTaskCompleteHandler_SucceedsWhenTaskNotInRepo(t *testing.T) {
 
 func TestMarkTaskCompleteHandler_WorksWithNilTaskRepo(t *testing.T) {
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().UpdateStatus("perles-abc1.2", beads.StatusClosed).Return(nil)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", "coordinator", "Task completed").Return(nil)
+	bdExecutor.EXPECT().UpdateStatus("xorchestrator-abc1.2", beads.StatusClosed).Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", "coordinator", "Task completed").Return(nil)
 
 	// Construct handler with nil taskRepo (backward compatibility)
 	handler := NewMarkTaskCompleteHandler(bdExecutor, nil)
 
-	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "perles-abc1.2")
+	cmd := command.NewMarkTaskCompleteCommand(command.SourceMCPTool, "xorchestrator-abc1.2")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	// Should succeed without panic even with nil taskRepo
@@ -150,7 +150,7 @@ func TestMarkTaskCompleteHandler_WorksWithNilTaskRepo(t *testing.T) {
 
 	completeResult, ok := result.Data.(*MarkTaskCompleteResult)
 	require.True(t, ok, "expected MarkTaskCompleteResult, got: %T", result.Data)
-	require.Equal(t, "perles-abc1.2", completeResult.TaskID)
+	require.Equal(t, "xorchestrator-abc1.2", completeResult.TaskID)
 }
 
 // ===========================================================================
@@ -160,11 +160,11 @@ func TestMarkTaskCompleteHandler_WorksWithNilTaskRepo(t *testing.T) {
 func TestMarkTaskFailedHandler_Success(t *testing.T) {
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// MarkTaskFailed only calls AddComment, not UpdateStatus
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", "coordinator", "Task failed: Build failed due to missing dependency").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", "coordinator", "Task failed: Build failed due to missing dependency").Return(nil)
 
 	handler := NewMarkTaskFailedHandler(bdExecutor)
 
-	cmd := command.NewMarkTaskFailedCommand(command.SourceMCPTool, "perles-abc1.2", "Build failed due to missing dependency")
+	cmd := command.NewMarkTaskFailedCommand(command.SourceMCPTool, "xorchestrator-abc1.2", "Build failed due to missing dependency")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -173,18 +173,18 @@ func TestMarkTaskFailedHandler_Success(t *testing.T) {
 
 func TestMarkTaskFailedHandler_ReturnsResult(t *testing.T) {
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", "coordinator", "Task failed: Tests failing").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", "coordinator", "Task failed: Tests failing").Return(nil)
 
 	handler := NewMarkTaskFailedHandler(bdExecutor)
 
-	cmd := command.NewMarkTaskFailedCommand(command.SourceMCPTool, "perles-abc1.2", "Tests failing")
+	cmd := command.NewMarkTaskFailedCommand(command.SourceMCPTool, "xorchestrator-abc1.2", "Tests failing")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
 
 	failedResult, ok := result.Data.(*MarkTaskFailedResult)
 	require.True(t, ok, "expected MarkTaskFailedResult, got: %T", result.Data)
-	require.Equal(t, "perles-abc1.2", failedResult.TaskID)
+	require.Equal(t, "xorchestrator-abc1.2", failedResult.TaskID)
 	require.Equal(t, "Tests failing", failedResult.Reason)
 }
 
@@ -194,7 +194,7 @@ func TestMarkTaskFailedHandler_FailsOnAddCommentError(t *testing.T) {
 
 	handler := NewMarkTaskFailedHandler(bdExecutor)
 
-	cmd := command.NewMarkTaskFailedCommand(command.SourceMCPTool, "perles-abc1.2", "Some reason")
+	cmd := command.NewMarkTaskFailedCommand(command.SourceMCPTool, "xorchestrator-abc1.2", "Some reason")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error on BD AddComment failure")
@@ -211,11 +211,11 @@ func TestMarkTaskFailedHandler_PanicsIfBDExecutorNil(t *testing.T) {
 func TestMarkTaskFailedHandler_DoesNotUpdateStatus(t *testing.T) {
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// MarkTaskFailed only calls AddComment, not UpdateStatus - verify UpdateStatus is never called
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", "coordinator", "Task failed: Some reason").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", "coordinator", "Task failed: Some reason").Return(nil)
 
 	handler := NewMarkTaskFailedHandler(bdExecutor)
 
-	cmd := command.NewMarkTaskFailedCommand(command.SourceMCPTool, "perles-abc1.2", "Some reason")
+	cmd := command.NewMarkTaskFailedCommand(command.SourceMCPTool, "xorchestrator-abc1.2", "Some reason")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)

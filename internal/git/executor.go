@@ -22,7 +22,7 @@ type CommitInfo struct {
 // This abstraction allows for easy testing with mock implementations.
 type GitExecutor interface {
 	// CreateWorktree creates a new worktree at path with a new branch.
-	// newBranch is the name of the new branch to create (e.g., perles-session-abc123).
+	// newBranch is the name of the new branch to create (e.g., xorchestrator-session-abc123).
 	// baseBranch is the starting point for the new branch (e.g., main, develop).
 	// If baseBranch is empty, uses current HEAD as the starting point.
 	CreateWorktree(path, newBranch, baseBranch string) error

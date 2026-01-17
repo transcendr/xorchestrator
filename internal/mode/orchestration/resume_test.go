@@ -9,9 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/session"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/session"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/chatrender"
 )
 
 // createTestSessionDir creates a minimal test session directory with valid metadata.
@@ -492,7 +492,7 @@ func TestResumeFlow_PreservesSessionIDs(t *testing.T) {
 
 	// Update metadata with session refs
 	metadata := &session.Metadata{
-		SessionID:             "perles-session-uuid",
+		SessionID:             "xorchestrator-session-uuid",
 		SessionDir:            sessionDir,
 		StartTime:             now,
 		EndTime:               now.Add(time.Hour),

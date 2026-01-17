@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/chatrender"
 )
 
 // Helper function to create test session directory structure

@@ -258,11 +258,11 @@ func TestLexer_BasicTokens(t *testing.T) {
 		},
 		{
 			name:  "identifier with hyphen",
-			input: "id = perles-123",
+			input: "id = xorchestrator-123",
 			expected: []Token{
 				{Type: TokenIdent, Literal: "id", Pos: 1},
 				{Type: TokenEq, Literal: "=", Pos: 4},
-				{Type: TokenIdent, Literal: "perles-123", Pos: 6},
+				{Type: TokenIdent, Literal: "xorchestrator-123", Pos: 6},
 				{Type: TokenEOF, Literal: "", Pos: 16},
 			},
 		},

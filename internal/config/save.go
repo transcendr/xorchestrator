@@ -1,4 +1,4 @@
-// Package config provides configuration types, defaults, and persistence for perles.
+// Package config provides configuration types, defaults, and persistence for xorchestrator.
 package config
 
 import (
@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/log"
 
 	"gopkg.in/yaml.v3"
 )
@@ -89,7 +89,7 @@ func SaveViews(configPath string, views []ViewConfig) error {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
-	temp, err := os.CreateTemp(dir, ".perles.yaml.tmp.*")
+	temp, err := os.CreateTemp(dir, ".xorchestrator.yaml.tmp.*")
 	if err != nil {
 		log.ErrorErr(log.CatConfig, "Failed to create temp file", err, "dir", dir)
 		return fmt.Errorf("creating temp file: %w", err)

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/log"
 )
 
 // blockCommentRegex matches block /* */ comments only.

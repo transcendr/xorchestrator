@@ -25,12 +25,12 @@ func TestRealExecutor_NewRealExecutor(t *testing.T) {
 // TestRealExecutor_IsGitRepo tests the IsGitRepo method.
 func TestRealExecutor_IsGitRepo(t *testing.T) {
 	t.Run("in git repo", func(t *testing.T) {
-		// Use the current repo (perles)
+		// Use the current repo (xorchestrator)
 		cwd, err := os.Getwd()
 		require.NoError(t, err)
 
 		executor := NewRealExecutor(cwd)
-		require.True(t, executor.IsGitRepo(), "IsGitRepo() = false, want true (running in perles repo)")
+		require.True(t, executor.IsGitRepo(), "IsGitRepo() = false, want true (running in xorchestrator repo)")
 	})
 
 	t.Run("not in git repo", func(t *testing.T) {
@@ -126,8 +126,8 @@ func TestRealExecutor_IsBareRepo(t *testing.T) {
 	isBare, err := executor.IsBareRepo()
 	require.NoError(t, err, "IsBareRepo() error")
 
-	// The perles repo should not be bare
-	require.False(t, isBare, "IsBareRepo() = true for perles repo, want false")
+	// The xorchestrator repo should not be bare
+	require.False(t, isBare, "IsBareRepo() = true for xorchestrator repo, want false")
 }
 
 // TestRealExecutor_IsDetachedHead tests the IsDetachedHead method.
@@ -151,7 +151,7 @@ func TestRealExecutor_IsWorktree(t *testing.T) {
 	isWorktree, err := executor.IsWorktree()
 	require.NoError(t, err, "IsWorktree() error")
 
-	// The main perles repo should not be a worktree
+	// The main xorchestrator repo should not be a worktree
 	if isWorktree {
 		t.Logf("IsWorktree() = true (running in a worktree)")
 	}
@@ -655,8 +655,8 @@ func TestRealExecutor_GetCommitLog_Success(t *testing.T) {
 	commits, err := executor.GetCommitLog(10)
 	require.NoError(t, err, "GetCommitLog(10) error")
 
-	// The perles repo should have commits
-	require.NotEmpty(t, commits, "GetCommitLog() returned empty for perles repo")
+	// The xorchestrator repo should have commits
+	require.NotEmpty(t, commits, "GetCommitLog() returned empty for xorchestrator repo")
 
 	// Verify the commit structure
 	for i, c := range commits {

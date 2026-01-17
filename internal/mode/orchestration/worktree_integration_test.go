@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/git"
-	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/git"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
 )
 
 // ===========================================================================
@@ -32,11 +32,11 @@ import (
 // ===========================================================================
 // Edge Case 1: Already in Worktree
 // ===========================================================================
-// When the user runs perles from inside an existing worktree, we detect this
+// When the user runs xorchestrator from inside an existing worktree, we detect this
 // via IsWorktree() and can prompt the user to continue in-place or error.
 
 func TestWorktreeIntegration_AlreadyInWorktree_Detected(t *testing.T) {
-	// Test: User runs perles from inside an existing worktree
+	// Test: User runs xorchestrator from inside an existing worktree
 	// Detection: IsWorktree() returns true
 	// Expected: System can detect and handle appropriately
 	workDir := t.TempDir()
@@ -87,7 +87,7 @@ func TestWorktreeIntegration_BranchAlreadyCheckedOut_Error(t *testing.T) {
 	workDir := t.TempDir()
 	worktreePath := "/tmp/test-worktree"
 	sessionID := "test-session-12345678"
-	expectedBranch := "perles-session-test-ses"
+	expectedBranch := "xorchestrator-session-test-ses"
 
 	mockGit := mocks.NewMockGitExecutor(t)
 	mockGit.EXPECT().IsGitRepo().Return(true)
@@ -114,7 +114,7 @@ func TestWorktreeIntegration_BranchAlreadyCheckedOut_Error(t *testing.T) {
 
 func TestWorktreeIntegration_BranchAlreadyCheckedOut_UniqueSessionBranch(t *testing.T) {
 	// Test: Using unique session-based branch names avoids conflicts
-	// Each session gets a unique branch like perles-session-abc12345
+	// Each session gets a unique branch like xorchestrator-session-abc12345
 	workDir := t.TempDir()
 	worktreePath := "/tmp/test-worktree"
 	sessionID := "unique-session-87654321"
@@ -143,7 +143,7 @@ func TestWorktreeIntegration_BranchAlreadyCheckedOut_UniqueSessionBranch(t *test
 	err := init.createWorktree()
 	require.NoError(t, err)
 	// Branch name should be unique based on session ID
-	require.Equal(t, "perles-session-unique-s", capturedBranch)
+	require.Equal(t, "xorchestrator-session-unique-s", capturedBranch)
 }
 
 // ===========================================================================
@@ -329,7 +329,7 @@ func TestWorktreeIntegration_DetachedHead_AutoBranch(t *testing.T) {
 	err := init.createWorktree()
 	require.NoError(t, err)
 	// Auto-generated branch name should be based on session ID
-	require.Equal(t, "perles-session-detached", capturedBranch)
+	require.Equal(t, "xorchestrator-session-detached", capturedBranch)
 }
 
 func TestWorktreeIntegration_DetachedHead_Detection(t *testing.T) {
@@ -349,7 +349,7 @@ func TestWorktreeIntegration_DetachedHead_ConfiguredBaseBranchPassedCorrectly(t 
 	worktreePath := "/tmp/test-worktree"
 	sessionID := "test-session-12345678"
 	configuredBaseBranch := "develop"
-	expectedNewBranch := "perles-session-test-ses"
+	expectedNewBranch := "xorchestrator-session-test-ses"
 
 	var capturedNewBranch, capturedBaseBranch string
 	mockGit := mocks.NewMockGitExecutor(t)
@@ -633,7 +633,7 @@ func TestWorktreeIntegration_EndToEnd_Success(t *testing.T) {
 	workDir := t.TempDir()
 	worktreePath := "/home/user/myproject-worktree-12345678"
 	sessionID := "12345678-90ab-cdef-1234-567890abcdef"
-	expectedBranch := "perles-session-12345678"
+	expectedBranch := "xorchestrator-session-12345678"
 
 	mockGit := mocks.NewMockGitExecutor(t)
 	mockGit.EXPECT().IsGitRepo().Return(true)
@@ -666,7 +666,7 @@ func TestWorktreeIntegration_EndToEnd_WithCustomBaseBranch(t *testing.T) {
 	worktreePath := "/home/user/myproject-worktree-abc123"
 	sessionID := "abc12345-6789-cdef-1234-567890abcdef"
 	customBaseBranch := "feature/my-base-branch"
-	expectedNewBranch := "perles-session-abc12345"
+	expectedNewBranch := "xorchestrator-session-abc12345"
 
 	mockGit := mocks.NewMockGitExecutor(t)
 	mockGit.EXPECT().IsGitRepo().Return(true)
@@ -700,14 +700,14 @@ func TestWorktreeIntegration_ListWorktrees_Success(t *testing.T) {
 	mockGit := mocks.NewMockGitExecutor(t)
 	mockGit.EXPECT().ListWorktrees().Return([]git.WorktreeInfo{
 		{Path: "/home/user/myproject", Branch: "main", HEAD: "abc123"},
-		{Path: "/home/user/myproject-worktree-xyz", Branch: "perles-session-xyz", HEAD: "def456"},
+		{Path: "/home/user/myproject-worktree-xyz", Branch: "xorchestrator-session-xyz", HEAD: "def456"},
 	}, nil)
 
 	worktrees, err := mockGit.ListWorktrees()
 	require.NoError(t, err)
 	require.Len(t, worktrees, 2)
 	require.Equal(t, "main", worktrees[0].Branch)
-	require.Equal(t, "perles-session-xyz", worktrees[1].Branch)
+	require.Equal(t, "xorchestrator-session-xyz", worktrees[1].Branch)
 }
 
 func TestWorktreeIntegration_RemoveWorktree_Success(t *testing.T) {
@@ -806,10 +806,10 @@ func TestWorktreeIntegration_DetermineWorktreePath_SiblingPath(t *testing.T) {
 }
 
 func TestWorktreeIntegration_DetermineWorktreePath_FallbackPath(t *testing.T) {
-	// Test: DetermineWorktreePath falls back to .perles/worktrees when sibling not writable
+	// Test: DetermineWorktreePath falls back to .xorchestrator/worktrees when sibling not writable
 	mockGit := mocks.NewMockGitExecutor(t)
 	sessionID := "abc12345-6789-cdef"
-	fallbackPath := "/home/user/myproject/.perles/worktrees/abc12345-6789-cdef"
+	fallbackPath := "/home/user/myproject/.xorchestrator/worktrees/abc12345-6789-cdef"
 	mockGit.EXPECT().DetermineWorktreePath(sessionID).Return(fallbackPath, nil)
 
 	path, err := mockGit.DetermineWorktreePath(sessionID)
@@ -874,11 +874,11 @@ func TestWorktreeIntegration_ConcurrentAccess_WorktreeBranch(t *testing.T) {
 }
 
 // ===========================================================================
-// Custom Branch Name Tests (Task perles-s8xg.4)
+// Custom Branch Name Tests (Task xorchestrator-s8xg.4)
 // ===========================================================================
 // These tests verify that createWorktree() uses a custom branch name when
 // provided via WorktreeBranchName config, and falls back to auto-generated
-// perles-session-<hash> format when empty.
+// xorchestrator-session-<hash> format when empty.
 
 func TestWorktreeIntegration_CustomBranchName_UsesProvided(t *testing.T) {
 	// Test: When WorktreeBranchName is set, use that exact name
@@ -916,7 +916,7 @@ func TestWorktreeIntegration_CustomBranchName_FallbackWhenEmpty(t *testing.T) {
 	workDir := t.TempDir()
 	worktreePath := "/tmp/test-worktree"
 	sessionID := "test-session-12345678"
-	expectedBranch := "perles-session-test-ses" // First 8 chars of sessionID
+	expectedBranch := "xorchestrator-session-test-ses" // First 8 chars of sessionID
 
 	mockGit := mocks.NewMockGitExecutor(t)
 	mockGit.EXPECT().IsGitRepo().Return(true)
@@ -947,7 +947,7 @@ func TestWorktreeIntegration_CustomBranchName_ShortSessionID(t *testing.T) {
 	workDir := t.TempDir()
 	worktreePath := "/tmp/test-worktree"
 	sessionID := "abc123" // 6 chars, shorter than 8
-	expectedBranch := "perles-session-abc123"
+	expectedBranch := "xorchestrator-session-abc123"
 
 	mockGit := mocks.NewMockGitExecutor(t)
 	mockGit.EXPECT().IsGitRepo().Return(true)

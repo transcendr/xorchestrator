@@ -1,4 +1,4 @@
-╭─ ○ COORDINATOR (9000) ─────────────────╮╭─ MESSAGE LOG ──────────────────────╮╭─ ● WORKER-1 perles-auth.1 (impl) ────╮
+╭─ ○ COORDINATOR (9000) ─────────────────╮╭─ MESSAGE LOG ──────────────────────╮╭─ ● WORKER-1 xorchestrator-auth.1... ─╮
 │                                        ││                                    ││                                      │
 │                                        ││                                    ││                                      │
 │                                        ││                                    ││                                      │

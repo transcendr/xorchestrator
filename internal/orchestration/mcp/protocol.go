@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	mcptypes "github.com/zjrosen/perles/internal/orchestration/mcp/types"
+	mcptypes "github.com/zjrosen/xorchestrator/internal/orchestration/mcp/types"
 )
 
 // ProtocolVersion is the MCP protocol version this implementation supports.

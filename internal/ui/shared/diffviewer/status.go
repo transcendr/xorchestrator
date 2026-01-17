@@ -3,7 +3,7 @@ package diffviewer
 import (
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // fileStatus represents the type of change to a file.

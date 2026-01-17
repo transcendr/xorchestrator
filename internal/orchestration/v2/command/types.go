@@ -5,8 +5,8 @@ package command
 import (
 	"fmt"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/validation"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/validation"
 )
 
 // Verdict represents an approval or denial decision from a reviewer.

@@ -12,28 +12,28 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/flags"
-	"github.com/zjrosen/perles/internal/git"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/mcp"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/orchestration/session"
-	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
-	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/process"
-	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
-	"github.com/zjrosen/perles/internal/pubsub"
-	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
-	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/flags"
+	"github.com/zjrosen/xorchestrator/internal/git"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/mode"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/mcp"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/metrics"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/session"
+	v2 "github.com/zjrosen/xorchestrator/internal/orchestration/v2"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/process"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/processor"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/workflow"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/formmodal"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/modal"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/vimtextarea"
 )
 
 // mockCommandSubmitter implements process.CommandSubmitter for testing.
@@ -1865,7 +1865,7 @@ func TestWorkerServerCache_WiresAccountabilityWriter(t *testing.T) {
 
 	// Call the handler with valid args
 	args := []byte(`{
-		"task_id": "perles-test.1",
+		"task_id": "xorchestrator-test.1",
 		"summary": "This is a test accountability summary that is long enough"
 	}`)
 	result, err := handler(context.Background(), args)
@@ -1893,7 +1893,7 @@ func TestWorkerServerCache_NilAccountabilityWriter(t *testing.T) {
 
 	// Call the handler with valid args - should fail gracefully (not panic)
 	args := []byte(`{
-		"task_id": "perles-test.1",
+		"task_id": "xorchestrator-test.1",
 		"summary": "This is a test accountability summary that is long enough"
 	}`)
 	_, err := handler(context.Background(), args)
@@ -1931,11 +1931,11 @@ func TestWorkerServerCache_MultipleWorkers(t *testing.T) {
 
 	// Both should be able to write accountability summaries
 	args1 := []byte(`{
-		"task_id": "perles-test.1",
+		"task_id": "xorchestrator-test.1",
 		"summary": "Worker 1 test accountability summary that is long enough"
 	}`)
 	args2 := []byte(`{
-		"task_id": "perles-test.2",
+		"task_id": "xorchestrator-test.2",
 		"summary": "Worker 2 test accountability summary that is long enough"
 	}`)
 
@@ -4008,7 +4008,7 @@ func TestHandleStartCoordinator_SkipsWorktreeModalWhenNotGitRepo(t *testing.T) {
 	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
 	// may still be writing when the test ends, causing cleanup failures
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app",
 	}
 
@@ -4038,7 +4038,7 @@ func TestHandleStartCoordinator_SkipsWorktreeModalWhenDecisionMade(t *testing.T)
 	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
 	// may still be writing when the test ends, causing cleanup failures
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app",
 	}
 
@@ -4069,7 +4069,7 @@ func TestWorktreeModal_CancelStartsWithoutWorktree(t *testing.T) {
 	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
 	// may still be writing when the test ends, causing cleanup failures
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app",
 	}
 
@@ -4137,7 +4137,7 @@ func TestBranchSelectModal_SubmitSetsBranch(t *testing.T) {
 	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
 	// may still be writing when the test ends, causing cleanup failures
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app",
 	}
 
@@ -4207,7 +4207,7 @@ func TestBranchSelectModal_SubmitExtractsCustomBranch(t *testing.T) {
 	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
 	// may still be writing when the test ends, causing cleanup failures
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app",
 	}
 
@@ -4254,7 +4254,7 @@ func TestBranchSelectModal_WhitespaceTrimsCustomBranch(t *testing.T) {
 	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
 	// may still be writing when the test ends, causing cleanup failures
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app",
 	}
 
@@ -4299,7 +4299,7 @@ func TestBranchSelectModal_EmptyCustomBranchRemainsEmpty(t *testing.T) {
 	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
 	// may still be writing when the test ends, causing cleanup failures
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app",
 	}
 
@@ -4344,7 +4344,7 @@ func TestBranchSelectModal_WhitespaceOnlyCustomBranchBecomesEmpty(t *testing.T) 
 	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
 	// may still be writing when the test ends, causing cleanup failures
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app",
 	}
 
@@ -4499,7 +4499,7 @@ func TestHandleStartCoordinator_DisableWorktrees_SkipsModal(t *testing.T) {
 	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
 	// may still be writing when the test ends, causing cleanup failures
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app",
 	}
 
@@ -4560,7 +4560,7 @@ func TestHandleStartCoordinator_DisableWorktrees_NonGitRepo(t *testing.T) {
 	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
 	// may still be writing when the test ends, causing cleanup failures
 	m.sessionStorageConfig = config.SessionStorageConfig{
-		BaseDir:         "/tmp/perles-test-sessions",
+		BaseDir:         "/tmp/xorchestrator-test-sessions",
 		ApplicationName: "test-app",
 	}
 

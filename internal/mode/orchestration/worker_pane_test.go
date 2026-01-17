@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
 )
 
 func TestPhaseShortName(t *testing.T) {
@@ -35,22 +35,22 @@ func TestPhaseShortName(t *testing.T) {
 }
 
 func TestFormatWorkerTitle_WithTaskAndPhase(t *testing.T) {
-	title := formatWorkerTitle("worker-1", events.ProcessStatusWorking, "perles-abc.1", events.ProcessPhaseImplementing)
+	title := formatWorkerTitle("worker-1", events.ProcessStatusWorking, "xorchestrator-abc.1", events.ProcessPhaseImplementing)
 
 	// Should contain worker ID in uppercase
 	require.Contains(t, title, "WORKER-1")
 	// Should contain task ID
-	require.Contains(t, title, "perles-abc.1")
+	require.Contains(t, title, "xorchestrator-abc.1")
 	// Should contain phase short name in parentheses
 	require.Contains(t, title, "(impl)")
 }
 
 func TestFormatWorkerTitle_WithTaskNoPhase(t *testing.T) {
 	// Task assigned but phase is idle
-	title := formatWorkerTitle("worker-2", events.ProcessStatusWorking, "perles-xyz.5", events.ProcessPhaseIdle)
+	title := formatWorkerTitle("worker-2", events.ProcessStatusWorking, "xorchestrator-xyz.5", events.ProcessPhaseIdle)
 
 	require.Contains(t, title, "WORKER-2")
-	require.Contains(t, title, "perles-xyz.5")
+	require.Contains(t, title, "xorchestrator-xyz.5")
 	// Should show (idle) when phase is idle
 	require.Contains(t, title, "(idle)")
 }
@@ -61,7 +61,7 @@ func TestFormatWorkerTitle_Idle(t *testing.T) {
 
 	require.Contains(t, title, "WORKER-3")
 	// Should NOT contain task ID or phase (no task = no phase display)
-	require.NotContains(t, title, "perles")
+	require.NotContains(t, title, "xorchestrator")
 	require.NotContains(t, title, "(")
 }
 

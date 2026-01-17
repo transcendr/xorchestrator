@@ -11,7 +11,7 @@ import (
 
 func TestSaveColumns_CreatesNewFile(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "Test", Query: "status = open", Color: "#FF0000"},
@@ -34,7 +34,7 @@ func TestSaveColumns_CreatesNewFile(t *testing.T) {
 
 func TestSaveColumns_PreservesOtherConfig(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Create initial config with various settings
 	initial := `auto_refresh: true
@@ -68,7 +68,7 @@ ui:
 
 func TestSaveColumns_Roundtrip(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	original := []ColumnConfig{
 		{
@@ -111,7 +111,7 @@ func TestSaveColumns_Roundtrip(t *testing.T) {
 
 func TestUpdateColumn(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "Blocked", Query: "status = open and blocked = true", Color: "#FF0000"},
@@ -149,7 +149,7 @@ func TestUpdateColumn(t *testing.T) {
 
 func TestUpdateColumn_OutOfRange(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "Only", Query: "status = open"},
@@ -166,7 +166,7 @@ func TestUpdateColumn_OutOfRange(t *testing.T) {
 
 func TestDeleteColumn(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "Blocked", Query: "blocked = true", Color: "#FF0000"},
@@ -201,7 +201,7 @@ func TestDeleteColumn(t *testing.T) {
 func TestDeleteColumn_DeletesLastColumn(t *testing.T) {
 	// Deleting the last column is allowed - results in empty view with empty state UI
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{{Name: "Only", Query: "status = open"}}
 
@@ -223,7 +223,7 @@ func TestDeleteColumn_DeletesLastColumn(t *testing.T) {
 
 func TestDeleteColumn_OutOfRange(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "One", Query: "status = open"},
@@ -241,7 +241,7 @@ func TestDeleteColumn_OutOfRange(t *testing.T) {
 
 func TestSaveColumns_AtomicWrite(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Create initial file
 	initial := []ColumnConfig{{Name: "Initial", Query: "status = open"}}
@@ -269,7 +269,7 @@ func TestSaveColumns_AtomicWrite(t *testing.T) {
 
 func TestSaveColumns_CreatesDirectory(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "subdir", "nested", ".perles.yaml")
+	configPath := filepath.Join(tempDir, "subdir", "nested", ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{{Name: "Test", Query: "status = open"}}
 	err := SaveColumns(configPath, columns)
@@ -282,7 +282,7 @@ func TestSaveColumns_CreatesDirectory(t *testing.T) {
 
 func TestSaveColumns_OmitsEmptyFields(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Column with minimal fields (name and query are required)
 	columns := []ColumnConfig{
@@ -306,7 +306,7 @@ func TestSaveColumns_OmitsEmptyFields(t *testing.T) {
 
 func TestAddColumn_InsertMiddle(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "Blocked", Query: "blocked = true"},
@@ -342,7 +342,7 @@ func TestAddColumn_InsertMiddle(t *testing.T) {
 
 func TestAddColumn_InsertAtEnd(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "Only", Query: "status = open"},
@@ -373,7 +373,7 @@ func TestAddColumn_InsertAtEnd(t *testing.T) {
 
 func TestAddColumn_InsertAtBeginning(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "Only", Query: "status = open"},
@@ -404,7 +404,7 @@ func TestAddColumn_InsertAtBeginning(t *testing.T) {
 
 func TestAddColumn_InvalidIndex(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "One", Query: "status = open"},
@@ -425,7 +425,7 @@ func TestAddColumn_InvalidIndex(t *testing.T) {
 func TestAddColumn_EmptyColumnArray(t *testing.T) {
 	// Adding first column to empty view
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Start with empty columns
 	columns := []ColumnConfig{}
@@ -452,7 +452,7 @@ func TestAddColumn_EmptyColumnArray(t *testing.T) {
 
 func TestSwapColumnsInView(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "Blocked", Query: "blocked = true", Color: "#FF0000"},
@@ -487,7 +487,7 @@ func TestSwapColumnsInView(t *testing.T) {
 
 func TestSwapColumnsInView_SameIndex(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "One", Query: "status = open"},
@@ -520,7 +520,7 @@ func TestSwapColumnsInView_SameIndex(t *testing.T) {
 
 func TestSwapColumnsInView_OutOfRange(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	columns := []ColumnConfig{
 		{Name: "One", Query: "status = open"},
@@ -540,7 +540,7 @@ func TestSwapColumnsInView_OutOfRange(t *testing.T) {
 
 func TestAddView(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Create existing views
 	existingViews := []ViewConfig{
@@ -587,7 +587,7 @@ func TestAddView(t *testing.T) {
 
 func TestAddView_Empty(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// No existing views
 	var existingViews []ViewConfig
@@ -620,7 +620,7 @@ func TestAddView_Empty(t *testing.T) {
 
 func TestDeleteView(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Create views
 	views := []ViewConfig{
@@ -669,7 +669,7 @@ func TestDeleteView(t *testing.T) {
 
 func TestDeleteView_FirstView(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Create two views
 	views := []ViewConfig{
@@ -711,7 +711,7 @@ func TestDeleteView_FirstView(t *testing.T) {
 
 func TestDeleteView_LastView(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Create only one view
 	views := []ViewConfig{
@@ -730,7 +730,7 @@ func TestDeleteView_LastView(t *testing.T) {
 
 func TestDeleteView_OutOfRange(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	views := []ViewConfig{
 		{
@@ -762,7 +762,7 @@ func TestDeleteView_OutOfRange(t *testing.T) {
 
 func TestInsertColumnInView_InsertsAtPosition0(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	views := []ViewConfig{
 		{
@@ -803,7 +803,7 @@ func TestInsertColumnInView_InsertsAtPosition0(t *testing.T) {
 
 func TestInsertColumnInView_PreservesExistingColumns(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	views := []ViewConfig{
 		{
@@ -851,7 +851,7 @@ func TestInsertColumnInView_PreservesExistingColumns(t *testing.T) {
 
 func TestInsertColumnInView_PreservesOtherConfig(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Create initial config with other settings
 	initial := `auto_refresh: true
@@ -894,7 +894,7 @@ views:
 
 func TestInsertColumnInView_InvalidViewIndex(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	views := []ViewConfig{
 		{
@@ -920,7 +920,7 @@ func TestInsertColumnInView_InvalidViewIndex(t *testing.T) {
 
 func TestInsertColumnInView_InvalidPosition(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	views := []ViewConfig{
 		{
@@ -946,7 +946,7 @@ func TestInsertColumnInView_InvalidPosition(t *testing.T) {
 
 func TestInsertColumnInView_AtomicWrite(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	views := []ViewConfig{
 		{
@@ -972,7 +972,7 @@ func TestInsertColumnInView_AtomicWrite(t *testing.T) {
 
 	for _, entry := range entries {
 		name := entry.Name()
-		require.False(t, name != ".perles.yaml" && filepath.Ext(name) == ".tmp",
+		require.False(t, name != ".xorchestrator.yaml" && filepath.Ext(name) == ".tmp",
 			"temp file left behind: %s", name)
 	}
 
@@ -984,7 +984,7 @@ func TestInsertColumnInView_AtomicWrite(t *testing.T) {
 
 func TestInsertColumnInView_MultipleViews(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	views := []ViewConfig{
 		{
@@ -1032,7 +1032,7 @@ func TestInsertColumnInView_MultipleViews(t *testing.T) {
 
 func TestInsertColumnInView_EmptyColumns(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	views := []ViewConfig{
 		{
@@ -1067,7 +1067,7 @@ func TestInsertColumnInView_EmptyColumns(t *testing.T) {
 
 func TestRenameView(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Create views
 	views := []ViewConfig{
@@ -1110,7 +1110,7 @@ func TestRenameView(t *testing.T) {
 
 func TestRenameView_FirstView(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Create views
 	views := []ViewConfig{
@@ -1153,7 +1153,7 @@ func TestRenameView_FirstView(t *testing.T) {
 
 func TestRenameView_OutOfRange(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	views := []ViewConfig{
 		{
@@ -1177,13 +1177,13 @@ func TestRenameView_OutOfRange(t *testing.T) {
 
 func TestSaveColumns_TreeColumnType(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Create columns with tree type
 	columns := []ColumnConfig{
 		{Name: "BQL Column", Type: "bql", Query: "status = open", Color: "#FF0000"},
-		{Name: "Tree Column", Type: "tree", IssueID: "perles-123", TreeMode: "deps", Color: "#00FF00"},
-		{Name: "Tree Child", Type: "tree", IssueID: "perles-456", TreeMode: "child"},
+		{Name: "Tree Column", Type: "tree", IssueID: "xorchestrator-123", TreeMode: "deps", Color: "#00FF00"},
+		{Name: "Tree Child", Type: "tree", IssueID: "xorchestrator-456", TreeMode: "child"},
 	}
 
 	err := SaveColumns(configPath, columns)
@@ -1201,7 +1201,7 @@ func TestSaveColumns_TreeColumnType(t *testing.T) {
 	// Tree column should have type and issue_id
 	require.Contains(t, content, "name: Tree Column")
 	require.Contains(t, content, "type: tree")
-	require.Contains(t, content, "issue_id: perles-123")
+	require.Contains(t, content, "issue_id: xorchestrator-123")
 
 	// Tree child should have tree_mode: child (not default)
 	require.Contains(t, content, "tree_mode: child")
@@ -1227,19 +1227,19 @@ func TestSaveColumns_TreeColumnType(t *testing.T) {
 	// Verify Tree column
 	require.Equal(t, "Tree Column", loaded[0].Columns[1].Name)
 	require.Equal(t, "tree", loaded[0].Columns[1].Type)
-	require.Equal(t, "perles-123", loaded[0].Columns[1].IssueID)
+	require.Equal(t, "xorchestrator-123", loaded[0].Columns[1].IssueID)
 	require.Equal(t, "#00FF00", loaded[0].Columns[1].Color)
 
 	// Verify Tree child column
 	require.Equal(t, "Tree Child", loaded[0].Columns[2].Name)
 	require.Equal(t, "tree", loaded[0].Columns[2].Type)
-	require.Equal(t, "perles-456", loaded[0].Columns[2].IssueID)
+	require.Equal(t, "xorchestrator-456", loaded[0].Columns[2].IssueID)
 	require.Equal(t, "child", loaded[0].Columns[2].TreeMode)
 }
 
 func TestSaveColumns_TreeColumnOmitsQuery(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Tree column should not have query field in YAML
 	columns := []ColumnConfig{
@@ -1263,7 +1263,7 @@ func TestSaveColumns_TreeColumnOmitsQuery(t *testing.T) {
 
 func TestSaveColumns_TreeColumnOmitsDefaultMode(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// Tree column with default mode should not include tree_mode in YAML
 	columns := []ColumnConfig{
@@ -1285,7 +1285,7 @@ func TestSaveColumns_TreeColumnOmitsDefaultMode(t *testing.T) {
 
 func TestSaveColumns_BQLColumnBackwardCompatibility(t *testing.T) {
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, ".perles.yaml")
+	configPath := filepath.Join(tempDir, ".xorchestrator.yaml")
 
 	// BQL columns (type empty or "bql") should not include type field for backward compatibility
 	columns := []ColumnConfig{

@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/git"
+	"github.com/zjrosen/xorchestrator/internal/git"
 )
 
 // newTestInitializer creates an Initializer in a specific state for testing.
@@ -788,7 +788,7 @@ func TestGetPhaseIndicatorAndStyle_Worktree_Completed(t *testing.T) {
 }
 
 // ===========================================================================
-// worktreeErrorMessage Tests for ErrInvalidBranchName (Task perles-s8xg.4)
+// worktreeErrorMessage Tests for ErrInvalidBranchName (Task xorchestrator-s8xg.4)
 // ===========================================================================
 
 func TestWorktreeErrorMessage_InvalidBranchName_SentinelError(t *testing.T) {

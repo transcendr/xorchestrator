@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/config"
 )
 
 func TestNewRegistry(t *testing.T) {

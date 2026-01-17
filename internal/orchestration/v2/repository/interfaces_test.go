@@ -18,7 +18,7 @@ func TestTaskAssignment_FieldAccess(t *testing.T) {
 	reviewStartedAt := startedAt.Add(30 * time.Minute)
 
 	task := &TaskAssignment{
-		TaskID:          "perles-abc.1",
+		TaskID:          "xorchestrator-abc.1",
 		Implementer:     "worker-1",
 		Reviewer:        "worker-2",
 		Status:          TaskInReview,
@@ -26,7 +26,7 @@ func TestTaskAssignment_FieldAccess(t *testing.T) {
 		ReviewStartedAt: reviewStartedAt,
 	}
 
-	assert.Equal(t, "perles-abc.1", task.TaskID)
+	assert.Equal(t, "xorchestrator-abc.1", task.TaskID)
 	assert.Equal(t, "worker-1", task.Implementer)
 	assert.Equal(t, "worker-2", task.Reviewer)
 	assert.Equal(t, TaskInReview, task.Status)

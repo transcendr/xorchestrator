@@ -271,7 +271,7 @@ var unsafeParentDirs = map[string]bool{
 }
 
 // DetermineWorktreePath determines the best path for a new worktree.
-// Strategy: prefer sibling directory, fallback to .perles/worktrees/
+// Strategy: prefer sibling directory, fallback to .xorchestrator/worktrees/
 func (e *RealExecutor) DetermineWorktreePath(sessionID string) (string, error) {
 	repoRoot, err := e.GetRepoRoot()
 	if err != nil {
@@ -293,8 +293,8 @@ func (e *RealExecutor) DetermineWorktreePath(sessionID string) (string, error) {
 		return siblingPath, nil
 	}
 
-	// Fallback to .perles/worktrees/
-	fallbackPath := filepath.Join(repoRoot, ".perles", "worktrees", sessionID)
+	// Fallback to .xorchestrator/worktrees/
+	fallbackPath := filepath.Join(repoRoot, ".xorchestrator", "worktrees", sessionID)
 	return fallbackPath, nil
 }
 
@@ -320,7 +320,7 @@ func isSafeParentDir(dir string) bool {
 // isWritable checks if a directory is writable.
 func isWritable(dir string) bool {
 	// Try to create a temp file to check writability
-	testFile := filepath.Join(dir, ".perles-write-test")
+	testFile := filepath.Join(dir, ".xorchestrator-write-test")
 	//nolint:gosec // G304: testFile path is constructed from dir parameter
 	f, err := os.Create(testFile)
 	if err != nil {

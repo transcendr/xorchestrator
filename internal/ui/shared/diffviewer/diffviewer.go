@@ -12,12 +12,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/git"
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/shared/overlay"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/git"
+	"github.com/zjrosen/xorchestrator/internal/keys"
+	"github.com/zjrosen/xorchestrator/internal/mode/shared"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/overlay"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/panes"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // Layout constants

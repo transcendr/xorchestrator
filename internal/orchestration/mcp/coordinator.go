@@ -7,13 +7,13 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/orchestration/validation"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/validation"
 )
 
 // CoordinatorServer is an MCP server that exposes orchestration tools to the coordinator agent.
@@ -67,7 +67,7 @@ func NewCoordinatorServerWithV2Adapter(
 	v2Adapter *adapter.V2Adapter,
 ) *CoordinatorServer {
 	cs := &CoordinatorServer{
-		Server:        NewServer("perles-orchestrator", "1.0.0", WithInstructions(coordinatorInstructions)),
+		Server:        NewServer("xorchestrator-orchestrator", "1.0.0", WithInstructions(coordinatorInstructions)),
 		client:        aiClient,
 		msgRepo:       msgRepo,
 		workDir:       workDir,
@@ -84,7 +84,7 @@ func NewCoordinatorServerWithV2Adapter(
 
 // coordinatorInstructions provides a brief description for the MCP server.
 // Detailed instructions are in the coordinator's system prompt (see prompt.go).
-const coordinatorInstructions = `Perles orchestrator MCP server providing worker management and task coordination tools.`
+const coordinatorInstructions = `Xorchestrator orchestrator MCP server providing worker management and task coordination tools.`
 
 // SetV2Adapter allows setting the v2 adapter after construction.
 // This is useful for testing and for setting up the adapter after initialization.
@@ -124,7 +124,7 @@ func (cs *CoordinatorServer) registerTools() {
 			Type: "object",
 			Properties: map[string]*PropertySchema{
 				"worker_id": {Type: "string", Description: "The worker ID to assign (e.g., 'worker-1')"},
-				"task_id":   {Type: "string", Description: "The bd task ID to work on (e.g., 'perles-abc.1')"},
+				"task_id":   {Type: "string", Description: "The bd task ID to work on (e.g., 'xorchestrator-abc.1')"},
 				"summary":   {Type: "string", Description: "Optional detailed instructions or context to include with the task assignment. Use for task-specific guidance, key files to modify, or implementation hints."},
 			},
 			Required: []string{"worker_id", "task_id"},

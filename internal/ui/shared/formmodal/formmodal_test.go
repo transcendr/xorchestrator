@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/colorpicker"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"

@@ -3,7 +3,7 @@ package mock
 import (
 	"context"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // Client is a mock implementation of client.HeadlessClient for testing.

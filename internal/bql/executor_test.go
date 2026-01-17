@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/testutil"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/testutil"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -2507,7 +2507,7 @@ func TestTraverseGraph_SingleNodeWithNoEdges(t *testing.T) {
 }
 
 // =============================================================================
-// Batch Loading Tests (for perles-ezi8.3)
+// Batch Loading Tests (for xorchestrator-ezi8.3)
 // =============================================================================
 
 func TestLoadDependenciesForIssues_GroupsByTypeCorrectly(t *testing.T) {

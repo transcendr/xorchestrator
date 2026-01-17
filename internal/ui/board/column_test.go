@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/beads"
 )
 
 func TestColumn_NewColumn(t *testing.T) {

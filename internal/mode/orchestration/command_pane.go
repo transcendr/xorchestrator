@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/panes"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // maxCommandLogEntries is the maximum number of entries to keep in the command log.

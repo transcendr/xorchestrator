@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // errTest is a sentinel error for testing
@@ -550,7 +550,7 @@ func TestSetupMCPConfig_NewFile_Created(t *testing.T) {
 
 	mcpConfig := `{
 		"mcp": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"type": "remote",
 				"url": "http://localhost:8080/worker/1"
 			}
@@ -578,8 +578,8 @@ func TestSetupMCPConfig_NewFile_Created(t *testing.T) {
 	mcpServers, ok := settings["mcp"].(map[string]any)
 	require.True(t, ok, "mcp should be a map")
 
-	worker, ok := mcpServers["perles-worker"].(map[string]any)
-	require.True(t, ok, "perles-worker should be a map")
+	worker, ok := mcpServers["xorchestrator-worker"].(map[string]any)
+	require.True(t, ok, "xorchestrator-worker should be a map")
 
 	require.Equal(t, "http://localhost:8080/worker/1", worker["url"])
 	require.Equal(t, "remote", worker["type"])
@@ -598,7 +598,7 @@ func TestSetupMCPConfig_ExistingSettings_AddsMCP(t *testing.T) {
 
 	mcpConfig := `{
 		"mcp": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"type": "remote",
 				"url": "http://localhost:8080/worker/1"
 			}
@@ -629,8 +629,8 @@ func TestSetupMCPConfig_ExistingSettings_AddsMCP(t *testing.T) {
 	mcpServers, ok := settings["mcp"].(map[string]any)
 	require.True(t, ok, "mcp should be a map")
 
-	worker, ok := mcpServers["perles-worker"].(map[string]any)
-	require.True(t, ok, "perles-worker should be a map")
+	worker, ok := mcpServers["xorchestrator-worker"].(map[string]any)
+	require.True(t, ok, "xorchestrator-worker should be a map")
 
 	require.Equal(t, "http://localhost:8080/worker/1", worker["url"])
 }
@@ -651,10 +651,10 @@ func TestSetupMCPConfig_ExistingMCPServers_Merged(t *testing.T) {
 	configPath := filepath.Join(tempDir, "opencode.jsonc")
 	require.NoError(t, os.WriteFile(configPath, []byte(existingSettings), 0644))
 
-	// New config adds perles-worker
+	// New config adds xorchestrator-worker
 	mcpConfig := `{
 		"mcp": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"type": "remote",
 				"url": "http://localhost:8080/worker/1"
 			}
@@ -691,8 +691,8 @@ func TestSetupMCPConfig_ExistingMCPServers_Merged(t *testing.T) {
 	require.Equal(t, "local", existingServer["type"])
 
 	// Verify new server added
-	newServer, ok := mcpServers["perles-worker"].(map[string]any)
-	require.True(t, ok, "perles-worker should be added")
+	newServer, ok := mcpServers["xorchestrator-worker"].(map[string]any)
+	require.True(t, ok, "xorchestrator-worker should be added")
 	require.Equal(t, "http://localhost:8080/worker/1", newServer["url"])
 }
 
@@ -707,7 +707,7 @@ func TestSetupMCPConfig_HandlesBlockComments(t *testing.T) {
 
 	mcpConfig := `{
 		"mcp": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"type": "remote",
 				"url": "http://localhost:8080/worker/1"
 			}
@@ -762,7 +762,7 @@ func TestSetupMCPConfig_InvalidExistingSettingsJSON_ReturnsError(t *testing.T) {
 
 	mcpConfig := `{
 		"mcp": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"type": "remote",
 				"url": "http://localhost:8080/worker/1"
 			}
@@ -787,7 +787,7 @@ func TestSetupMCPConfig_InvalidExistingSettingsJSON_ReturnsError(t *testing.T) {
 func TestSetupMCPConfig_ProperFormatting(t *testing.T) {
 	tempDir := t.TempDir()
 
-	mcpConfig := `{"mcp":{"perles-worker":{"type":"remote","url":"http://localhost:8080/worker/1"}}}`
+	mcpConfig := `{"mcp":{"xorchestrator-worker":{"type":"remote","url":"http://localhost:8080/worker/1"}}}`
 
 	cfg := Config{
 		WorkDir:   tempDir,
@@ -811,15 +811,15 @@ func TestSetupMCPConfig_ProperFormatting(t *testing.T) {
 func TestSetupMCPConfig_OverwritesSameServer(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// Create existing opencode.jsonc with perles-worker
-	existingSettings := `{"mcp": {"perles-worker": {"type": "remote", "url": "http://localhost:OLD/worker/OLD"}}}`
+	// Create existing opencode.jsonc with xorchestrator-worker
+	existingSettings := `{"mcp": {"xorchestrator-worker": {"type": "remote", "url": "http://localhost:OLD/worker/OLD"}}}`
 	configPath := filepath.Join(tempDir, "opencode.jsonc")
 	require.NoError(t, os.WriteFile(configPath, []byte(existingSettings), 0644))
 
-	// New config updates perles-worker
+	// New config updates xorchestrator-worker
 	mcpConfig := `{
 		"mcp": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"type": "remote",
 				"url": "http://localhost:8080/worker/NEW"
 			}
@@ -846,7 +846,7 @@ func TestSetupMCPConfig_OverwritesSameServer(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, mcpServers, 1, "should only have one server")
 
-	worker, ok := mcpServers["perles-worker"].(map[string]any)
+	worker, ok := mcpServers["xorchestrator-worker"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "http://localhost:8080/worker/NEW", worker["url"], "should be updated URL")
 }

@@ -3,7 +3,7 @@ package bql
 import (
 	"fmt"
 
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/log"
 )
 
 // Parser parses BQL tokens into an AST.

@@ -3,7 +3,7 @@ package orchestration
 import (
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/chatrender"
 )
 
 // ChatRenderConfig configures how chat messages are rendered.

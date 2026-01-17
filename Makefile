@@ -9,19 +9,19 @@ all: build test
 
 # Build the binary with version info
 build:
-	go build -ldflags "$(LDFLAGS)" -o perles .
+	go build -ldflags "$(LDFLAGS)" -o xorchestrator .
 
 # Build and run the binary
 run: build
-	./perles
+	./xorchestrator
 
 # Builds and starts the playground
 playground: build
-	./perles playground
+	./xorchestrator playground
 
 # Build and run the binary with the debug flag
 debug: build
-	./perles -d
+	./xorchestrator -d
 
 # Install the binary to $GOPATH/bin with version info
 install:
@@ -77,7 +77,7 @@ mocks-clean:
 
 # Clean build artifacts
 clean:
-	rm -f perles
+	rm -f xorchestrator
 	go clean ./...
 
 # Start docker-compose services (Jaeger for tracing)

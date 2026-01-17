@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
 
 	"github.com/fsnotify/fsnotify"
 )

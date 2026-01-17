@@ -1,11 +1,11 @@
-# Contributing to Perles
+# Contributing to Xorchestrator
 
-Thank you for your interest in contributing to Perles! This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to Xorchestrator! This document provides guidelines for contributing to the project.
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/perles.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/xorchestrator.git`
 3. Create a branch: `git checkout -b feature/your-feature`
 4. Make your changes
 5. Run tests: `make test`
@@ -31,7 +31,7 @@ make test-update  # Update golden files
 ## Project Structure
 
 ```
-perles/
+xorchestrator/
 ├── cmd/                 # CLI entry point
 ├── internal/
 │   ├── app/            # Root application model
@@ -94,7 +94,7 @@ If you intentionally change UI output:
 ## Reporting Issues
 
 - Use GitHub Issues for bug reports and feature requests
-- Include perles version (`perles --version`)
+- Include xorchestrator version (`xorchestrator --version`)
 - Include Go version (`go version`)
 - Provide steps to reproduce bugs
 - Include relevant configuration if applicable

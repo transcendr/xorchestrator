@@ -21,7 +21,7 @@ This allows for structured workflow instructions that can manage and orchestrate
 ### Configuration
 
 The default orchestration settings use Claude Code with Opus 4.5 and currently works the best. 
-You can customize these settings in your `~/.config/perles/config.yaml` but they are optional:
+You can customize these settings in your `~/.config/xorchestrator/config.yaml` but they are optional:
 
 ```yaml
 orchestration:
@@ -40,7 +40,7 @@ orchestration:
 
 ### Quick Start
 
-1. Open Perles in your project directory.
+1. Open Xorchestrator in your project directory.
 2. Press `ctrl+o` to enter orchestration mode.
 3. Choose if you want to use a git worktree for the session.
 4. Press `ctrl+p` to open the workflow picker once orchestration mode is loaded.
@@ -119,7 +119,7 @@ intercept and remind them to do so.
 Stacked view of active individual AI agent processes and their chat outputs.
 
 **What you see for each worker:**
-- Worker ID and name (e.g., `WORKER-1 perles-abc.1`)
+- Worker ID and name (e.g., `WORKER-1 xorchestrator-abc.1`)
 - Current phase: `(impl)`, `(review)`, `(commit)`, etc.
 - Status indicator (same icons as coordinator)
 - Token/cost metrics
@@ -182,7 +182,7 @@ Workflow templates are pre-defined "recipes" for common orchestration patterns t
 
 ### Creating Custom Templates
 
-Create your own templates in `~/.perles/workflows/` and they will be loaded into the picker automatically.
+Create your own templates in `~/.xorchestrator/workflows/` and they will be loaded into the picker automatically.
 
 The `target_mode` determines if the workflow will be shown in `orchestration` mode or `chat` mode. 
 
@@ -256,10 +256,10 @@ Slash commands let you control workers directly to stop, retire, or replace them
 
 ### Session Storage
 
-Every orchestration session data is stored centrally in your home directory `~/.perles/sessions/`
+Every orchestration session data is stored centrally in your home directory `~/.xorchestrator/sessions/`
 
 ```
-~/.perles/sessions/
+~/.xorchestrator/sessions/
 ├── sessions.json                    # Global session index
 └── {project-name}/
     ├── sessions.json                # Per-project index

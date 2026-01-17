@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/types"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/types"
 )
 
 // Middleware wraps a CommandHandler to add additional behavior.

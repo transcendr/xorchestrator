@@ -4,8 +4,8 @@ package claude
 import (
 	"encoding/json"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // rawUsage holds raw token usage from Claude CLI JSON output.

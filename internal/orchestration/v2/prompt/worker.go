@@ -5,7 +5,7 @@ import "fmt"
 // WorkerMCPInstructions generates the MCP server instructions for a worker agent.
 // This is a brief description of available tools sent during MCP initialization.
 func WorkerMCPInstructions(workerID string) string {
-	return fmt.Sprintf(`MCP server for %s - a worker agent in the Perles orchestration system.
+	return fmt.Sprintf(`MCP server for %s - a worker agent in the Xorchestrator orchestration system.
 
 Available tools:
 - signal_ready: Signal readiness for task assignment (call once on startup)

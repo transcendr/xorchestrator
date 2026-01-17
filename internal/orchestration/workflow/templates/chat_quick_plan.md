@@ -179,16 +179,16 @@ bd dep add {task-2-id} {task-1-id}
 ```bash
 # Create epic
 bd create "Add clipboard support" -t epic --json
-# Returns: perles-abc
+# Returns: xorchestrator-abc
 
 # Create tasks with --parent flag (creates parent-child relationship)
-bd create "Add clipboard package" -t task --parent perles-abc --json      # Returns: perles-abc.1
-bd create "Add copy keybinding" -t task --parent perles-abc --json        # Returns: perles-abc.2
-bd create "Add visual feedback" -t task --parent perles-abc --json        # Returns: perles-abc.3
+bd create "Add clipboard package" -t task --parent xorchestrator-abc --json      # Returns: xorchestrator-abc.1
+bd create "Add copy keybinding" -t task --parent xorchestrator-abc --json        # Returns: xorchestrator-abc.2
+bd create "Add visual feedback" -t task --parent xorchestrator-abc --json        # Returns: xorchestrator-abc.3
 
 # Set task order dependencies (if task-2 depends on task-1)
-bd dep add perles-abc.2 perles-abc.1  # Copy keybinding depends on clipboard package
-bd dep add perles-abc.3 perles-abc.2  # Visual feedback depends on copy keybinding
+bd dep add xorchestrator-abc.2 xorchestrator-abc.1  # Copy keybinding depends on clipboard package
+bd dep add xorchestrator-abc.3 xorchestrator-abc.2  # Visual feedback depends on copy keybinding
 ```
 
 **Verify dependencies:**
@@ -306,8 +306,8 @@ AI: Finds missing edge case for empty selection
 AI: Updates proposal with edge case handling
 
 [Phase 3: Task Breakdown]
-AI: Creates epic perles-abc
-AI: Creates tasks perles-abc.1, perles-abc.2
+AI: Creates epic xorchestrator-abc
+AI: Creates tasks xorchestrator-abc.1, xorchestrator-abc.2
 
 [Phase 4: Task Self-Review]
 AI: Reviews against checklist
@@ -315,7 +315,7 @@ AI: Finds task 2 missing error handling tests
 AI: Updates task with error case test requirements
 
 [Phase 5: Completion]
-AI: "Quick Plan Complete. Epic perles-abc ready for implementation."
+AI: "Quick Plan Complete. Epic xorchestrator-abc ready for implementation."
 ```
 
 ---

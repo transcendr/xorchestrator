@@ -15,8 +15,8 @@ func TestGenerateWorkerConfig(t *testing.T) {
 	var config MCPConfig
 	require.NoError(t, json.Unmarshal([]byte(configJSON), &config), "Failed to parse config JSON")
 
-	server, ok := config.MCPServers["perles-worker"]
-	require.True(t, ok, "Missing perles-worker server in config")
+	server, ok := config.MCPServers["xorchestrator-worker"]
+	require.True(t, ok, "Missing xorchestrator-worker server in config")
 
 	// Check it's HTTP transport
 	require.Equal(t, "http", server.Type, "Type should be 'http'")
@@ -33,8 +33,8 @@ func TestGenerateWorkerConfigHTTP(t *testing.T) {
 	var config MCPConfig
 	require.NoError(t, json.Unmarshal([]byte(configJSON), &config), "Failed to parse config JSON")
 
-	server, ok := config.MCPServers["perles-worker"]
-	require.True(t, ok, "Missing perles-worker server in config")
+	server, ok := config.MCPServers["xorchestrator-worker"]
+	require.True(t, ok, "Missing xorchestrator-worker server in config")
 
 	require.Equal(t, "http", server.Type, "Type should be 'http'")
 
@@ -110,7 +110,7 @@ func TestGenerateCoordinatorConfigHTTP(t *testing.T) {
 	var cfg MCPConfig
 	require.NoError(t, json.Unmarshal([]byte(configJSON), &cfg), "Failed to parse config")
 
-	server := cfg.MCPServers["perles-orchestrator"]
+	server := cfg.MCPServers["xorchestrator-orchestrator"]
 	require.Equal(t, "http", server.Type, "Type mismatch")
 	expectedURL := "http://localhost:9000/mcp"
 	require.Equal(t, expectedURL, server.URL, "URL mismatch")
@@ -123,7 +123,7 @@ func TestGenerateCoordinatorConfigGemini(t *testing.T) {
 	var cfg MCPConfig
 	require.NoError(t, json.Unmarshal([]byte(configJSON), &cfg), "Failed to parse config")
 
-	server := cfg.MCPServers["perles-orchestrator"]
+	server := cfg.MCPServers["xorchestrator-orchestrator"]
 	// Gemini uses httpUrl, not url or type
 	require.Empty(t, server.Type, "Type should be empty for Gemini")
 	require.Empty(t, server.URL, "URL should be empty for Gemini")
@@ -137,7 +137,7 @@ func TestGenerateWorkerConfigGemini(t *testing.T) {
 	var cfg MCPConfig
 	require.NoError(t, json.Unmarshal([]byte(configJSON), &cfg), "Failed to parse config")
 
-	server := cfg.MCPServers["perles-worker"]
+	server := cfg.MCPServers["xorchestrator-worker"]
 	// Gemini uses httpUrl, not url or type
 	require.Empty(t, server.Type, "Type should be empty for Gemini")
 	require.Empty(t, server.URL, "URL should be empty for Gemini")
@@ -149,7 +149,7 @@ func TestGenerateWorkerConfigCodex(t *testing.T) {
 		result := GenerateWorkerConfigCodex(8765, "WORKER.1")
 
 		// Verify TOML syntax structure
-		require.Contains(t, result, "mcp_servers.perles-worker=", "Missing mcp_servers prefix")
+		require.Contains(t, result, "mcp_servers.xorchestrator-worker=", "Missing mcp_servers prefix")
 		require.Contains(t, result, `{url="`, "Missing inline table syntax")
 		require.Contains(t, result, `"}`, "Missing closing brace and quote")
 	})
@@ -157,7 +157,7 @@ func TestGenerateWorkerConfigCodex(t *testing.T) {
 	t.Run("port and workerID are correctly interpolated", func(t *testing.T) {
 		result := GenerateWorkerConfigCodex(9000, "worker-5")
 
-		expected := `mcp_servers.perles-worker={url="http://localhost:9000/worker/worker-5"}`
+		expected := `mcp_servers.xorchestrator-worker={url="http://localhost:9000/worker/worker-5"}`
 		require.Equal(t, expected, result, "Config string mismatch")
 	})
 
@@ -175,9 +175,9 @@ func TestGenerateWorkerConfigCodex(t *testing.T) {
 			workerID string
 			expected string
 		}{
-			{8765, "WORKER.1", `mcp_servers.perles-worker={url="http://localhost:8765/worker/WORKER.1"}`},
-			{9999, "worker-99", `mcp_servers.perles-worker={url="http://localhost:9999/worker/worker-99"}`},
-			{1234, "test", `mcp_servers.perles-worker={url="http://localhost:1234/worker/test"}`},
+			{8765, "WORKER.1", `mcp_servers.xorchestrator-worker={url="http://localhost:8765/worker/WORKER.1"}`},
+			{9999, "worker-99", `mcp_servers.xorchestrator-worker={url="http://localhost:9999/worker/worker-99"}`},
+			{1234, "test", `mcp_servers.xorchestrator-worker={url="http://localhost:1234/worker/test"}`},
 		}
 
 		for _, tc := range testCases {
@@ -200,7 +200,7 @@ func TestGenerateCoordinatorConfigOpenCode(t *testing.T) {
 		configJSON, err := GenerateCoordinatorConfigOpenCode(9000)
 		require.NoError(t, err, "GenerateCoordinatorConfigOpenCode failed")
 
-		// Parse and verify structure: {"permission": "allow", "mcp": {"perles-orchestrator": {"type": "remote", "url": "..."}}}
+		// Parse and verify structure: {"permission": "allow", "mcp": {"xorchestrator-orchestrator": {"type": "remote", "url": "..."}}}
 		var parsed map[string]any
 		require.NoError(t, json.Unmarshal([]byte(configJSON), &parsed), "Failed to parse JSON")
 
@@ -215,9 +215,9 @@ func TestGenerateCoordinatorConfigOpenCode(t *testing.T) {
 		mcp, ok := parsed["mcp"].(map[string]any)
 		require.True(t, ok, "Missing 'mcp' wrapper key")
 
-		// Check "perles-orchestrator" server exists
-		server, ok := mcp["perles-orchestrator"].(map[string]any)
-		require.True(t, ok, "Missing 'perles-orchestrator' server in mcp config")
+		// Check "xorchestrator-orchestrator" server exists
+		server, ok := mcp["xorchestrator-orchestrator"].(map[string]any)
+		require.True(t, ok, "Missing 'xorchestrator-orchestrator' server in mcp config")
 
 		// Check "type" is "remote"
 		require.Equal(t, "remote", server["type"], "Type should be 'remote'")
@@ -259,7 +259,7 @@ func TestGenerateWorkerConfigOpenCode(t *testing.T) {
 		configJSON, err := GenerateWorkerConfigOpenCode(9000, "WORKER.1")
 		require.NoError(t, err, "GenerateWorkerConfigOpenCode failed")
 
-		// Parse and verify structure: {"permission": {...}, "mcp": {"perles-worker": {"type": "remote", "url": "..."}}}
+		// Parse and verify structure: {"permission": {...}, "mcp": {"xorchestrator-worker": {"type": "remote", "url": "..."}}}
 		var parsed map[string]any
 		require.NoError(t, json.Unmarshal([]byte(configJSON), &parsed), "Failed to parse JSON")
 
@@ -274,9 +274,9 @@ func TestGenerateWorkerConfigOpenCode(t *testing.T) {
 		mcp, ok := parsed["mcp"].(map[string]any)
 		require.True(t, ok, "Missing 'mcp' wrapper key")
 
-		// Check "perles-worker" server exists
-		server, ok := mcp["perles-worker"].(map[string]any)
-		require.True(t, ok, "Missing 'perles-worker' server in mcp config")
+		// Check "xorchestrator-worker" server exists
+		server, ok := mcp["xorchestrator-worker"].(map[string]any)
+		require.True(t, ok, "Missing 'xorchestrator-worker' server in mcp config")
 
 		// Check "type" is "remote"
 		require.Equal(t, "remote", server["type"], "Type should be 'remote'")

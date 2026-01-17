@@ -33,7 +33,7 @@ type AmpMCPConfig map[string]MCPServerConfig
 func GenerateCoordinatorConfigHTTP(port int) (string, error) {
 	config := MCPConfig{
 		MCPServers: map[string]MCPServerConfig{
-			"perles-orchestrator": {
+			"xorchestrator-orchestrator": {
 				Type: "http",
 				URL:  fmt.Sprintf("http://localhost:%d/mcp", port),
 			},
@@ -53,7 +53,7 @@ func GenerateCoordinatorConfigHTTP(port int) (string, error) {
 func GenerateCoordinatorConfigGemini(port int) (string, error) {
 	config := MCPConfig{
 		MCPServers: map[string]MCPServerConfig{
-			"perles-orchestrator": {
+			"xorchestrator-orchestrator": {
 				HTTPUrl: fmt.Sprintf("http://localhost:%d/mcp", port),
 			},
 		},
@@ -71,7 +71,7 @@ func GenerateCoordinatorConfigGemini(port int) (string, error) {
 // Amp expects a flat format: {"serverName": {"url": "..."}} without mcpServers wrapper.
 func GenerateCoordinatorConfigAmp(port int) (string, error) {
 	config := AmpMCPConfig{
-		"perles-orchestrator": {
+		"xorchestrator-orchestrator": {
 			URL: fmt.Sprintf("http://localhost:%d/mcp", port),
 		},
 	}
@@ -85,9 +85,9 @@ func GenerateCoordinatorConfigAmp(port int) (string, error) {
 }
 
 // GenerateCoordinatorConfigCodex creates an MCP config for Codex CLI.
-// Codex expects TOML syntax for the -c flag: mcp_servers.perles-orchestrator={url="http://localhost:PORT/mcp"}
+// Codex expects TOML syntax for the -c flag: mcp_servers.xorchestrator-orchestrator={url="http://localhost:PORT/mcp"}
 func GenerateCoordinatorConfigCodex(port int) string {
-	return fmt.Sprintf(`mcp_servers.perles-orchestrator={url="http://localhost:%d/mcp"}`, port)
+	return fmt.Sprintf(`mcp_servers.xorchestrator-orchestrator={url="http://localhost:%d/mcp"}`, port)
 }
 
 // GenerateWorkerConfigHTTP creates an MCP config for a worker that connects to the
@@ -97,7 +97,7 @@ func GenerateCoordinatorConfigCodex(port int) string {
 func GenerateWorkerConfigHTTP(port int, workerID string) (string, error) {
 	config := MCPConfig{
 		MCPServers: map[string]MCPServerConfig{
-			"perles-worker": {
+			"xorchestrator-worker": {
 				Type: "http",
 				URL:  fmt.Sprintf("http://localhost:%d/worker/%s", port, workerID),
 			},
@@ -117,7 +117,7 @@ func GenerateWorkerConfigHTTP(port int, workerID string) (string, error) {
 func GenerateWorkerConfigGemini(port int, workerID string) (string, error) {
 	config := MCPConfig{
 		MCPServers: map[string]MCPServerConfig{
-			"perles-worker": {
+			"xorchestrator-worker": {
 				HTTPUrl: fmt.Sprintf("http://localhost:%d/worker/%s", port, workerID),
 			},
 		},
@@ -134,7 +134,7 @@ func GenerateWorkerConfigGemini(port int, workerID string) (string, error) {
 // GenerateWorkerConfigAmp creates an MCP config for a worker using Amp CLI format.
 func GenerateWorkerConfigAmp(port int, workerID string) (string, error) {
 	config := AmpMCPConfig{
-		"perles-worker": {
+		"xorchestrator-worker": {
 			URL: fmt.Sprintf("http://localhost:%d/worker/%s", port, workerID),
 		},
 	}
@@ -148,9 +148,9 @@ func GenerateWorkerConfigAmp(port int, workerID string) (string, error) {
 }
 
 // GenerateWorkerConfigCodex creates an MCP config for a worker using Codex CLI format.
-// Codex expects TOML syntax for the -c flag: mcp_servers.perles-worker={url="http://localhost:PORT/worker/ID"}
+// Codex expects TOML syntax for the -c flag: mcp_servers.xorchestrator-worker={url="http://localhost:PORT/worker/ID"}
 func GenerateWorkerConfigCodex(port int, workerID string) string {
-	return fmt.Sprintf(`mcp_servers.perles-worker={url="http://localhost:%d/worker/%s"}`, port, workerID)
+	return fmt.Sprintf(`mcp_servers.xorchestrator-worker={url="http://localhost:%d/worker/%s"}`, port, workerID)
 }
 
 // GenerateCoordinatorConfigOpenCode creates an MCP config for the coordinator using OpenCode format.
@@ -165,7 +165,7 @@ func GenerateCoordinatorConfigOpenCode(port int) (string, error) {
 			},
 		},
 		"mcp": map[string]any{
-			"perles-orchestrator": map[string]any{
+			"xorchestrator-orchestrator": map[string]any{
 				"type": "remote",
 				"url":  fmt.Sprintf("http://localhost:%d/mcp", port),
 			},
@@ -192,7 +192,7 @@ func GenerateWorkerConfigOpenCode(port int, workerID string) (string, error) {
 			},
 		},
 		"mcp": map[string]any{
-			"perles-worker": map[string]any{
+			"xorchestrator-worker": map[string]any{
 				"type": "remote",
 				"url":  fmt.Sprintf("http://localhost:%d/worker/%s", port, workerID),
 			},

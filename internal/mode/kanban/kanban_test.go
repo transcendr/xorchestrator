@@ -8,16 +8,16 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/orchestration/session"
-	"github.com/zjrosen/perles/internal/ui/board"
-	"github.com/zjrosen/perles/internal/ui/commandpalette"
-	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
-	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/mode"
+	"github.com/zjrosen/xorchestrator/internal/mode/shared"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/session"
+	"github.com/zjrosen/xorchestrator/internal/ui/board"
+	"github.com/zjrosen/xorchestrator/internal/ui/commandpalette"
+	"github.com/zjrosen/xorchestrator/internal/ui/modals/issueeditor"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/diffviewer"
 )
 
 // createTestModel creates a minimal Model for testing state transitions.

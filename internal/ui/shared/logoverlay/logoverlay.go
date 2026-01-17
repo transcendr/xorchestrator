@@ -13,10 +13,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/ui/shared/overlay"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/keys"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/overlay"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 const (

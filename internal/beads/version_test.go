@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/zjrosen/perles/internal/testutil"
+	"github.com/zjrosen/xorchestrator/internal/testutil"
 
 	"github.com/stretchr/testify/require"
 )

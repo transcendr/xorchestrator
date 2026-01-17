@@ -3,7 +3,7 @@ package opencode
 import (
 	"encoding/json"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // opencodeEvent represents the raw OpenCode JSON output structure.

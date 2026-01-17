@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/v2/handler"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/handler"
 )
 
 // Compile-time check that ProcessSessionDeliverer implements MessageDeliverer.

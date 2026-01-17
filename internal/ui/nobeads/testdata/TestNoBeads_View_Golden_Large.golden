@@ -21,10 +21,10 @@
                                                                                                                         
                                                Try one of these options:                                                
                                                                                                                         
-                             1. (Recommended) Run perles from a directory containing .beads/                            
-                             2. Use the --beads-dir flag: perles --beads-dir /path/to/project                           
-                          3. Run 'perles init' to create a local config file, then set beads_dir                        
-                           4. Set beads_dir in your config file (~/.config/perles/config.yaml)                          
+                          1. (Recommended) Run xorchestrator from a directory containing .beads/                        
+                         2. Use the --beads-dir flag: xorchestrator --beads-dir /path/to/project                        
+                      3. Run 'xorchestrator init' to create a local config file, then set beads_dir                     
+                        4. Set beads_dir in your config file (~/.config/xorchestrator/config.yaml)                      
                                                                                                                         
                                                                                                                         
                                                                                                                         

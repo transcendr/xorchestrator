@@ -26,8 +26,8 @@ func TestDefaultBaseDir(t *testing.T) {
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 
-	expected := filepath.Join(home, ".perles", "sessions")
-	require.Equal(t, expected, baseDir, "DefaultBaseDir should return ~/.perles/sessions")
+	expected := filepath.Join(home, ".xorchestrator", "sessions")
+	require.Equal(t, expected, baseDir, "DefaultBaseDir should return ~/.xorchestrator/sessions")
 }
 
 func TestNewSessionPathBuilder(t *testing.T) {
@@ -51,13 +51,13 @@ func TestNewSessionPathBuilder(t *testing.T) {
 }
 
 func TestSessionDir(t *testing.T) {
-	baseDir := filepath.Join("home", "user", ".perles", "sessions")
-	builder := NewSessionPathBuilder(baseDir, "perles")
+	baseDir := filepath.Join("home", "user", ".xorchestrator", "sessions")
+	builder := NewSessionPathBuilder(baseDir, "xorchestrator")
 	timestamp := time.Date(2026, 1, 11, 14, 30, 0, 0, time.UTC)
 	sessionID := "abc123-uuid"
 
 	result := builder.SessionDir(sessionID, timestamp)
-	expected := filepath.Join(baseDir, "perles", "2026-01-11", "abc123-uuid")
+	expected := filepath.Join(baseDir, "xorchestrator", "2026-01-11", "abc123-uuid")
 	require.Equal(t, expected, result, "SessionDir should construct correct path")
 }
 
@@ -95,27 +95,27 @@ func TestSessionDir_DateFormat(t *testing.T) {
 }
 
 func TestIndexPath(t *testing.T) {
-	baseDir := filepath.Join("home", "user", ".perles", "sessions")
-	builder := NewSessionPathBuilder(baseDir, "perles")
+	baseDir := filepath.Join("home", "user", ".xorchestrator", "sessions")
+	builder := NewSessionPathBuilder(baseDir, "xorchestrator")
 	result := builder.IndexPath()
 	expected := filepath.Join(baseDir, "sessions.json")
 	require.Equal(t, expected, result, "IndexPath should return {baseDir}/sessions.json")
 }
 
 func TestApplicationIndexPath(t *testing.T) {
-	baseDir := filepath.Join("home", "user", ".perles", "sessions")
-	builder := NewSessionPathBuilder(baseDir, "perles")
+	baseDir := filepath.Join("home", "user", ".xorchestrator", "sessions")
+	builder := NewSessionPathBuilder(baseDir, "xorchestrator")
 	result := builder.ApplicationIndexPath()
-	expected := filepath.Join(baseDir, "perles", "sessions.json")
+	expected := filepath.Join(baseDir, "xorchestrator", "sessions.json")
 	require.Equal(t, expected, result, "ApplicationIndexPath should return {baseDir}/{app}/sessions.json")
 }
 
 func TestDateDir(t *testing.T) {
-	baseDir := filepath.Join("home", "user", ".perles", "sessions")
-	builder := NewSessionPathBuilder(baseDir, "perles")
+	baseDir := filepath.Join("home", "user", ".xorchestrator", "sessions")
+	builder := NewSessionPathBuilder(baseDir, "xorchestrator")
 	timestamp := time.Date(2026, 1, 11, 0, 0, 0, 0, time.UTC)
 	result := builder.DateDir(timestamp)
-	expected := filepath.Join(baseDir, "perles", "2026-01-11")
+	expected := filepath.Join(baseDir, "xorchestrator", "2026-01-11")
 	require.Equal(t, expected, result, "DateDir should return {baseDir}/{app}/{date}")
 }
 
@@ -276,7 +276,7 @@ func TestHomeDirectoryExpansion(t *testing.T) {
 
 func TestPathBuilder_CompleteWorkflow(t *testing.T) {
 	// Test a complete workflow: create builder, derive name, construct paths
-	baseDir := filepath.Join("home", "testuser", ".perles", "sessions")
+	baseDir := filepath.Join("home", "testuser", ".xorchestrator", "sessions")
 	mock := &mockGitRemoteGetter{url: "git@github.com:anthropic/claude-code.git", err: nil}
 
 	appName := DeriveApplicationName("/path/to/claude-code", mock)

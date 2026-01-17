@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // errTest is a sentinel error for testing
@@ -612,7 +612,7 @@ func TestSetupMCPConfig_NewFile_Created(t *testing.T) {
 
 	mcpConfig := `{
 		"mcpServers": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"httpUrl": "http://localhost:8080/worker/1",
 				"timeout": 30000
 			}
@@ -640,8 +640,8 @@ func TestSetupMCPConfig_NewFile_Created(t *testing.T) {
 	mcpServers, ok := settings["mcpServers"].(map[string]any)
 	require.True(t, ok, "mcpServers should be a map")
 
-	worker, ok := mcpServers["perles-worker"].(map[string]any)
-	require.True(t, ok, "perles-worker should be a map")
+	worker, ok := mcpServers["xorchestrator-worker"].(map[string]any)
+	require.True(t, ok, "xorchestrator-worker should be a map")
 
 	require.Equal(t, "http://localhost:8080/worker/1", worker["httpUrl"])
 	require.Equal(t, float64(30000), worker["timeout"]) // JSON numbers are float64
@@ -663,7 +663,7 @@ func TestSetupMCPConfig_ExistingSettings_AddsMCPServers(t *testing.T) {
 
 	mcpConfig := `{
 		"mcpServers": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"httpUrl": "http://localhost:8080/worker/1",
 				"timeout": 30000
 			}
@@ -694,8 +694,8 @@ func TestSetupMCPConfig_ExistingSettings_AddsMCPServers(t *testing.T) {
 	mcpServers, ok := settings["mcpServers"].(map[string]any)
 	require.True(t, ok, "mcpServers should be a map")
 
-	worker, ok := mcpServers["perles-worker"].(map[string]any)
-	require.True(t, ok, "perles-worker should be a map")
+	worker, ok := mcpServers["xorchestrator-worker"].(map[string]any)
+	require.True(t, ok, "xorchestrator-worker should be a map")
 
 	require.Equal(t, "http://localhost:8080/worker/1", worker["httpUrl"])
 }
@@ -719,10 +719,10 @@ func TestSetupMCPConfig_ExistingMCPServers_Merged(t *testing.T) {
 	settingsPath := filepath.Join(geminiDir, "settings.json")
 	require.NoError(t, os.WriteFile(settingsPath, []byte(existingSettings), 0644))
 
-	// New config adds perles-worker
+	// New config adds xorchestrator-worker
 	mcpConfig := `{
 		"mcpServers": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"httpUrl": "http://localhost:8080/worker/1",
 				"timeout": 30000
 			}
@@ -759,8 +759,8 @@ func TestSetupMCPConfig_ExistingMCPServers_Merged(t *testing.T) {
 	require.Equal(t, "http://localhost:9000/existing", existingServer["httpUrl"])
 
 	// Verify new server added
-	newServer, ok := mcpServers["perles-worker"].(map[string]any)
-	require.True(t, ok, "perles-worker should be added")
+	newServer, ok := mcpServers["xorchestrator-worker"].(map[string]any)
+	require.True(t, ok, "xorchestrator-worker should be added")
 	require.Equal(t, "http://localhost:8080/worker/1", newServer["httpUrl"])
 }
 
@@ -789,7 +789,7 @@ func TestSetupMCPConfig_InvalidExistingSettingsJSON_ReturnsError(t *testing.T) {
 
 	mcpConfig := `{
 		"mcpServers": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"httpUrl": "http://localhost:8080/worker/1"
 			}
 		}
@@ -820,7 +820,7 @@ func TestSetupMCPConfig_DirectoryCreation(t *testing.T) {
 
 	mcpConfig := `{
 		"mcpServers": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"httpUrl": "http://localhost:8080/worker/1"
 			}
 		}
@@ -843,7 +843,7 @@ func TestSetupMCPConfig_DirectoryCreation(t *testing.T) {
 func TestSetupMCPConfig_ProperFormatting(t *testing.T) {
 	tempDir := t.TempDir()
 
-	mcpConfig := `{"mcpServers":{"perles-worker":{"httpUrl":"http://localhost:8080/worker/1"}}}`
+	mcpConfig := `{"mcpServers":{"xorchestrator-worker":{"httpUrl":"http://localhost:8080/worker/1"}}}`
 
 	cfg := Config{
 		WorkDir:   tempDir,
@@ -867,13 +867,13 @@ func TestSetupMCPConfig_ProperFormatting(t *testing.T) {
 func TestSetupMCPConfig_OverwritesSameServer(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// Create existing settings.json with perles-worker
+	// Create existing settings.json with xorchestrator-worker
 	geminiDir := filepath.Join(tempDir, ".gemini")
 	require.NoError(t, os.MkdirAll(geminiDir, 0755))
 
 	existingSettings := `{
 		"mcpServers": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"httpUrl": "http://localhost:OLD/worker/OLD",
 				"timeout": 1000
 			}
@@ -882,10 +882,10 @@ func TestSetupMCPConfig_OverwritesSameServer(t *testing.T) {
 	settingsPath := filepath.Join(geminiDir, "settings.json")
 	require.NoError(t, os.WriteFile(settingsPath, []byte(existingSettings), 0644))
 
-	// New config updates perles-worker
+	// New config updates xorchestrator-worker
 	mcpConfig := `{
 		"mcpServers": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"httpUrl": "http://localhost:8080/worker/NEW",
 				"timeout": 30000
 			}
@@ -912,7 +912,7 @@ func TestSetupMCPConfig_OverwritesSameServer(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, mcpServers, 1, "should only have one server")
 
-	worker, ok := mcpServers["perles-worker"].(map[string]any)
+	worker, ok := mcpServers["xorchestrator-worker"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "http://localhost:8080/worker/NEW", worker["httpUrl"], "should be updated URL")
 	require.Equal(t, float64(30000), worker["timeout"], "should be updated timeout")

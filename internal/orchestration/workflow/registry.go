@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/config"
 )
 
 // Registry manages workflow templates from multiple sources.
@@ -40,7 +40,7 @@ func NewRegistryWithBuiltins() (*Registry, error) {
 //
 // Loading order (later sources can shadow earlier):
 //  1. Built-in workflows (from embedded templates)
-//  2. User workflows (from ~/.perles/workflows/)
+//  2. User workflows (from ~/.xorchestrator/workflows/)
 //
 // Config overrides:
 //   - If workflow has enabled=false, it's removed from the registry

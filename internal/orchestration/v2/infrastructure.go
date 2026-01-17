@@ -10,18 +10,18 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/tracing"
-	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/handler"
-	"github.com/zjrosen/perles/internal/orchestration/v2/integration"
-	"github.com/zjrosen/perles/internal/orchestration/v2/process"
-	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/pubsub"
-	"github.com/zjrosen/perles/internal/sound"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/tracing"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/handler"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/integration"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/process"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/processor"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/sound"
 )
 
 // eventBusAdapter adapts pubsub.Broker to the processor.EventPublisher interface.
@@ -49,7 +49,7 @@ type InfrastructureConfig struct {
 	// SessionID is the session identifier for accountability summary generation.
 	SessionID string
 	// SessionDir is the directory where session files are stored.
-	// For centralized storage: ~/.perles/sessions/{app}/{date}/{id}/
+	// For centralized storage: ~/.xorchestrator/sessions/{app}/{date}/{id}/
 	SessionDir string
 	// Tracer is the OpenTelemetry tracer for distributed tracing (optional).
 	// When provided, TracingMiddleware will be registered in the command processor.

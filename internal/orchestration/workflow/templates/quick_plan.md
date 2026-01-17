@@ -302,16 +302,16 @@ bd dep add {task-2-id} {task-1-id}
 ```bash
 # Create epic
 bd create "Add clipboard support" -t epic --json
-# Returns: perles-abc
+# Returns: xorchestrator-abc
 
 # Create tasks with --parent flag (creates parent-child relationship)
-bd create "Add clipboard package" -t task --parent perles-abc --json      # Returns: perles-abc.1
-bd create "Add copy keybinding" -t task --parent perles-abc --json        # Returns: perles-abc.2
-bd create "Add visual feedback" -t task --parent perles-abc --json        # Returns: perles-abc.3
+bd create "Add clipboard package" -t task --parent xorchestrator-abc --json      # Returns: xorchestrator-abc.1
+bd create "Add copy keybinding" -t task --parent xorchestrator-abc --json        # Returns: xorchestrator-abc.2
+bd create "Add visual feedback" -t task --parent xorchestrator-abc --json        # Returns: xorchestrator-abc.3
 
 # Set task order dependencies (if task-2 depends on task-1)
-bd dep add perles-abc.2 perles-abc.1  # Copy keybinding depends on clipboard package
-bd dep add perles-abc.3 perles-abc.2  # Visual feedback depends on copy keybinding
+bd dep add xorchestrator-abc.2 xorchestrator-abc.1  # Copy keybinding depends on clipboard package
+bd dep add xorchestrator-abc.3 xorchestrator-abc.2  # Visual feedback depends on copy keybinding
 ```
 
 **Note:** Using `--parent` creates the correct parent-child relationship where the epic shows tasks in its `dependents` array. Do NOT use `bd dep add {epic-id} {task-id}` as this creates the wrong "blocks" relationship.
@@ -518,14 +518,14 @@ Worker 2: Re-reviews → APPROVED
 
 [Phase 3: Task Breakdown]
 Coordinator: Assigns Worker 3 with approved proposal
-Worker 3: Creates epic perles-abc, tasks perles-abc.1, perles-abc.2
+Worker 3: Creates epic xorchestrator-abc, tasks xorchestrator-abc.1, xorchestrator-abc.2
 
 [Phase 4: Task Review]
 Coordinator: Assigns Worker 4 to review tasks
 Worker 4: Reviews → APPROVED
 
 [Phase 5: Completion]
-Coordinator: "Quick Plan Complete. Epic perles-abc ready for implementation."
+Coordinator: "Quick Plan Complete. Epic xorchestrator-abc ready for implementation."
 ```
 
 ---

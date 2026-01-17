@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // mouseEscapePattern matches SGR mouse tracking sequences that weren't parsed by bubbletea.

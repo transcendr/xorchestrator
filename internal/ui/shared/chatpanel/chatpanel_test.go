@@ -11,17 +11,17 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
-	"github.com/zjrosen/perles/internal/pubsub"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
-	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/metrics"
+	v2 "github.com/zjrosen/xorchestrator/internal/orchestration/v2"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/processor"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/workflow"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/chatrender"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/vimtextarea"
 )
 
 // newTestInfrastructure creates a v2.SimpleInfrastructure with a mock provider for testing.
@@ -176,7 +176,7 @@ func TestNew_DefaultConfig_VimModeDisabled(t *testing.T) {
 }
 
 // ============================================================================
-// Ctrl+T Keybinding Tests (perles-f3tm.4 - Workflows Tab)
+// Ctrl+T Keybinding Tests (xorchestrator-f3tm.4 - Workflows Tab)
 // NOTE: The openWorkflowPicker and handleWorkflowSelected tests were removed
 // as part of the Workflows tab cleanup. The workflow picker modal has been
 // replaced by the Workflows tab navigation.
@@ -830,7 +830,7 @@ func TestBuildAssistantInitialPrompt(t *testing.T) {
 	require.NotEmpty(t, prompt)
 
 	// Verify prompt contains key elements
-	require.Contains(t, prompt, "Perles")
+	require.Contains(t, prompt, "Xorchestrator")
 	require.Contains(t, prompt, "bd ready")
 	require.Contains(t, prompt, "bd activity")
 }
@@ -2010,7 +2010,7 @@ func TestSessionDataStructure(t *testing.T) {
 }
 
 // ============================================================================
-// SessionData QueueCount Field Tests (perles-ci2e.1)
+// SessionData QueueCount Field Tests (xorchestrator-ci2e.1)
 // ============================================================================
 
 func TestSessionData_QueueCount_InitializesToZero(t *testing.T) {
@@ -2492,7 +2492,7 @@ func TestSetSizeMarksActiveSessionDirty(t *testing.T) {
 }
 
 // ============================================================================
-// Event Routing Tests (perles-81ic.3)
+// Event Routing Tests (xorchestrator-81ic.3)
 // ============================================================================
 
 func TestMultipleSessionsEventRouting(t *testing.T) {
@@ -2982,7 +2982,7 @@ func TestProcessTokenUsageRoutedToSession(t *testing.T) {
 }
 
 // ============================================================================
-// Sessions Tab UI Tests (perles-81ic.4)
+// Sessions Tab UI Tests (xorchestrator-81ic.4)
 // ============================================================================
 
 func TestSessionsTabLayout_Golden(t *testing.T) {
@@ -3902,7 +3902,7 @@ func TestEnterOnCreateNewSession_EmitsNewSessionRequest(t *testing.T) {
 }
 
 // ============================================================================
-// Loading Indicator and Error State Tests (perles-6sce.3)
+// Loading Indicator and Error State Tests (xorchestrator-6sce.3)
 // ============================================================================
 
 func TestRenderLoadingIndicator_Golden(t *testing.T) {
@@ -3975,7 +3975,7 @@ func TestRenderErrorState_HandlesZeroDimensions(t *testing.T) {
 }
 
 // ============================================================================
-// View() Status-Based Routing Tests (perles-6sce.4)
+// View() Status-Based Routing Tests (xorchestrator-6sce.4)
 // ============================================================================
 
 func TestView_Golden_ChatTab_PendingStatus(t *testing.T) {
@@ -4074,7 +4074,7 @@ func TestView_RoutesToMessagesForWorkingStatus(t *testing.T) {
 }
 
 // ============================================================================
-// Workflows Tab Helper Method Tests (perles-f3tm.1)
+// Workflows Tab Helper Method Tests (xorchestrator-f3tm.1)
 // ============================================================================
 
 func TestGetWorkflowsForTab_NilRegistry(t *testing.T) {
@@ -5014,11 +5014,11 @@ func TestRenderEmptyWorkflowsState(t *testing.T) {
 
 	require.NotEmpty(t, output, "should render something")
 	require.Contains(t, output, "No workflows available", "should show no workflows message")
-	require.Contains(t, output, "~/.config/perles/workflows/", "should show guidance for adding workflows")
+	require.Contains(t, output, "~/.config/xorchestrator/workflows/", "should show guidance for adding workflows")
 }
 
 // ============================================================================
-// Session Event Routing Tests (perles-ci2e.2)
+// Session Event Routing Tests (xorchestrator-ci2e.2)
 // ============================================================================
 
 func TestProcessQueueChanged_UpdatesCorrectSession(t *testing.T) {
@@ -5272,7 +5272,7 @@ func TestProcessWorking_UpdatesCorrectSessionStatus(t *testing.T) {
 }
 
 // ============================================================================
-// Per-Session State View Tests (perles-ci2e.3)
+// Per-Session State View Tests (xorchestrator-ci2e.3)
 // Tests verify view renders state from active session, not global fields.
 // ============================================================================
 
@@ -5411,7 +5411,7 @@ func TestView_SessionStateUsedForMetrics(t *testing.T) {
 	require.Contains(t, view, "75", "Metrics should be derived from session.Metrics")
 }
 
-// Helper Method Delegation Tests (perles-ci2e.4)
+// Helper Method Delegation Tests (xorchestrator-ci2e.4)
 // These tests verify that AssistantWorking() and QueueCount() properly delegate
 // to the active session's state after global fields were removed.
 
@@ -5566,7 +5566,7 @@ func TestGlobalFieldsRemoved_CodeCompiles(t *testing.T) {
 	require.True(t, true, "Code compiles without global fields")
 }
 
-// Session Isolation Integration Tests (perles-ci2e.5)
+// Session Isolation Integration Tests (xorchestrator-ci2e.5)
 // These tests verify complete session state isolation works end-to-end.
 
 func TestSessionIsolation_TwoSessionsDifferentStates(t *testing.T) {

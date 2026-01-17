@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/zjrosen/perles/internal/mode/playground"
+	"github.com/zjrosen/xorchestrator/internal/mode/playground"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"

@@ -1,7 +1,7 @@
 package bql
 
 import (
-	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/vimtextarea"
 
 	"github.com/charmbracelet/lipgloss"
 )

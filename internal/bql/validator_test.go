@@ -33,7 +33,7 @@ func TestValidate_ValidQueries(t *testing.T) {
 		"label = urgent",
 		"title ~ auth",
 		"title !~ test",
-		"id = perles-123",
+		"id = xorchestrator-123",
 		"created > today",
 		"created > yesterday",
 		"created > -7d",

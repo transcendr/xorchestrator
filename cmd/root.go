@@ -6,14 +6,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zjrosen/perles/internal/app"
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/cachemanager"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/ui/nobeads"
-	"github.com/zjrosen/perles/internal/ui/outdated"
+	"github.com/zjrosen/xorchestrator/internal/app"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/bql"
+	"github.com/zjrosen/xorchestrator/internal/cachemanager"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/ui/nobeads"
+	"github.com/zjrosen/xorchestrator/internal/ui/outdated"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -39,7 +39,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:     "perles",
+	Use:     "xorchestrator",
 	Short:   "A terminal ui for beads issue tracking",
 	Long:    `A terminal user interface for viewing and managing beads issues in a kanban-style board with BQL support.`,
 	Version: version,
@@ -50,13 +50,13 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "",
-		"config file (default: ~/.config/perles/config.yaml)")
+		"config file (default: ~/.config/xorchestrator/config.yaml)")
 	rootCmd.Flags().StringP("beads-dir", "b", "",
 		"path to beads database directory")
 	rootCmd.Flags().StringP("markdown-style", "", "",
 		"markdown rendering style: \"dark\" (default) or \"light\"")
 	rootCmd.PersistentFlags().BoolVarP(&debugFlag, "debug", "d", false,
-		"enable debug mode with logging (also: PERLES_DEBUG=1)")
+		"enable debug mode with logging (also: XORCHESTRATOR_DEBUG=1)")
 
 	_ = viper.BindPFlag("beads_dir", rootCmd.Flags().Lookup("beads-dir"))
 	_ = viper.BindPFlag("ui.markdown_style", rootCmd.Flags().Lookup("markdown-style"))
@@ -79,23 +79,23 @@ func initConfig() {
 		viper.SetConfigFile(cfgFile)
 	} else {
 		// Config lookup order:
-		// 1. .perles/config.yaml (current directory)
-		// 2. ~/.config/perles/config.yaml (user config)
-		if _, err := os.Stat(".perles/config.yaml"); err == nil {
-			viper.SetConfigFile(".perles/config.yaml")
+		// 1. .xorchestrator/config.yaml (current directory)
+		// 2. ~/.config/xorchestrator/config.yaml (user config)
+		if _, err := os.Stat(".xorchestrator/config.yaml"); err == nil {
+			viper.SetConfigFile(".xorchestrator/config.yaml")
 		} else {
 			home, _ := os.UserHomeDir()
-			viper.AddConfigPath(filepath.Join(home, ".config", "perles"))
+			viper.AddConfigPath(filepath.Join(home, ".config", "xorchestrator"))
 			viper.SetConfigName("config")
 			viper.SetConfigType("yaml")
 		}
 	}
 
 	if err := viper.ReadInConfig(); err != nil {
-		// No config file found anywhere - create default at .perles/config.yaml
+		// No config file found anywhere - create default at .xorchestrator/config.yaml
 		var configNotFound viper.ConfigFileNotFoundError
 		if errors.As(err, &configNotFound) {
-			defaultPath := ".perles/config.yaml"
+			defaultPath := ".xorchestrator/config.yaml"
 			if writeErr := config.WriteDefaultConfig(defaultPath); writeErr == nil {
 				viper.SetConfigFile(defaultPath)
 				_ = viper.ReadInConfig()
@@ -112,21 +112,21 @@ func initConfig() {
 
 func runApp(cmd *cobra.Command, args []string) error {
 	// Initialize logging if debug mode enabled (via flag or env var)
-	debug := os.Getenv("PERLES_DEBUG") != "" || debugFlag
+	debug := os.Getenv("XORCHESTRATOR_DEBUG") != "" || debugFlag
 	if debug {
-		logPath := os.Getenv("PERLES_LOG")
+		logPath := os.Getenv("XORCHESTRATOR_LOG")
 		if logPath == "" {
 			logPath = "debug.log"
 		}
 
-		cleanup, err := log.InitWithTeaLog(logPath, "perles")
+		cleanup, err := log.InitWithTeaLog(logPath, "xorchestrator")
 		if err != nil {
 			return fmt.Errorf("initializing logging: %w", err)
 		}
 		defer cleanup()
 
 		// Log application startup
-		log.Info(log.CatConfig, "Perles starting", "version", version, "debug", true, "logPath", logPath)
+		log.Info(log.CatConfig, "Xorchestrator starting", "version", version, "debug", true, "logPath", logPath)
 	}
 
 	if err := config.ValidateViews(cfg.Views); err != nil {
@@ -137,7 +137,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid orchestration configuration: %w", err)
 	}
 
-	// Working directory is always the current directory (where perles was invoked)
+	// Working directory is always the current directory (where xorchestrator was invoked)
 	workDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting current directory: %w", err)
@@ -176,8 +176,8 @@ func runApp(cmd *cobra.Command, args []string) error {
 	// Store the config file path for saving column changes
 	configFilePath := viper.ConfigFileUsed()
 	if configFilePath == "" {
-		// No config file was loaded, default to .perles/config.yaml
-		configFilePath = ".perles/config.yaml"
+		// No config file was loaded, default to .xorchestrator/config.yaml
+		configFilePath = ".xorchestrator/config.yaml"
 	}
 
 	// Initialize BQL cache managers
@@ -214,9 +214,9 @@ func runApp(cmd *cobra.Command, args []string) error {
 	// Log shutdown (only in debug mode - log is initialized)
 	if debug {
 		if err != nil {
-			log.Error(log.CatConfig, "Perles shutting down with error", "error", err)
+			log.Error(log.CatConfig, "Xorchestrator shutting down with error", "error", err)
 		} else {
-			log.Info(log.CatConfig, "Perles shutting down")
+			log.Info(log.CatConfig, "Xorchestrator shutting down")
 		}
 	}
 

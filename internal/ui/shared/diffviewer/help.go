@@ -7,9 +7,9 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/ui/shared/overlay"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/keys"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/overlay"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // helpContext indicates which context the help overlay should display.

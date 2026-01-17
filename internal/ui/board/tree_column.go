@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/styles"
-	"github.com/zjrosen/perles/internal/ui/tree"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/bql"
+	"github.com/zjrosen/xorchestrator/internal/mode/shared"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/ui/tree"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

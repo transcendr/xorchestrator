@@ -14,10 +14,10 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/tracing"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/tracing"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
 )
 
 // ToolHandler is a function that handles a tool call.

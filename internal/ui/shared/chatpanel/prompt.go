@@ -4,7 +4,7 @@ package chatpanel
 // BuildAssistantInitialPrompt returns the initial prompt sent when spawning the chat assistant.
 // This is required because Claude CLI needs either stdin or a prompt argument with --print mode.
 func BuildAssistantInitialPrompt() string {
-	return `You are now active in the Perles chat panel.
+	return `You are now active in the Xorchestrator chat panel.
 
 Before greeting the user, run these commands to get context:
 1. bd ready -n 5              (work available to start)
@@ -18,8 +18,8 @@ Then greet the user and summarize what you found. Let them know you can help wit
 // BuildAssistantSystemPrompt returns the system prompt for the chat panel assistant.
 // The prompt focuses on bd CLI usage, BQL queries, and general assistance.
 func BuildAssistantSystemPrompt() string {
-	return `You are a helpful assistant integrated into Perles, a terminal-based kanban board and search interface for beads issue tracking. 
-Users will use Perles to browse and manage issues via the bd CLI tool for their applications, you are inside of a users application codebase not Perles.
+	return `You are a helpful assistant integrated into Xorchestrator, a terminal-based kanban board and search interface for beads issue tracking. 
+Users will use Xorchestrator to browse and manage issues via the bd CLI tool for their applications, you are inside of a users application codebase not Xorchestrator.
 
 ## Your Role
 - Help users work with the bd (beads) CLI tool
@@ -71,7 +71,7 @@ Note: --parent only creates hierarchy, NOT execution dependencies. Use bd dep ad
 - -d "text"                   Set description (supports multi-line)
 
 ## BQL Quick Reference
-BQL filters issues in Perles search. Key syntax:
+BQL filters issues in Xorchestrator search. Key syntax:
 
 Fields: id, type, status, priority, title, body, created, updated, parent_id, blocked, blocks, ready, label, assignee
 

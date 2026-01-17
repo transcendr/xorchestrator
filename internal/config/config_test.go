@@ -881,7 +881,7 @@ func TestDefaultTracesFilePath(t *testing.T) {
 	path := DefaultTracesFilePath()
 	require.NotEmpty(t, path, "DefaultTracesFilePath should return a path")
 	require.Contains(t, path, "traces.jsonl", "Path should contain traces.jsonl")
-	require.Contains(t, path, "perles", "Path should contain perles")
+	require.Contains(t, path, "xorchestrator", "Path should contain xorchestrator")
 }
 
 func TestTracingConfig_ZeroValue(t *testing.T) {
@@ -912,10 +912,10 @@ func TestOrchestrationConfig_TracingField(t *testing.T) {
 // Tests for SessionStorageConfig
 
 func TestDefaultSessionStorageBaseDir(t *testing.T) {
-	// Verify it returns a path containing .perles/sessions
+	// Verify it returns a path containing .xorchestrator/sessions
 	path := DefaultSessionStorageBaseDir()
 	require.NotEmpty(t, path, "DefaultSessionStorageBaseDir should return a path")
-	require.Contains(t, path, ".perles", "Path should contain .perles")
+	require.Contains(t, path, ".xorchestrator", "Path should contain .xorchestrator")
 	require.Contains(t, path, "sessions", "Path should contain sessions")
 }
 
@@ -925,7 +925,7 @@ func TestSessionStorageConfig_Defaults(t *testing.T) {
 
 	// BaseDir should be set to the default
 	require.NotEmpty(t, storage.BaseDir, "BaseDir should be set in defaults")
-	require.Contains(t, storage.BaseDir, ".perles", "Default BaseDir should contain .perles")
+	require.Contains(t, storage.BaseDir, ".xorchestrator", "Default BaseDir should contain .xorchestrator")
 	require.Contains(t, storage.BaseDir, "sessions", "Default BaseDir should contain sessions")
 
 	// ApplicationName should be empty (derived at runtime)
@@ -946,9 +946,9 @@ func TestValidateSessionStorage_Empty(t *testing.T) {
 
 func TestValidateSessionStorage_AbsoluteBaseDir(t *testing.T) {
 	// Use a platform-appropriate absolute path
-	absPath := "/home/user/.perles/sessions"
+	absPath := "/home/user/.xorchestrator/sessions"
 	if runtime.GOOS == "windows" {
-		absPath = `C:\Users\user\.perles\sessions`
+		absPath = `C:\Users\user\.xorchestrator\sessions`
 	}
 	cfg := SessionStorageConfig{
 		BaseDir: absPath,
@@ -968,9 +968,9 @@ func TestValidateSessionStorage_RelativeBaseDir(t *testing.T) {
 
 func TestValidateSessionStorage_WithApplicationName(t *testing.T) {
 	// Use a platform-appropriate absolute path
-	absPath := "/home/user/.perles/sessions"
+	absPath := "/home/user/.xorchestrator/sessions"
 	if runtime.GOOS == "windows" {
-		absPath = `C:\Users\user\.perles\sessions`
+		absPath = `C:\Users\user\.xorchestrator\sessions`
 	}
 	cfg := SessionStorageConfig{
 		BaseDir:         absPath,
@@ -982,9 +982,9 @@ func TestValidateSessionStorage_WithApplicationName(t *testing.T) {
 
 func TestValidateOrchestration_WithValidSessionStorage(t *testing.T) {
 	// Use a platform-appropriate absolute path
-	absPath := "/home/user/.perles/sessions"
+	absPath := "/home/user/.xorchestrator/sessions"
 	if runtime.GOOS == "windows" {
-		absPath = `C:\Users\user\.perles\sessions`
+		absPath = `C:\Users\user\.xorchestrator\sessions`
 	}
 	cfg := OrchestrationConfig{
 		Client: "claude",
@@ -1033,7 +1033,7 @@ func TestSessionStorageConfig_CustomBaseDirPreserved(t *testing.T) {
 func TestSessionStorageConfig_ApplicationNameOverridePreserved(t *testing.T) {
 	// Test that ApplicationName override is preserved
 	cfg := SessionStorageConfig{
-		BaseDir:         "/home/user/.perles/sessions",
+		BaseDir:         "/home/user/.xorchestrator/sessions",
 		ApplicationName: "my-custom-app-name",
 	}
 	require.Equal(t, "my-custom-app-name", cfg.ApplicationName)

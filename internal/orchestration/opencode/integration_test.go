@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // skipIfOpenCodeNotAvailable skips the test if opencode CLI is not installed.
@@ -267,7 +267,7 @@ func TestIntegration_MCPConfig_Written(t *testing.T) {
 
 	mcpConfig := `{
 		"mcp": {
-			"perles-worker": {
+			"xorchestrator-worker": {
 				"type": "remote",
 				"url": "http://localhost:9999/test"
 			}
@@ -288,7 +288,7 @@ func TestIntegration_MCPConfig_Written(t *testing.T) {
 	data, err := os.ReadFile(configPath)
 	require.NoError(t, err)
 
-	require.Contains(t, string(data), "perles-worker")
+	require.Contains(t, string(data), "xorchestrator-worker")
 	require.Contains(t, string(data), "http://localhost:9999/test")
 }
 

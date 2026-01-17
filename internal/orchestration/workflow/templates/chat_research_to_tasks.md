@@ -259,18 +259,18 @@ AI: Reads research doc, summarizes key points
 AI: Creates docs/plans/2025-01-15-1430-clipboard-support-plan.md
 
 [Phase 3: Create Epic]
-AI: Creates epic perles-xyz
+AI: Creates epic xorchestrator-xyz
 
 [Phase 4: Create Tasks]
 AI: Creates 4 tasks with test requirements:
-- perles-xyz.1: Add clipboard package + unit tests
-- perles-xyz.2: Add copy keybinding + keyboard tests
-- perles-xyz.3: Add paste support + integration tests
-- perles-xyz.4: Add visual feedback + UI tests
+- xorchestrator-xyz.1: Add clipboard package + unit tests
+- xorchestrator-xyz.2: Add copy keybinding + keyboard tests
+- xorchestrator-xyz.3: Add paste support + integration tests
+- xorchestrator-xyz.4: Add visual feedback + UI tests
 
 [Phase 5: Set Dependencies]
 AI: Sets dependencies between tasks
-- perles-xyz.4 depends on perles-xyz.2
+- xorchestrator-xyz.4 depends on xorchestrator-xyz.2
 AI: Verifies with bd list command
 
 [Phase 6: Self-Review]
@@ -283,7 +283,7 @@ AI: Reviews against checklists, fixes issues:
 AI: Updates plan document with final structure
 
 [Complete]
-AI: "Epic perles-xyz created with 5 tasks. See docs/plans/2025-01-15-1430-clipboard-support-plan.md"
+AI: "Epic xorchestrator-xyz created with 5 tasks. See docs/plans/2025-01-15-1430-clipboard-support-plan.md"
 ```
 
 ---

@@ -1,12 +1,12 @@
-# AGENTS.md - Perles Development Guide
+# AGENTS.md - Xorchestrator Development Guide
 
 This document provides essential information for AI agents and developers working
-on the Perles codebase. It documents the actual patterns, conventions, and
+on the Xorchestrator codebase. It documents the actual patterns, conventions, and
 commands observed in this repository.
 
 ## Project Overview
 
-Perles is a terminal-based search and kanban board for [beads](https://github.com/steveyegge/beads)
+Xorchestrator is a terminal-based search and kanban board for [beads](https://github.com/steveyegge/beads)
 issue tracking, built in Go using the Bubble Tea TUI framework. It includes a
 **multi-agent AI orchestration system** for coordinating AI-powered development workflows.
 
@@ -28,12 +28,12 @@ make debug          # Build and run with debug flag (-d)
 make install        # Install to $GOPATH/bin
 make clean          # Clean build artifacts
 
-./perles            # Run the built binary
-./perles -d         # Run with debug mode
-./perles -c path    # Use specific config file
-./perles -b path    # Specify beads directory
-./perles playground # Run the vimtextarea playground
-./perles workflows  # List available workflow templates
+./xorchestrator            # Run the built binary
+./xorchestrator -d         # Run with debug mode
+./xorchestrator -c path    # Use specific config file
+./xorchestrator -b path    # Specify beads directory
+./xorchestrator playground # Run the vimtextarea playground
+./xorchestrator workflows  # List available workflow templates
 ```
 
 ### Testing
@@ -77,7 +77,7 @@ git describe --tags --always --dirty  # Version format used
 ### Directory Structure
 
 ```
-perles/
+xorchestrator/
 ├── cmd/                    # CLI commands (cobra)
 │   ├── root.go            # Main command setup
 │   ├── init.go            # Init command
@@ -176,8 +176,8 @@ import (
     "github.com/charmbracelet/lipgloss"
     
     // Internal packages
-    "perles/internal/app"
-    "perles/internal/beads"
+    "xorchestrator/internal/app"
+    "xorchestrator/internal/beads"
 )
 ```
 
@@ -343,7 +343,7 @@ const (
 
 ## AI Orchestration System
 
-Perles includes a sophisticated multi-agent AI orchestration layer for coordinating AI-powered development workflows.
+Xorchestrator includes a sophisticated multi-agent AI orchestration layer for coordinating AI-powered development workflows.
 
 ### Architecture Overview
 
@@ -427,19 +427,19 @@ Built-in workflows in `orchestration/workflow/`:
 - `cook.md` - Cooking/implementation workflow
 - `research_to_tasks.md` - Research to task breakdown
 
-User workflows: `~/.config/perles/workflows/`
+User workflows: `~/.config/xorchestrator/workflows/`
 
-List available: `perles workflows`
+List available: `xorchestrator workflows`
 
 ### Centralized Session Storage
 
 Orchestration sessions are stored in a centralized user home directory to simplify backup, management, and cross-project querying.
 
-**Default location:** `~/.perles/sessions/`
+**Default location:** `~/.xorchestrator/sessions/`
 
 **Directory structure:**
 ```
-~/.perles/
+~/.xorchestrator/
 └── sessions/
     ├── sessions.json                    # Global session index
     └── {application_name}/              # Application name (repo name or custom)
@@ -463,7 +463,7 @@ Orchestration sessions are stored in a centralized user home directory to simpli
 ```yaml
 orchestration:
   session_storage:
-    base_dir: ~/.perles/sessions        # Default location
+    base_dir: ~/.xorchestrator/sessions        # Default location
     application_name: my-custom-name    # Optional: override derived name
 ```
 
@@ -472,7 +472,7 @@ orchestration:
 - **Date-based partitioning**: Easy cleanup of old sessions
 - **Cross-project visibility**: Future CLI can list/search sessions across projects
 - **Survives project deletion**: Session history preserved independently
-- **No project pollution**: Projects stay clean (no `.perles/` directory needed)
+- **No project pollution**: Projects stay clean (no `.xorchestrator/` directory needed)
 
 ## BQL (Beads Query Language)
 
@@ -514,7 +514,7 @@ type = epic expand down depth 2
 
 ### Config File Location
 
-Default: `~/.config/perles/config.yaml`
+Default: `~/.config/xorchestrator/config.yaml`
 
 ### Config Structure
 
@@ -549,14 +549,14 @@ orchestration:                       # AI orchestration settings
   client: "claude"                   # claude, amp, codex, gemini, or opencode
   disable_worktrees: false           # Disable git worktree isolation
   session_storage:                   # Centralized session storage
-    base_dir: ~/.perles/sessions     # Default storage location
+    base_dir: ~/.xorchestrator/sessions     # Default storage location
     application_name: ""             # Override: defaults to git repo name
 ```
 
 ## Environment Variables
 
-- `PERLES_DEBUG`: Enable debug mode
-- `PERLES_LOG`: Debug log file path (default: `debug.log`)
+- `XORCHESTRATOR_DEBUG`: Enable debug mode
+- `XORCHESTRATOR_LOG`: Debug log file path (default: `debug.log`)
 - `UPDATE_GOLDEN`: Test variable for updating golden files
 
 ## Keyboard Shortcuts
@@ -646,9 +646,9 @@ orchestration:                       # AI orchestration settings
 ### Debugging
 
 ```bash
-./perles -d                  # Enable debug mode
+./xorchestrator -d                  # Enable debug mode
 tail -f debug.log           # Watch debug output
-PERLES_DEBUG=1 ./perles     # Alternative debug enable
+XORCHESTRATOR_DEBUG=1 ./xorchestrator     # Alternative debug enable
 ```
 
 ### Working with Bubble Tea
@@ -702,7 +702,7 @@ PERLES_DEBUG=1 ./perles     # Alternative debug enable
 
 ## Pub/Sub Event System
 
-Perles uses a generic pub/sub broker for decoupled event communication between the orchestration layer and TUI. This architecture enables multiple subscribers (TUI, logging, metrics) to receive events without tight coupling.
+Xorchestrator uses a generic pub/sub broker for decoupled event communication between the orchestration layer and TUI. This architecture enables multiple subscribers (TUI, logging, metrics) to receive events without tight coupling.
 
 ### Event Types
 
@@ -727,8 +727,8 @@ Events are delivered via pub/sub brokers. Subscribe with a context for automatic
 ```go
 import (
     "context"
-    "perles/internal/orchestration/events"
-    "perles/internal/pubsub"
+    "xorchestrator/internal/orchestration/events"
+    "xorchestrator/internal/pubsub"
 )
 
 ctx, cancel := context.WithCancel(context.Background())
@@ -756,8 +756,8 @@ For Bubble Tea integration, use `ContinuousListener` to maintain subscription st
 import (
     "context"
     tea "github.com/charmbracelet/bubbletea"
-    "perles/internal/orchestration/events"
-    "perles/internal/pubsub"
+    "xorchestrator/internal/orchestration/events"
+    "xorchestrator/internal/pubsub"
 )
 
 type Model struct {

@@ -26,7 +26,7 @@ type Config struct {
 	Exporter string `yaml:"exporter"`
 
 	// FilePath is the output file for "file" exporter.
-	// Default: derived from config directory (e.g., ~/.config/perles/traces/traces.jsonl)
+	// Default: derived from config directory (e.g., ~/.config/xorchestrator/traces/traces.jsonl)
 	FilePath string `yaml:"file_path"`
 
 	// OTLPEndpoint is the OTLP collector endpoint for "otlp" exporter.
@@ -39,7 +39,7 @@ type Config struct {
 	SampleRate float64 `yaml:"sample_rate"`
 
 	// ServiceName identifies this service in traces.
-	// Default: "perles-orchestrator"
+	// Default: "xorchestrator-orchestrator"
 	ServiceName string `yaml:"service_name"`
 }
 
@@ -51,7 +51,7 @@ func DefaultConfig() Config {
 		FilePath:     "",
 		OTLPEndpoint: "localhost:4317",
 		SampleRate:   1.0,
-		ServiceName:  "perles-orchestrator",
+		ServiceName:  "xorchestrator-orchestrator",
 	}
 }
 
@@ -119,7 +119,7 @@ func NewProvider(cfg Config) (*Provider, error) {
 	// Ensure service name has a default
 	serviceName := cfg.ServiceName
 	if serviceName == "" {
-		serviceName = "perles-orchestrator"
+		serviceName = "xorchestrator-orchestrator"
 	}
 
 	// Create resource with service info

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/cachemanager"
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/cachemanager"
+	"github.com/zjrosen/xorchestrator/internal/log"
 )
 
 // BQLExecutor executes BQL queries and returns matching issues.
