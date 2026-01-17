@@ -6,10 +6,10 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/bql"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/modal"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // GetAllDescendants returns all descendant issues for an epic using BQL expand.

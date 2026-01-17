@@ -3,7 +3,7 @@ package tree
 import (
 	"testing"
 
-	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/beads"
 
 	"github.com/stretchr/testify/require"
 )

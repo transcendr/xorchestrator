@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/mock"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/mock"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/prompt/roles"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
 )
 
 // mockCommandSubmitter implements process.CommandSubmitter for testing.
@@ -178,7 +178,7 @@ func TestUnifiedProcessSpawner_GenerateMCPConfig_OpenCode(t *testing.T) {
 	require.NoError(t, err)
 	// OpenCode format uses {"mcp": {...}} wrapper, not {"mcpServers": {...}}
 	assert.Contains(t, config, `"mcp"`)
-	assert.Contains(t, config, `"perles-worker"`)
+	assert.Contains(t, config, `"xorchestrator-worker"`)
 	assert.Contains(t, config, `"type":"remote"`)
 	assert.Contains(t, config, "9999")
 	assert.Contains(t, config, "worker-1")
@@ -198,7 +198,7 @@ func TestUnifiedProcessSpawner_GenerateCoordinatorMCPConfig_OpenCode(t *testing.
 	require.NoError(t, err)
 	// OpenCode format uses {"mcp": {...}} wrapper
 	assert.Contains(t, config, `"mcp"`)
-	assert.Contains(t, config, `"perles-orchestrator"`)
+	assert.Contains(t, config, `"xorchestrator-orchestrator"`)
 	assert.Contains(t, config, `"type":"remote"`)
 	assert.Contains(t, config, "9999")
 	// Should NOT contain mcpServers (that's Claude format)

@@ -9,15 +9,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/orchestration/claude"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/claude"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/processor"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/prompt"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
 )
 
 // ptr returns a pointer to the given ProcessPhase value.
@@ -164,7 +164,7 @@ func TestCoordinatorServer_AssignTaskValidation(t *testing.T) {
 	}{
 		{
 			name:    "missing worker_id",
-			args:    `{"task_id": "perles-abc"}`,
+			args:    `{"task_id": "xorchestrator-abc"}`,
 			wantErr: true,
 		},
 		{
@@ -174,7 +174,7 @@ func TestCoordinatorServer_AssignTaskValidation(t *testing.T) {
 		},
 		{
 			name:    "empty worker_id",
-			args:    `{"worker_id": "", "task_id": "perles-abc"}`,
+			args:    `{"worker_id": "", "task_id": "xorchestrator-abc"}`,
 			wantErr: true,
 		},
 		{
@@ -389,7 +389,7 @@ func TestCoordinatorServer_MarkTaskFailedValidation(t *testing.T) {
 		},
 		{
 			name:    "missing reason",
-			args:    `{"task_id": "perles-abc"}`,
+			args:    `{"task_id": "xorchestrator-abc"}`,
 			wantErr: true,
 		},
 		{
@@ -399,7 +399,7 @@ func TestCoordinatorServer_MarkTaskFailedValidation(t *testing.T) {
 		},
 		{
 			name:    "empty reason",
-			args:    `{"task_id": "perles-abc", "reason": ""}`,
+			args:    `{"task_id": "xorchestrator-abc", "reason": ""}`,
 			wantErr: true,
 		},
 	}
@@ -433,7 +433,7 @@ func TestCoordinatorServer_Instructions(t *testing.T) {
 	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	require.NotEmpty(t, cs.instructions, "Instructions should be set")
-	require.Equal(t, "perles-orchestrator", cs.info.Name, "Server name mismatch")
+	require.Equal(t, "xorchestrator-orchestrator", cs.info.Name, "Server name mismatch")
 	require.Equal(t, "1.0.0", cs.info.Version, "Server version mismatch")
 }
 
@@ -445,30 +445,30 @@ func TestIsValidTaskID(t *testing.T) {
 		want   bool
 	}{
 		// Valid formats
-		{"simple task", "perles-abc", true},
-		{"4 char suffix", "perles-abcd", true},
-		{"mixed case prefix", "Perles-abc", false}, // regex only allows lowercase
-		{"numeric suffix", "perles-1234", true},
-		{"alphanumeric suffix", "perles-a1b2", true},
-		{"subtask", "perles-abc.1", true},
-		{"subtask multi-digit", "perles-abc.123", true},
-		{"long suffix", "perles-abcdefghij", true},
+		{"simple task", "xorchestrator-abc", true},
+		{"4 char suffix", "xorchestrator-abcd", true},
+		{"mixed case prefix", "Xorchestrator-abc", false}, // regex only allows lowercase
+		{"numeric suffix", "xorchestrator-1234", true},
+		{"alphanumeric suffix", "xorchestrator-a1b2", true},
+		{"subtask", "xorchestrator-abc.1", true},
+		{"subtask multi-digit", "xorchestrator-abc.123", true},
+		{"long suffix", "xorchestrator-abcdefghij", true},
 		{"short prefix", "ms-abc", true},
 
 		// Invalid formats
 		{"empty", "", false},
 		{"no prefix", "-abc", false},
-		{"no suffix", "perles-", false},
-		{"single char suffix", "perles-a", false},
-		{"too long suffix", "perles-abcdefghijk", true}, // no max length in regex
-		{"spaces", "perles abc", false},
-		{"shell injection attempt", "perles-abc; rm -rf /", false},
+		{"no suffix", "xorchestrator-", false},
+		{"single char suffix", "xorchestrator-a", false},
+		{"too long suffix", "xorchestrator-abcdefghijk", true}, // no max length in regex
+		{"spaces", "xorchestrator abc", false},
+		{"shell injection attempt", "xorchestrator-abc; rm -rf /", false},
 		{"path traversal", "../etc/passwd", false},
 		{"flag injection", "--help", false},
-		{"newline", "perles-abc\n", false},
-		{"special chars", "perles-abc$FOO", false},
-		{"underscore in suffix", "perles-abc_def", false},
-		{"double dot subtask", "perles-abc..1", false},
+		{"newline", "xorchestrator-abc\n", false},
+		{"special chars", "xorchestrator-abc$FOO", false},
+		{"underscore in suffix", "xorchestrator-abc_def", false},
+		{"double dot subtask", "xorchestrator-abc..1", false},
 	}
 
 	for _, tt := range tests {
@@ -498,7 +498,7 @@ func TestCoordinatorServer_AssignTaskRouting(t *testing.T) {
 	handler := cs.handlers["assign_task"]
 
 	// Verify handler routes to v2 adapter
-	args := `{"worker_id": "worker-1", "task_id": "perles-abc.1"}`
+	args := `{"worker_id": "worker-1", "task_id": "xorchestrator-abc.1"}`
 	result, err := handler(context.Background(), json.RawMessage(args))
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -516,7 +516,7 @@ func TestPrepareHandoff_PostsMessage(t *testing.T) {
 	cs := NewCoordinatorServer(claude.NewClient(), msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["prepare_handoff"]
 
-	summary := "Worker 1 is processing task perles-abc. Task is 50% complete."
+	summary := "Worker 1 is processing task xorchestrator-abc. Task is 50% complete."
 	args := `{"summary": "` + summary + `"}`
 
 	result, err := handler(context.Background(), json.RawMessage(args))
@@ -609,7 +609,7 @@ func TestQueryWorkerState_WithWorkerAndPhase(t *testing.T) {
 		Role:   repository.RoleWorker,
 		Status: repository.StatusWorking,
 		Phase:  ptr(events.ProcessPhaseImplementing),
-		TaskID: "perles-abc.1",
+		TaskID: "xorchestrator-abc.1",
 	})
 
 	handler := tcs.handlers["query_worker_state"]
@@ -626,7 +626,7 @@ func TestQueryWorkerState_WithWorkerAndPhase(t *testing.T) {
 	worker := response.Workers[0]
 	require.Equal(t, "worker-1", worker.WorkerID, "WorkerID mismatch")
 	require.Equal(t, "implementing", worker.Phase, "Phase mismatch")
-	require.Equal(t, "perles-abc.1", worker.TaskID, "TaskID mismatch")
+	require.Equal(t, "xorchestrator-abc.1", worker.TaskID, "TaskID mismatch")
 }
 
 // TestQueryWorkerState_FilterByWorkerID verifies query_worker_state filters by worker_id.
@@ -678,18 +678,18 @@ func TestQueryWorkerState_FilterByTaskID(t *testing.T) {
 		Role:   repository.RoleWorker,
 		Status: repository.StatusWorking,
 		Phase:  ptr(events.ProcessPhaseImplementing),
-		TaskID: "perles-abc.1",
+		TaskID: "xorchestrator-abc.1",
 	})
 	_ = tcs.ProcessRepo.Save(&repository.Process{
 		ID:     "worker-2",
 		Role:   repository.RoleWorker,
 		Status: repository.StatusWorking,
 		Phase:  ptr(events.ProcessPhaseImplementing),
-		TaskID: "perles-xyz.1",
+		TaskID: "xorchestrator-xyz.1",
 	})
 
 	handler := tcs.handlers["query_worker_state"]
-	result, err := handler(context.Background(), json.RawMessage(`{"task_id": "perles-abc.1"}`))
+	result, err := handler(context.Background(), json.RawMessage(`{"task_id": "xorchestrator-abc.1"}`))
 	require.NoError(t, err, "Unexpected error")
 
 	// Parse response
@@ -699,7 +699,7 @@ func TestQueryWorkerState_FilterByTaskID(t *testing.T) {
 
 	require.Len(t, response.Workers, 1, "Expected 1 worker (filtered by task)")
 	if len(response.Workers) > 0 {
-		require.Equal(t, "perles-abc.1", response.Workers[0].TaskID, "Expected task perles-abc.1")
+		require.Equal(t, "xorchestrator-abc.1", response.Workers[0].TaskID, "Expected task xorchestrator-abc.1")
 	}
 }
 
@@ -751,7 +751,7 @@ func TestAssignTaskReview_Routing(t *testing.T) {
 	handler := cs.handlers["assign_task_review"]
 
 	// Verify handler routes to v2 adapter
-	args := `{"reviewer_id": "worker-2", "task_id": "perles-abc.1", "implementer_id": "worker-1"}`
+	args := `{"reviewer_id": "worker-2", "task_id": "xorchestrator-abc.1", "implementer_id": "worker-1"}`
 	result, err := handler(context.Background(), json.RawMessage(args))
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -779,9 +779,9 @@ func TestAssignTaskReview_ValidationRequired(t *testing.T) {
 		name string
 		args string
 	}{
-		{"missing reviewer_id", `{"task_id": "perles-abc.1", "implementer_id": "worker-1"}`},
+		{"missing reviewer_id", `{"task_id": "xorchestrator-abc.1", "implementer_id": "worker-1"}`},
 		{"missing task_id", `{"reviewer_id": "worker-2", "implementer_id": "worker-1"}`},
-		{"missing implementer_id", `{"reviewer_id": "worker-2", "task_id": "perles-abc.1"}`},
+		{"missing implementer_id", `{"reviewer_id": "worker-2", "task_id": "xorchestrator-abc.1"}`},
 	}
 
 	for _, tt := range tests {
@@ -808,9 +808,9 @@ func TestAssignReviewFeedback_ValidationRequired(t *testing.T) {
 		name string
 		args string
 	}{
-		{"missing implementer_id", `{"task_id": "perles-abc.1", "feedback": "fix"}`},
+		{"missing implementer_id", `{"task_id": "xorchestrator-abc.1", "feedback": "fix"}`},
 		{"missing task_id", `{"implementer_id": "worker-1", "feedback": "fix"}`},
-		{"missing feedback", `{"implementer_id": "worker-1", "task_id": "perles-abc.1"}`},
+		{"missing feedback", `{"implementer_id": "worker-1", "task_id": "xorchestrator-abc.1"}`},
 	}
 
 	for _, tt := range tests {
@@ -837,9 +837,9 @@ func TestApproveCommit_ValidationRequired(t *testing.T) {
 		name string
 		args string
 	}{
-		{"missing implementer_id", `{"task_id": "perles-abc.1"}`},
+		{"missing implementer_id", `{"task_id": "xorchestrator-abc.1"}`},
 		{"missing task_id", `{"implementer_id": "worker-1"}`},
-		{"empty implementer_id", `{"implementer_id": "", "task_id": "perles-abc.1"}`},
+		{"empty implementer_id", `{"implementer_id": "", "task_id": "xorchestrator-abc.1"}`},
 		{"empty task_id", `{"implementer_id": "worker-1", "task_id": ""}`},
 	}
 
@@ -900,7 +900,7 @@ func TestReplaceWorker_Routing(t *testing.T) {
 
 // TestTaskAssignmentPrompt_WithSummary verifies TaskAssignmentPrompt includes summary when provided.
 func TestTaskAssignmentPrompt_WithSummary(t *testing.T) {
-	p := prompt.TaskAssignmentPrompt("perles-abc.1", "Test Task", "Focus on error handling.")
+	p := prompt.TaskAssignmentPrompt("xorchestrator-abc.1", "Test Task", "Focus on error handling.")
 
 	require.True(t, containsInternal(p, "## Coordinator Instructions"), "Prompt should contain 'Coordinator Instructions:' section when summary provided")
 	require.True(t, containsInternal(p, "Focus on error handling."), "Prompt should contain the summary content")
@@ -908,7 +908,7 @@ func TestTaskAssignmentPrompt_WithSummary(t *testing.T) {
 
 // TestTaskAssignmentPrompt_WithoutSummary verifies TaskAssignmentPrompt excludes summary section when empty.
 func TestTaskAssignmentPrompt_WithoutSummary(t *testing.T) {
-	p := prompt.TaskAssignmentPrompt("perles-abc.1", "Test Task", "")
+	p := prompt.TaskAssignmentPrompt("xorchestrator-abc.1", "Test Task", "")
 
 	require.False(t, containsInternal(p, "## Coordinator Instructions"), "Prompt should NOT contain 'Coordinator Instructions:' section when summary is empty")
 }
@@ -916,7 +916,7 @@ func TestTaskAssignmentPrompt_WithoutSummary(t *testing.T) {
 // TestTaskAssignmentPrompt_AllSections verifies TaskAssignmentPrompt includes all sections when provided.
 func TestTaskAssignmentPrompt_AllSections(t *testing.T) {
 	p := prompt.TaskAssignmentPrompt(
-		"perles-abc.1",
+		"xorchestrator-abc.1",
 		"Implement Feature X",
 		"Important: Check existing patterns in module Y",
 	)
@@ -924,7 +924,7 @@ func TestTaskAssignmentPrompt_AllSections(t *testing.T) {
 	// Verify all sections are present
 	sections := []string{
 		"[TASK ASSIGNMENT]",
-		"**Task ID:** perles-abc.1",
+		"**Task ID:** xorchestrator-abc.1",
 		"**Title:** Implement Feature X",
 		"## Coordinator Instructions",
 		"Important: Check existing patterns in module Y",
@@ -970,7 +970,7 @@ func TestIntegration_QueryWorkerState(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     ptr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-abc.1",
+		TaskID:    "xorchestrator-abc.1",
 		SessionID: "session-1",
 	})
 
@@ -986,7 +986,7 @@ func TestIntegration_QueryWorkerState(t *testing.T) {
 	require.Len(t, stateResponse.Workers, 1, "Expected 1 worker in state response")
 	require.Equal(t, "worker-1", stateResponse.Workers[0].WorkerID, "WorkerID mismatch")
 	require.Equal(t, "implementing", stateResponse.Workers[0].Phase, "Phase mismatch")
-	require.Equal(t, "perles-abc.1", stateResponse.Workers[0].TaskID, "TaskID mismatch")
+	require.Equal(t, "xorchestrator-abc.1", stateResponse.Workers[0].TaskID, "TaskID mismatch")
 }
 
 // ============================================================================
@@ -1151,7 +1151,7 @@ func TestReadMessageLog_ReadAll(t *testing.T) {
 // TestCommitApprovalPrompt_IncludesAccountabilityInstructions verifies that the
 // CommitApprovalPrompt includes post_accountability_summary instructions for the worker.
 func TestCommitApprovalPrompt_IncludesAccountabilityInstructions(t *testing.T) {
-	taskID := "perles-abc.1"
+	taskID := "xorchestrator-abc.1"
 	p := prompt.CommitApprovalPrompt(taskID, "")
 
 	require.Contains(t, p, "post_accountability_summary", "Prompt should include post_accountability_summary instruction")
@@ -1165,7 +1165,7 @@ func TestCommitApprovalPrompt_IncludesAccountabilityInstructions(t *testing.T) {
 // TestCommitApprovalPrompt_TaskIDInterpolated verifies that the task ID is interpolated
 // into the post_accountability_summary example in the prompt.
 func TestCommitApprovalPrompt_TaskIDInterpolated(t *testing.T) {
-	taskID := "perles-xyz.42"
+	taskID := "xorchestrator-xyz.42"
 	p := prompt.CommitApprovalPrompt(taskID, "")
 
 	// The task ID should appear twice - once in the approval message, once in the example
@@ -1178,7 +1178,7 @@ func TestCommitApprovalPrompt_TaskIDInterpolated(t *testing.T) {
 
 // TestCommitApprovalPrompt_WithCommitMessage verifies commit message is included when provided.
 func TestCommitApprovalPrompt_WithCommitMessage(t *testing.T) {
-	taskID := "perles-test.1"
+	taskID := "xorchestrator-test.1"
 	commitMsg := "feat(orchestration): add reflection support"
 	p := prompt.CommitApprovalPrompt(taskID, commitMsg)
 
@@ -1506,7 +1506,7 @@ func TestSignalWorkflowComplete_WithOptionalFields(t *testing.T) {
 	handler := cs.handlers["signal_workflow_complete"]
 
 	// Call with all fields including optional ones
-	args := `{"status": "success", "summary": "Epic completed", "epic_id": "perles-abc1", "tasks_closed": 5}`
+	args := `{"status": "success", "summary": "Epic completed", "epic_id": "xorchestrator-abc1", "tasks_closed": 5}`
 	result, err := handler(context.Background(), json.RawMessage(args))
 	require.NoError(t, err)
 	require.NotNil(t, result)

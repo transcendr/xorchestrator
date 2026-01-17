@@ -5,7 +5,7 @@ package flags
 import (
 	"maps"
 
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/log"
 )
 
 // Flag name constants for type-safe flag access.

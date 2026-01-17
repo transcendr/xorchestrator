@@ -5,7 +5,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/xorchestrator/internal/keys"
 )
 
 // commandID uniquely identifies commands in the diff viewer.

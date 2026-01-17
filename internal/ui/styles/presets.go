@@ -19,11 +19,11 @@ var Presets = map[string]Preset{
 	"gruvbox":          GruvboxPreset,
 }
 
-// DefaultPreset is the current perles color scheme.
+// DefaultPreset is the current xorchestrator color scheme.
 // Color values extracted from styles.go AdaptiveColor definitions (Dark values).
 var DefaultPreset = Preset{
 	Name:        "default",
-	Description: "Default perles theme",
+	Description: "Default xorchestrator theme",
 	Colors: map[ColorToken]string{
 		// Text hierarchy
 		TokenTextPrimary:     "#CCCCCC",

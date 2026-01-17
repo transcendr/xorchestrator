@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/beads"
 
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +15,7 @@ import (
 // the nobeads empty state view.
 func TestNoBeadsDirectory_BeadsClientFails(t *testing.T) {
 	// Create temp directory without .beads
-	tmpDir, err := os.MkdirTemp("", "perles-test-nobeads-*")
+	tmpDir, err := os.MkdirTemp("", "xorchestrator-test-nobeads-*")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 

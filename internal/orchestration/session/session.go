@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/pubsub"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/chatrender"
 )
 
 // Status represents the session lifecycle state.
@@ -45,7 +45,7 @@ type Session struct {
 	// ID is the unique session identifier (UUID).
 	ID string
 
-	// Dir is the full path to the session folder (.perles/sessions/{id}).
+	// Dir is the full path to the session folder (.xorchestrator/sessions/{id}).
 	Dir string
 
 	// StartTime is when the session was created.

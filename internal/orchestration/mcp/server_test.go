@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/tracing"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/tracing"
 )
 
 func TestNewServer(t *testing.T) {

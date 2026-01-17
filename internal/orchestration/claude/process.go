@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // findExecutable returns the path to the claude executable.

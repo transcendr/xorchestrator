@@ -8,21 +8,21 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/ui/board"
-	"github.com/zjrosen/perles/internal/ui/coleditor"
-	"github.com/zjrosen/perles/internal/ui/commandpalette"
-	"github.com/zjrosen/perles/internal/ui/details"
-	"github.com/zjrosen/perles/internal/ui/modals/help"
-	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
-	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
-	"github.com/zjrosen/perles/internal/ui/shared/picker"
-	"github.com/zjrosen/perles/internal/ui/shared/toaster"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/mode"
+	"github.com/zjrosen/xorchestrator/internal/ui/board"
+	"github.com/zjrosen/xorchestrator/internal/ui/coleditor"
+	"github.com/zjrosen/xorchestrator/internal/ui/commandpalette"
+	"github.com/zjrosen/xorchestrator/internal/ui/details"
+	"github.com/zjrosen/xorchestrator/internal/ui/modals/help"
+	"github.com/zjrosen/xorchestrator/internal/ui/modals/issueeditor"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/colorpicker"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/modal"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/picker"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/toaster"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // ViewMode determines which view is active within the kanban mode.
@@ -456,7 +456,7 @@ func (m Model) currentViewColumns() []config.ColumnConfig {
 // configPath returns the config path or default.
 func (m Model) configPath() string {
 	if m.services.ConfigPath == "" {
-		return ".perles.yaml"
+		return ".xorchestrator.yaml"
 	}
 	return m.services.ConfigPath
 }

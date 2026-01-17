@@ -4,8 +4,8 @@ package toaster
 import (
 	"time"
 
-	"github.com/zjrosen/perles/internal/ui/shared/overlay"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/overlay"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

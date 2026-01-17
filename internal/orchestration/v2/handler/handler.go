@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/types"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/types"
 )
 
 // CommandHandler is an alias for types.CommandHandler.

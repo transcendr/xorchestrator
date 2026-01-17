@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/ui/shared/markdown"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/bql"
+	"github.com/zjrosen/xorchestrator/internal/keys"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/markdown"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -178,7 +178,7 @@ func (m Model) calculateHeaderHeight(colWidth int) int {
 
 	// Calculate visual width of title line to match renderHeader() format:
 	// [Type][Priority][ID] Title
-	// Example: [T][P2][perles-abc] Some title text
+	// Example: [T][P2][xorchestrator-abc] Some title text
 	typeText := styles.GetTypeIndicator(m.issue.Type) // e.g., "[T]"
 	priorityText := fmt.Sprintf("[P%d]", m.issue.Priority)
 	idText := fmt.Sprintf("[%s]", m.issue.ID)

@@ -5,9 +5,9 @@ package command
 import (
 	"fmt"
 
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/metrics"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/prompt/roles"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
 )
 
 // ===========================================================================

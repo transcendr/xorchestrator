@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
 )
 
 // stripANSI removes ANSI escape codes from a string for easier testing.
@@ -989,13 +989,13 @@ func TestDetails_View_Golden_WithLongAssignee(t *testing.T) {
 		Type:            beads.TypeTask,
 		Priority:        beads.PriorityHigh,
 		Status:          beads.StatusInProgress,
-		Assignee:        "perles/polecats/furiosa/very-long-assignee-name",
+		Assignee:        "xorchestrator/polecats/furiosa/very-long-assignee-name",
 		Labels:          []string{"wip"},
 		CreatedAt:       time.Date(2024, 4, 1, 9, 0, 0, 0, time.UTC),
 		UpdatedAt:       time.Date(2024, 4, 1, 10, 30, 0, 0, time.UTC),
 	}
 	// Use width of 100 (minimum for two-column layout) to trigger the wrapping issue
-	// The metadata column is 34 chars wide, and "perles/polecats/furiosa" (23 chars)
+	// The metadata column is 34 chars wide, and "xorchestrator/polecats/furiosa" (23 chars)
 	// plus label "Assignee" (10 chars) = 33 chars should fit but be very tight
 	m := createTestModel(t, issue).SetSize(100, 30)
 

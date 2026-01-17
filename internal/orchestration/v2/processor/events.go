@@ -5,7 +5,7 @@ package processor
 import (
 	"time"
 
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
 )
 
 // CommandLogEvent is emitted after each command is processed for UI visibility.

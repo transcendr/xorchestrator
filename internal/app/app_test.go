@@ -6,16 +6,16 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/mode/kanban"
-	"github.com/zjrosen/perles/internal/mode/orchestration"
-	"github.com/zjrosen/perles/internal/mode/search"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
-	"github.com/zjrosen/perles/internal/ui/shared/chatpanel"
-	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/mode"
+	"github.com/zjrosen/xorchestrator/internal/mode/kanban"
+	"github.com/zjrosen/xorchestrator/internal/mode/orchestration"
+	"github.com/zjrosen/xorchestrator/internal/mode/search"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	v2 "github.com/zjrosen/xorchestrator/internal/orchestration/v2"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/chatpanel"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/diffviewer"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -156,7 +156,7 @@ func TestApp_ModeSwitchPreservesSize(t *testing.T) {
 		require.Equal(t, 60, m.height, "height should be preserved after returning to kanban")
 	})
 
-	// Test case added for perles-yn47 chatpanel resize bug fix verification
+	// Test case added for xorchestrator-yn47 chatpanel resize bug fix verification
 	t.Run("Panel visible - search gets reduced width on mode switch", func(t *testing.T) {
 		m := createTestModel(t)
 		terminalWidth := 150
@@ -845,12 +845,12 @@ func TestApp_ChatPanel_Initialization(t *testing.T) {
 	require.False(t, m.chatPanel.Visible(), "chatPanel should be initialized but hidden")
 
 	// Verify chatPanelFocused is initialized (defaults to false)
-	// This field is used by app.Update() for focus routing - implemented in perles-hj2a.5
+	// This field is used by app.Update() for focus routing - implemented in xorchestrator-hj2a.5
 	require.False(t, m.chatPanelFocused, "chatPanelFocused should default to false")
 }
 
 // TestApp_ChatPanel_FocusFieldExists verifies the chatPanelFocused field exists
-// and can be accessed. The focus routing logic is implemented in perles-hj2a.5.
+// and can be accessed. The focus routing logic is implemented in xorchestrator-hj2a.5.
 func TestApp_ChatPanel_FocusFieldExists(t *testing.T) {
 	m := createTestModel(t)
 
@@ -1339,7 +1339,7 @@ func TestApp_ChatPanel_CleanupCalledOnOrchestration_WithInfrastructure(t *testin
 }
 
 // ============================================================================
-// Resize Edge Case Tests (perles-hj2a.11)
+// Resize Edge Case Tests (xorchestrator-hj2a.11)
 // ============================================================================
 
 func TestApp_ChatPanel_ClosesOnResizeBelowMinimum(t *testing.T) {
@@ -1765,7 +1765,7 @@ func TestApp_ChatPanel_ResizeWithInfrastructure_CallsCleanup(t *testing.T) {
 }
 
 // ============================================================================
-// Width Restoration Tests (perles-hj2a.13)
+// Width Restoration Tests (xorchestrator-hj2a.13)
 // ============================================================================
 
 func TestApp_ChatPanel_Toggle_RestoresFullWidth_Kanban(t *testing.T) {
@@ -1902,10 +1902,10 @@ func TestApp_ChatPanel_Toggle_MultipleOpenClose_MaintainsWidth(t *testing.T) {
 }
 
 // ============================================================================
-// Mode Switch Resize Regression Tests (perles-yn47.5)
+// Mode Switch Resize Regression Tests (xorchestrator-yn47.5)
 // ============================================================================
 //
-// These tests ensure the chatpanel resize bug (perles-yn47) cannot recur.
+// These tests ensure the chatpanel resize bug (xorchestrator-yn47) cannot recur.
 // The bug occurred when: open chatpanel → close chatpanel → switch mode.
 // The target mode retained its previous dimensions instead of getting full width.
 
@@ -2206,7 +2206,7 @@ func TestApp_OrchestrationQuit_SetsSizeCorrectly(t *testing.T) {
 }
 
 // ============================================================================
-// Session Resumption Tests (perles-mewu.4)
+// Session Resumption Tests (xorchestrator-mewu.4)
 // ============================================================================
 
 func TestSwitchToOrchestration_NewSession(t *testing.T) {

@@ -38,14 +38,14 @@ func NewSessionPathBuilder(baseDir, applicationName string) *SessionPathBuilder 
 	}
 }
 
-// DefaultBaseDir returns the default base directory for session storage: ~/.perles/sessions
+// DefaultBaseDir returns the default base directory for session storage: ~/.xorchestrator/sessions
 // Returns empty string if home directory cannot be determined.
 func DefaultBaseDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".perles", "sessions")
+	return filepath.Join(home, ".xorchestrator", "sessions")
 }
 
 // DeriveApplicationName derives the application name from available sources:

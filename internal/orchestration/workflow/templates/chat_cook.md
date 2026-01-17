@@ -36,7 +36,7 @@ Phase 3: Close epic and report summary
 **First, ask the user which epic to work on:**
 
 ```
-Which epic would you like me to work on? Please provide the epic ID (e.g., perles-abc).
+Which epic would you like me to work on? Please provide the epic ID (e.g., xorchestrator-abc).
 ```
 
 Once the user provides the epic ID, validate and show the tasks:
@@ -320,15 +320,15 @@ When all tasks are done:
 
 ```
 [Phase 1: Setup]
-User: "Work on epic perles-abc"
+User: "Work on epic xorchestrator-abc"
 AI: Reads epic, finds proposal at docs/proposals/2025-01-15-clipboard.md
 AI: Reads proposal thoroughly
-AI: Lists tasks: perles-abc.1, perles-abc.2, perles-abc.3
+AI: Lists tasks: xorchestrator-abc.1, xorchestrator-abc.2, xorchestrator-abc.3
 AI: "Ready to implement 3 tasks sequentially. Begin?"
 User: "Yes"
 
 [Phase 2: Task 1]
-AI: Reads perles-abc.1, marks in_progress
+AI: Reads xorchestrator-abc.1, marks in_progress
 AI: Implements clipboard package with unit tests
 AI: Runs tests - all pass
 
@@ -339,20 +339,20 @@ AI: Adds error handling test
 AI: Re-runs tests - all pass
 AI: "Self-review complete, no remaining issues"
 
-AI: Commits with message "feat(clipboard): add package (perles-abc.1)"
-AI: Closes task perles-abc.1
-AI: "✅ Task perles-abc.1 complete"
+AI: Commits with message "feat(clipboard): add package (xorchestrator-abc.1)"
+AI: Closes task xorchestrator-abc.1
+AI: "✅ Task xorchestrator-abc.1 complete"
 
 [Phase 2: Task 2]
-AI: Reads perles-abc.2, marks in_progress
+AI: Reads xorchestrator-abc.2, marks in_progress
 AI: Implements copy keybinding
 AI: Runs tests - all pass
 
 [Self-Review Task 2]
 AI: Reviews against checklist
 AI: All items pass
-AI: Commits with message "feat(keys): add copy keybinding (perles-abc.2)"
-AI: Closes task perles-abc.2
+AI: Commits with message "feat(keys): add copy keybinding (xorchestrator-abc.2)"
+AI: Closes task xorchestrator-abc.2
 
 [Phase 2: Task 3]
 ... same pattern ...
@@ -360,8 +360,8 @@ AI: Closes task perles-abc.2
 [Phase 3: Completion]
 AI: Verifies all 3 tasks closed
 AI: Runs full test suite - all pass
-AI: Closes epic perles-abc
-AI: "Epic perles-abc complete. 3 tasks implemented and reviewed."
+AI: Closes epic xorchestrator-abc
+AI: "Epic xorchestrator-abc complete. 3 tasks implemented and reviewed."
 ```
 
 ---

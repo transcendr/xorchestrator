@@ -3,8 +3,8 @@ package formmodal
 import (
 	"strings"
 
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
+	"github.com/zjrosen/xorchestrator/internal/keys"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/colorpicker"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"

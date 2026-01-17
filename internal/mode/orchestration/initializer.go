@@ -12,26 +12,26 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/git"
-	"github.com/zjrosen/perles/internal/log"
-	_ "github.com/zjrosen/perles/internal/orchestration/amp" // Register amp client
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	_ "github.com/zjrosen/perles/internal/orchestration/codex" // Register codex client
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	_ "github.com/zjrosen/perles/internal/orchestration/gemini" // Register gemini client
-	"github.com/zjrosen/perles/internal/orchestration/mcp"
-	_ "github.com/zjrosen/perles/internal/orchestration/opencode" // Register opencode client
-	"github.com/zjrosen/perles/internal/orchestration/session"
-	"github.com/zjrosen/perles/internal/orchestration/tracing"
-	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
-	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/process"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/pubsub"
-	"github.com/zjrosen/perles/internal/sound"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/git"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	_ "github.com/zjrosen/xorchestrator/internal/orchestration/amp" // Register amp client
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	_ "github.com/zjrosen/xorchestrator/internal/orchestration/codex" // Register codex client
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	_ "github.com/zjrosen/xorchestrator/internal/orchestration/gemini" // Register gemini client
+	"github.com/zjrosen/xorchestrator/internal/orchestration/mcp"
+	_ "github.com/zjrosen/xorchestrator/internal/orchestration/opencode" // Register opencode client
+	"github.com/zjrosen/xorchestrator/internal/orchestration/session"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/tracing"
+	v2 "github.com/zjrosen/xorchestrator/internal/orchestration/v2"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/adapter"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/process"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/sound"
 )
 
 // InitializerEventType represents the type of event emitted by the Initializer.
@@ -713,7 +713,7 @@ func (i *Initializer) createWorktreeWithContext(ctx context.Context) error {
 		if len(shortID) > 8 {
 			shortID = shortID[:8]
 		}
-		newBranch = fmt.Sprintf("perles-session-%s", shortID)
+		newBranch = fmt.Sprintf("xorchestrator-session-%s", shortID)
 	}
 
 	// Base branch is what the user selected (main, current branch, etc.)
@@ -900,7 +900,7 @@ func (i *Initializer) createWorkspaceWithContext(ctx context.Context) error {
 			FilePath:     filePath,
 			OTLPEndpoint: tracingCfg.OTLPEndpoint,
 			SampleRate:   tracingCfg.SampleRate,
-			ServiceName:  "perles-orchestrator",
+			ServiceName:  "xorchestrator-orchestrator",
 		})
 		if err != nil {
 			return fmt.Errorf("creating tracing provider: %w", err)

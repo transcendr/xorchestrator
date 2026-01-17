@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/config"
 
 	"github.com/spf13/cobra"
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize a perles config file in the current directory",
-	Long:  `Creates a .perles/config.yaml file in the current directory with default settings.`,
+	Short: "Initialize a xorchestrator config file in the current directory",
+	Long:  `Creates a .xorchestrator/config.yaml file in the current directory with default settings.`,
 	RunE:  runInit,
 }
 
@@ -21,7 +21,7 @@ func init() {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	configPath := ".perles/config.yaml"
+	configPath := ".xorchestrator/config.yaml"
 
 	// Check if config already exists
 	if _, err := os.Stat(configPath); err == nil {

@@ -150,7 +150,7 @@ func TestInitializeResultSerialization(t *testing.T) {
 func TestToolCallParamsSerialization(t *testing.T) {
 	params := ToolCallParams{
 		Name:      "spawn_worker",
-		Arguments: json.RawMessage(`{"task_id": "perles-abc", "prompt": "Do the thing"}`),
+		Arguments: json.RawMessage(`{"task_id": "xorchestrator-abc", "prompt": "Do the thing"}`),
 	}
 
 	data, err := json.Marshal(params)

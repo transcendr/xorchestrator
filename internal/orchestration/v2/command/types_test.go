@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/validation"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/validation"
 )
 
 // ===========================================================================
@@ -92,21 +92,21 @@ func TestAssignTaskCommand_Validate(t *testing.T) {
 		{
 			name:     "valid with summary",
 			workerID: "worker-1",
-			taskID:   "perles-abc1",
+			taskID:   "xorchestrator-abc1",
 			summary:  "implement feature X",
 			wantErr:  false,
 		},
 		{
 			name:     "valid without summary",
 			workerID: "worker-1",
-			taskID:   "perles-abc1.2",
+			taskID:   "xorchestrator-abc1.2",
 			summary:  "",
 			wantErr:  false,
 		},
 		{
 			name:      "empty worker_id",
 			workerID:  "",
-			taskID:    "perles-abc1",
+			taskID:    "xorchestrator-abc1",
 			summary:   "",
 			wantErr:   true,
 			errSubstr: "worker_id is required",
@@ -162,7 +162,7 @@ func TestAssignTaskCommand_Validate(t *testing.T) {
 }
 
 func TestAssignTaskCommand_Type(t *testing.T) {
-	cmd := NewAssignTaskCommand(SourceMCPTool, "worker-1", "perles-abc1", "")
+	cmd := NewAssignTaskCommand(SourceMCPTool, "worker-1", "xorchestrator-abc1", "")
 	require.Equal(t, CmdAssignTask, cmd.Type())
 }
 
@@ -186,14 +186,14 @@ func TestAssignReviewCommand_Validate(t *testing.T) {
 		{
 			name:          "valid",
 			reviewerID:    "worker-2",
-			taskID:        "perles-abc1",
+			taskID:        "xorchestrator-abc1",
 			implementerID: "worker-1",
 			wantErr:       false,
 		},
 		{
 			name:          "empty reviewer_id",
 			reviewerID:    "",
-			taskID:        "perles-abc1",
+			taskID:        "xorchestrator-abc1",
 			implementerID: "worker-1",
 			wantErr:       true,
 			errSubstr:     "reviewer_id is required",
@@ -209,7 +209,7 @@ func TestAssignReviewCommand_Validate(t *testing.T) {
 		{
 			name:          "empty implementer_id",
 			reviewerID:    "worker-2",
-			taskID:        "perles-abc1",
+			taskID:        "xorchestrator-abc1",
 			implementerID: "",
 			wantErr:       true,
 			errSubstr:     "implementer_id is required",
@@ -233,7 +233,7 @@ func TestAssignReviewCommand_Validate(t *testing.T) {
 }
 
 func TestAssignReviewCommand_Type(t *testing.T) {
-	cmd := NewAssignReviewCommand(SourceMCPTool, "worker-2", "perles-abc1", "worker-1", ReviewTypeComplex)
+	cmd := NewAssignReviewCommand(SourceMCPTool, "worker-2", "xorchestrator-abc1", "worker-1", ReviewTypeComplex)
 	require.Equal(t, CmdAssignReview, cmd.Type())
 }
 
@@ -248,7 +248,7 @@ func TestAssignReviewCommand_ReviewType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := NewAssignReviewCommand(SourceMCPTool, "worker-2", "perles-abc1", "worker-1", tt.reviewType)
+			cmd := NewAssignReviewCommand(SourceMCPTool, "worker-2", "xorchestrator-abc1", "worker-1", tt.reviewType)
 			require.Equal(t, tt.reviewType, cmd.ReviewType)
 		})
 	}
@@ -273,13 +273,13 @@ func TestApproveCommitCommand_Validate(t *testing.T) {
 		{
 			name:          "valid",
 			implementerID: "worker-1",
-			taskID:        "perles-abc1",
+			taskID:        "xorchestrator-abc1",
 			wantErr:       false,
 		},
 		{
 			name:          "empty implementer_id",
 			implementerID: "",
-			taskID:        "perles-abc1",
+			taskID:        "xorchestrator-abc1",
 			wantErr:       true,
 			errSubstr:     "implementer_id is required",
 		},
@@ -309,7 +309,7 @@ func TestApproveCommitCommand_Validate(t *testing.T) {
 }
 
 func TestApproveCommitCommand_Type(t *testing.T) {
-	cmd := NewApproveCommitCommand(SourceMCPTool, "worker-1", "perles-abc1")
+	cmd := NewApproveCommitCommand(SourceMCPTool, "worker-1", "xorchestrator-abc1")
 	require.Equal(t, CmdApproveCommit, cmd.Type())
 }
 
@@ -332,14 +332,14 @@ func TestAssignReviewFeedbackCommand_Validate(t *testing.T) {
 		{
 			name:          "valid command",
 			implementerID: "worker-1",
-			taskID:        "perles-abc1",
+			taskID:        "xorchestrator-abc1",
 			feedback:      "Please fix error handling",
 			wantErr:       false,
 		},
 		{
 			name:          "missing implementerID",
 			implementerID: "",
-			taskID:        "perles-abc1",
+			taskID:        "xorchestrator-abc1",
 			feedback:      "Feedback",
 			wantErr:       true,
 		},
@@ -353,7 +353,7 @@ func TestAssignReviewFeedbackCommand_Validate(t *testing.T) {
 		{
 			name:          "missing feedback",
 			implementerID: "worker-1",
-			taskID:        "perles-abc1",
+			taskID:        "xorchestrator-abc1",
 			feedback:      "",
 			wantErr:       true,
 		},
@@ -374,7 +374,7 @@ func TestAssignReviewFeedbackCommand_Validate(t *testing.T) {
 }
 
 func TestAssignReviewFeedbackCommand_Type(t *testing.T) {
-	cmd := NewAssignReviewFeedbackCommand(SourceMCPTool, "worker-1", "perles-abc1", "Feedback")
+	cmd := NewAssignReviewFeedbackCommand(SourceMCPTool, "worker-1", "xorchestrator-abc1", "Feedback")
 	require.Equal(t, CmdAssignReviewFeedback, cmd.Type())
 }
 
@@ -700,12 +700,12 @@ func TestMarkTaskCompleteCommand_Validate(t *testing.T) {
 	}{
 		{
 			name:    "valid task ID",
-			taskID:  "perles-abc1",
+			taskID:  "xorchestrator-abc1",
 			wantErr: false,
 		},
 		{
 			name:    "valid task ID with subtask",
-			taskID:  "perles-abc1.2",
+			taskID:  "xorchestrator-abc1.2",
 			wantErr: false,
 		},
 		{
@@ -751,7 +751,7 @@ func TestMarkTaskCompleteCommand_Validate(t *testing.T) {
 }
 
 func TestMarkTaskCompleteCommand_Type(t *testing.T) {
-	cmd := NewMarkTaskCompleteCommand(SourceMCPTool, "perles-abc1")
+	cmd := NewMarkTaskCompleteCommand(SourceMCPTool, "xorchestrator-abc1")
 	require.Equal(t, CmdMarkTaskComplete, cmd.Type())
 }
 
@@ -773,13 +773,13 @@ func TestMarkTaskFailedCommand_Validate(t *testing.T) {
 	}{
 		{
 			name:    "valid with reason",
-			taskID:  "perles-abc1",
+			taskID:  "xorchestrator-abc1",
 			reason:  "Test failure",
 			wantErr: false,
 		},
 		{
 			name:    "valid task ID with subtask",
-			taskID:  "perles-abc1.2",
+			taskID:  "xorchestrator-abc1.2",
 			reason:  "Build failed",
 			wantErr: false,
 		},
@@ -792,7 +792,7 @@ func TestMarkTaskFailedCommand_Validate(t *testing.T) {
 		},
 		{
 			name:      "empty reason",
-			taskID:    "perles-abc1",
+			taskID:    "xorchestrator-abc1",
 			reason:    "",
 			wantErr:   true,
 			errSubstr: "reason is required",
@@ -837,7 +837,7 @@ func TestMarkTaskFailedCommand_Validate(t *testing.T) {
 }
 
 func TestMarkTaskFailedCommand_Type(t *testing.T) {
-	cmd := NewMarkTaskFailedCommand(SourceMCPTool, "perles-abc1", "test failure")
+	cmd := NewMarkTaskFailedCommand(SourceMCPTool, "xorchestrator-abc1", "test failure")
 	require.Equal(t, CmdMarkTaskFailed, cmd.Type())
 }
 
@@ -854,9 +854,9 @@ func TestIsValidTaskID(t *testing.T) {
 		taskID string
 		want   bool
 	}{
-		{"pe-perles-abc1", true},
-		{"perles-abc1", true},
-		{"perles-abc1.2", true},
+		{"pe-xorchestrator-abc1", true},
+		{"xorchestrator-abc1", true},
+		{"xorchestrator-abc1.2", true},
 		{"project-x123", true},
 		{"ms-e52", true},
 
@@ -937,7 +937,7 @@ func TestEmptyStringValidation(t *testing.T) {
 		{"TransitionPhase empty NewPhase", NewTransitionPhaseCommand(SourceInternal, "worker-1", ""), true},
 		{"MarkTaskComplete empty TaskID", NewMarkTaskCompleteCommand(SourceMCPTool, ""), true},
 		{"MarkTaskFailed empty TaskID", NewMarkTaskFailedCommand(SourceMCPTool, "", "reason"), true},
-		{"MarkTaskFailed empty Reason", NewMarkTaskFailedCommand(SourceMCPTool, "perles-abc1", ""), true},
+		{"MarkTaskFailed empty Reason", NewMarkTaskFailedCommand(SourceMCPTool, "xorchestrator-abc1", ""), true},
 		{"StopProcess empty ProcessID", NewStopProcessCommand(SourceUser, "", false, "reason"), true},
 	}
 

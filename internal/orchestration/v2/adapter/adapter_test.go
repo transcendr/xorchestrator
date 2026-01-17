@@ -12,14 +12,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/metrics"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/processor"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/prompt/roles"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
 )
 
 // ===========================================================================
@@ -785,7 +785,7 @@ func TestHandleAssignTask(t *testing.T) {
 
 		args := toJSON(t, map[string]string{
 			"worker_id": "worker-123",
-			"task_id":   "perles-abc1",
+			"task_id":   "xorchestrator-abc1",
 			"summary":   "Implement feature X",
 		})
 
@@ -794,7 +794,7 @@ func TestHandleAssignTask(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "perles-abc1")
+		assert.Contains(t, result.Content[0].Text, "xorchestrator-abc1")
 		assert.Contains(t, result.Content[0].Text, "worker-123")
 
 		// Verify command
@@ -803,7 +803,7 @@ func TestHandleAssignTask(t *testing.T) {
 		assignCmd, ok := cmds[0].(*command.AssignTaskCommand)
 		require.True(t, ok)
 		assert.Equal(t, "worker-123", assignCmd.WorkerID)
-		assert.Equal(t, "perles-abc1", assignCmd.TaskID)
+		assert.Equal(t, "xorchestrator-abc1", assignCmd.TaskID)
 		assert.Equal(t, "Implement feature X", assignCmd.Summary)
 	})
 
@@ -812,7 +812,7 @@ func TestHandleAssignTask(t *testing.T) {
 		defer cleanup()
 
 		args := toJSON(t, map[string]string{
-			"task_id": "perles-abc1",
+			"task_id": "xorchestrator-abc1",
 		})
 
 		result, err := adapter.HandleAssignTask(context.Background(), args)
@@ -845,7 +845,7 @@ func TestHandleAssignTaskReview(t *testing.T) {
 
 		args := toJSON(t, map[string]string{
 			"reviewer_id":    "worker-reviewer",
-			"task_id":        "perles-xyz9",
+			"task_id":        "xorchestrator-xyz9",
 			"implementer_id": "worker-impl",
 		})
 
@@ -854,7 +854,7 @@ func TestHandleAssignTaskReview(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "perles-xyz9")
+		assert.Contains(t, result.Content[0].Text, "xorchestrator-xyz9")
 		assert.Contains(t, result.Content[0].Text, "worker-reviewer")
 
 		// Verify command
@@ -863,7 +863,7 @@ func TestHandleAssignTaskReview(t *testing.T) {
 		assignCmd, ok := cmds[0].(*command.AssignReviewCommand)
 		require.True(t, ok)
 		assert.Equal(t, "worker-reviewer", assignCmd.ReviewerID)
-		assert.Equal(t, "perles-xyz9", assignCmd.TaskID)
+		assert.Equal(t, "xorchestrator-xyz9", assignCmd.TaskID)
 		assert.Equal(t, "worker-impl", assignCmd.ImplementerID)
 		assert.Equal(t, command.ReviewTypeComplex, assignCmd.ReviewType)
 	})
@@ -874,7 +874,7 @@ func TestHandleAssignTaskReview(t *testing.T) {
 
 		args := toJSON(t, map[string]string{
 			"reviewer_id":    "worker-reviewer",
-			"task_id":        "perles-xyz9",
+			"task_id":        "xorchestrator-xyz9",
 			"implementer_id": "worker-impl",
 			"review_type":    "simple",
 		})
@@ -899,7 +899,7 @@ func TestHandleAssignTaskReview(t *testing.T) {
 
 		args := toJSON(t, map[string]string{
 			"reviewer_id":    "worker-reviewer",
-			"task_id":        "perles-xyz9",
+			"task_id":        "xorchestrator-xyz9",
 			"implementer_id": "worker-impl",
 			"review_type":    "complex",
 		})
@@ -924,7 +924,7 @@ func TestHandleAssignTaskReview(t *testing.T) {
 
 		args := toJSON(t, map[string]string{
 			"reviewer_id":    "worker-reviewer",
-			"task_id":        "perles-xyz9",
+			"task_id":        "xorchestrator-xyz9",
 			"implementer_id": "worker-impl",
 			"review_type":    "invalid",
 		})
@@ -948,7 +948,7 @@ func TestHandleAssignTaskReview(t *testing.T) {
 		defer cleanup()
 
 		args := toJSON(t, map[string]string{
-			"task_id":        "perles-xyz9",
+			"task_id":        "xorchestrator-xyz9",
 			"implementer_id": "worker-impl",
 		})
 
@@ -981,7 +981,7 @@ func TestHandleAssignTaskReview(t *testing.T) {
 
 		args := toJSON(t, map[string]string{
 			"reviewer_id": "worker-reviewer",
-			"task_id":     "perles-xyz9",
+			"task_id":     "xorchestrator-xyz9",
 		})
 
 		result, err := adapter.HandleAssignTaskReview(context.Background(), args)
@@ -999,7 +999,7 @@ func TestHandleAssignReviewFeedback(t *testing.T) {
 
 		args := toJSON(t, map[string]string{
 			"implementer_id": "worker-impl",
-			"task_id":        "perles-abc1",
+			"task_id":        "xorchestrator-abc1",
 			"feedback":       "Please fix the edge case handling",
 		})
 
@@ -1016,7 +1016,7 @@ func TestHandleAssignReviewFeedback(t *testing.T) {
 		feedbackCmd, ok := cmds[0].(*command.AssignReviewFeedbackCommand)
 		require.True(t, ok)
 		assert.Equal(t, "worker-impl", feedbackCmd.ImplementerID)
-		assert.Equal(t, "perles-abc1", feedbackCmd.TaskID)
+		assert.Equal(t, "xorchestrator-abc1", feedbackCmd.TaskID)
 		assert.Equal(t, "Please fix the edge case handling", feedbackCmd.Feedback)
 	})
 
@@ -1025,7 +1025,7 @@ func TestHandleAssignReviewFeedback(t *testing.T) {
 		defer cleanup()
 
 		args := toJSON(t, map[string]string{
-			"task_id":  "perles-abc1",
+			"task_id":  "xorchestrator-abc1",
 			"feedback": "feedback",
 		})
 
@@ -1058,7 +1058,7 @@ func TestHandleAssignReviewFeedback(t *testing.T) {
 
 		args := toJSON(t, map[string]string{
 			"implementer_id": "worker-impl",
-			"task_id":        "perles-abc1",
+			"task_id":        "xorchestrator-abc1",
 		})
 
 		result, err := adapter.HandleAssignReviewFeedback(context.Background(), args)
@@ -1076,7 +1076,7 @@ func TestHandleApproveCommit(t *testing.T) {
 
 		args := toJSON(t, map[string]string{
 			"implementer_id": "worker-impl",
-			"task_id":        "perles-abc1",
+			"task_id":        "xorchestrator-abc1",
 			"commit_message": "feat: add new feature",
 		})
 
@@ -1086,7 +1086,7 @@ func TestHandleApproveCommit(t *testing.T) {
 		require.NotNil(t, result)
 		assert.False(t, result.IsError)
 		assert.Contains(t, result.Content[0].Text, "worker-impl")
-		assert.Contains(t, result.Content[0].Text, "perles-abc1")
+		assert.Contains(t, result.Content[0].Text, "xorchestrator-abc1")
 
 		// Verify command
 		cmds := handler.getCommands()
@@ -1094,7 +1094,7 @@ func TestHandleApproveCommit(t *testing.T) {
 		approveCmd, ok := cmds[0].(*command.ApproveCommitCommand)
 		require.True(t, ok)
 		assert.Equal(t, "worker-impl", approveCmd.ImplementerID)
-		assert.Equal(t, "perles-abc1", approveCmd.TaskID)
+		assert.Equal(t, "xorchestrator-abc1", approveCmd.TaskID)
 	})
 
 	t.Run("missing_implementer_id", func(t *testing.T) {
@@ -1102,7 +1102,7 @@ func TestHandleApproveCommit(t *testing.T) {
 		defer cleanup()
 
 		args := toJSON(t, map[string]string{
-			"task_id": "perles-abc1",
+			"task_id": "xorchestrator-abc1",
 		})
 
 		result, err := adapter.HandleApproveCommit(context.Background(), args)
@@ -1436,7 +1436,7 @@ func TestHandleMarkTaskComplete(t *testing.T) {
 		defer cleanup()
 
 		args := toJSON(t, map[string]string{
-			"task_id": "perles-abc1",
+			"task_id": "xorchestrator-abc1",
 		})
 
 		result, err := adapter.HandleMarkTaskComplete(context.Background(), args)
@@ -1444,7 +1444,7 @@ func TestHandleMarkTaskComplete(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "perles-abc1")
+		assert.Contains(t, result.Content[0].Text, "xorchestrator-abc1")
 		assert.Contains(t, result.Content[0].Text, "completed")
 
 		// Verify command was created correctly
@@ -1452,7 +1452,7 @@ func TestHandleMarkTaskComplete(t *testing.T) {
 		require.Len(t, cmds, 1)
 		markCmd, ok := cmds[0].(*command.MarkTaskCompleteCommand)
 		require.True(t, ok)
-		assert.Equal(t, "perles-abc1", markCmd.TaskID)
+		assert.Equal(t, "xorchestrator-abc1", markCmd.TaskID)
 	})
 
 	t.Run("missing_task_id", func(t *testing.T) {
@@ -1486,7 +1486,7 @@ func TestHandleMarkTaskComplete(t *testing.T) {
 		handler.returnErr = errors.New("bd update failed")
 
 		args := toJSON(t, map[string]string{
-			"task_id": "perles-abc1",
+			"task_id": "xorchestrator-abc1",
 		})
 
 		result, err := adapter.HandleMarkTaskComplete(context.Background(), args)
@@ -1508,7 +1508,7 @@ func TestHandleMarkTaskComplete(t *testing.T) {
 		}
 
 		args := toJSON(t, map[string]string{
-			"task_id": "perles-abc1",
+			"task_id": "xorchestrator-abc1",
 		})
 
 		result, err := adapter.HandleMarkTaskComplete(context.Background(), args)
@@ -1526,7 +1526,7 @@ func TestHandleMarkTaskFailed(t *testing.T) {
 		defer cleanup()
 
 		args := toJSON(t, map[string]string{
-			"task_id": "perles-xyz9",
+			"task_id": "xorchestrator-xyz9",
 			"reason":  "Tests failed",
 		})
 
@@ -1535,7 +1535,7 @@ func TestHandleMarkTaskFailed(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "perles-xyz9")
+		assert.Contains(t, result.Content[0].Text, "xorchestrator-xyz9")
 		assert.Contains(t, result.Content[0].Text, "failed")
 		assert.Contains(t, result.Content[0].Text, "Tests failed")
 
@@ -1544,7 +1544,7 @@ func TestHandleMarkTaskFailed(t *testing.T) {
 		require.Len(t, cmds, 1)
 		markCmd, ok := cmds[0].(*command.MarkTaskFailedCommand)
 		require.True(t, ok)
-		assert.Equal(t, "perles-xyz9", markCmd.TaskID)
+		assert.Equal(t, "xorchestrator-xyz9", markCmd.TaskID)
 		assert.Equal(t, "Tests failed", markCmd.Reason)
 	})
 
@@ -1568,7 +1568,7 @@ func TestHandleMarkTaskFailed(t *testing.T) {
 		defer cleanup()
 
 		args := toJSON(t, map[string]string{
-			"task_id": "perles-xyz9",
+			"task_id": "xorchestrator-xyz9",
 		})
 
 		result, err := adapter.HandleMarkTaskFailed(context.Background(), args)
@@ -1596,7 +1596,7 @@ func TestHandleMarkTaskFailed(t *testing.T) {
 		handler.returnErr = errors.New("bd comment failed")
 
 		args := toJSON(t, map[string]string{
-			"task_id": "perles-xyz9",
+			"task_id": "xorchestrator-xyz9",
 			"reason":  "Tests failed",
 		})
 
@@ -1619,7 +1619,7 @@ func TestHandleMarkTaskFailed(t *testing.T) {
 		}
 
 		args := toJSON(t, map[string]string{
-			"task_id": "perles-xyz9",
+			"task_id": "xorchestrator-xyz9",
 			"reason":  "Tests failed",
 		})
 
@@ -1764,7 +1764,7 @@ func TestAdapter_IntegrationMultipleTools(t *testing.T) {
 	handler.returnResult = &command.CommandResult{Success: true}
 	args := toJSON(t, map[string]string{
 		"worker_id": "worker-1",
-		"task_id":   "perles-abc1",
+		"task_id":   "xorchestrator-abc1",
 	})
 	result2, err := adapter.HandleAssignTask(context.Background(), args)
 	require.NoError(t, err)
@@ -2769,7 +2769,7 @@ func TestHandleQueryWorkerState_IncludesAgentType(t *testing.T) {
 }
 
 // ===========================================================================
-// Session Directory Tests (perles-x4f4.7)
+// Session Directory Tests (xorchestrator-x4f4.7)
 // ===========================================================================
 
 func TestWithSessionID_SetsAllThreeFields(t *testing.T) {
@@ -2779,13 +2779,13 @@ func TestWithSessionID_SetsAllThreeFields(t *testing.T) {
 	proc.RegisterHandler(command.CmdGenerateAccountabilitySummary, mockHandler)
 
 	adapter := NewV2Adapter(proc,
-		WithSessionID("test-session-123", "/work/dir", "/home/user/.perles/sessions/myapp/2026-01-11/test-session-123"),
+		WithSessionID("test-session-123", "/work/dir", "/home/user/.xorchestrator/sessions/myapp/2026-01-11/test-session-123"),
 	)
 
 	// Verify all three fields are set correctly
 	assert.Equal(t, "test-session-123", adapter.sessionID)
 	assert.Equal(t, "/work/dir", adapter.workDir)
-	assert.Equal(t, "/home/user/.perles/sessions/myapp/2026-01-11/test-session-123", adapter.sessionDir)
+	assert.Equal(t, "/home/user/.xorchestrator/sessions/myapp/2026-01-11/test-session-123", adapter.sessionDir)
 }
 
 func TestAdapter_StoresSessionDirectory(t *testing.T) {
@@ -2793,12 +2793,12 @@ func TestAdapter_StoresSessionDirectory(t *testing.T) {
 
 	// Test with centralized storage path
 	adapter := NewV2Adapter(proc,
-		WithSessionID("session-abc", "/project/root", "/Users/test/.perles/sessions/myapp/2026-01-11/session-abc"),
+		WithSessionID("session-abc", "/project/root", "/Users/test/.xorchestrator/sessions/myapp/2026-01-11/session-abc"),
 	)
 
 	assert.Equal(t, "session-abc", adapter.sessionID)
 	assert.Equal(t, "/project/root", adapter.workDir)
-	assert.Equal(t, "/Users/test/.perles/sessions/myapp/2026-01-11/session-abc", adapter.sessionDir)
+	assert.Equal(t, "/Users/test/.xorchestrator/sessions/myapp/2026-01-11/session-abc", adapter.sessionDir)
 }
 
 func TestHandleGenerateAccountabilitySummary_UsesStoredSessionDir(t *testing.T) {
@@ -2818,7 +2818,7 @@ func TestHandleGenerateAccountabilitySummary_UsesStoredSessionDir(t *testing.T) 
 		go proc.Run(ctx)
 		require.NoError(t, proc.WaitForReady(ctx))
 
-		expectedSessionDir := "/home/user/.perles/sessions/myapp/2026-01-11/test-session"
+		expectedSessionDir := "/home/user/.xorchestrator/sessions/myapp/2026-01-11/test-session"
 		adapter := NewV2Adapter(proc,
 			WithSessionID("test-session", "/work/dir", expectedSessionDir),
 		)
@@ -2857,7 +2857,7 @@ func TestHandleGenerateAccountabilitySummary_UsesStoredSessionDir(t *testing.T) 
 
 	t.Run("no path reconstruction from workDir", func(t *testing.T) {
 		// This test verifies that the old path reconstruction pattern
-		// (workDir/.perles/sessions/sessionID) is NOT used
+		// (workDir/.xorchestrator/sessions/sessionID) is NOT used
 		proc := processor.NewCommandProcessor()
 
 		handler := &mockHandler{
@@ -2871,8 +2871,8 @@ func TestHandleGenerateAccountabilitySummary_UsesStoredSessionDir(t *testing.T) 
 		require.NoError(t, proc.WaitForReady(ctx))
 
 		// Set a sessionDir that's different from what path reconstruction would produce
-		// If the code was still reconstructing, it would use "/work/.perles/sessions/sess-123"
-		centralizedSessionDir := "/home/user/.perles/sessions/myproject/2026-01-11/sess-123"
+		// If the code was still reconstructing, it would use "/work/.xorchestrator/sessions/sess-123"
+		centralizedSessionDir := "/home/user/.xorchestrator/sessions/myproject/2026-01-11/sess-123"
 		adapter := NewV2Adapter(proc,
 			WithSessionID("sess-123", "/work", centralizedSessionDir),
 		)
@@ -2897,7 +2897,7 @@ func TestHandleGenerateAccountabilitySummary_UsesStoredSessionDir(t *testing.T) 
 
 		// Should use the stored sessionDir, NOT reconstruct from workDir
 		assert.Equal(t, centralizedSessionDir, summaryCmd.SessionDir)
-		assert.NotEqual(t, "/work/.perles/sessions/sess-123", summaryCmd.SessionDir)
+		assert.NotEqual(t, "/work/.xorchestrator/sessions/sess-123", summaryCmd.SessionDir)
 	})
 }
 

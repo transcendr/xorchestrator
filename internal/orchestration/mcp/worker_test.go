@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
 )
 
 // mockMessageStore implements MessageStore for testing.
@@ -156,7 +156,7 @@ func TestWorkerServer_Instructions(t *testing.T) {
 	ws := NewWorkerServer("WORKER.1", nil)
 
 	require.NotEmpty(t, ws.instructions, "Instructions should be set")
-	require.Equal(t, "perles-worker", ws.info.Name, "Server name mismatch")
+	require.Equal(t, "xorchestrator-worker", ws.info.Name, "Server name mismatch")
 	require.Equal(t, "1.0.0", ws.info.Version, "Server version mismatch")
 }
 
@@ -803,11 +803,11 @@ func TestWorkerServer_ReportReviewVerdictSchema(t *testing.T) {
 // TestValidateAccountabilitySummaryArgs_Valid tests that valid args pass validation.
 func TestValidateAccountabilitySummaryArgs_Valid(t *testing.T) {
 	args := postAccountabilitySummaryArgs{
-		TaskID:             "perles-abc123",
+		TaskID:             "xorchestrator-abc123",
 		Summary:            "Implemented feature X with comprehensive tests and documentation.",
 		Commits:            []string{"abc123", "def456"},
-		IssuesDiscovered:   []string{"perles-xyz"},
-		IssuesClosed:       []string{"perles-abc123"},
+		IssuesDiscovered:   []string{"xorchestrator-xyz"},
+		IssuesClosed:       []string{"xorchestrator-abc123"},
 		VerificationPoints: []string{"Tests pass", "Manual verification"},
 		Retro: &RetroFeedback{
 			WentWell:  "Smooth implementation",
@@ -836,12 +836,12 @@ func TestValidateAccountabilitySummaryArgs_MissingRequired(t *testing.T) {
 		},
 		{
 			name:    "empty summary",
-			args:    postAccountabilitySummaryArgs{TaskID: "perles-abc123", Summary: ""},
+			args:    postAccountabilitySummaryArgs{TaskID: "xorchestrator-abc123", Summary: ""},
 			wantErr: "summary is required",
 		},
 		{
 			name:    "summary too short",
-			args:    postAccountabilitySummaryArgs{TaskID: "perles-abc123", Summary: "Too short"},
+			args:    postAccountabilitySummaryArgs{TaskID: "xorchestrator-abc123", Summary: "Too short"},
 			wantErr: "summary too short",
 		},
 	}
@@ -910,12 +910,12 @@ func TestValidateAccountabilitySummaryArgs_PathTraversal(t *testing.T) {
 // TestValidateAccountabilitySummaryArgs_ValidTaskIDFormats tests various valid task ID formats.
 func TestValidateAccountabilitySummaryArgs_ValidTaskIDFormats(t *testing.T) {
 	validTaskIDs := []string{
-		"perles-abc123",
+		"xorchestrator-abc123",
 		"ms-e52",
 		"task-abc",
 		"bd-12345",
-		"perles-s157",
-		"perles-s157.1",
+		"xorchestrator-s157",
+		"xorchestrator-s157.1",
 		"ms-abc123.42",
 	}
 
@@ -934,7 +934,7 @@ func TestValidateAccountabilitySummaryArgs_ValidTaskIDFormats(t *testing.T) {
 // TestValidateAccountabilitySummaryArgs_ExactlyMinSummaryLength tests boundary at exactly 20 chars.
 func TestValidateAccountabilitySummaryArgs_ExactlyMinSummaryLength(t *testing.T) {
 	args := postAccountabilitySummaryArgs{
-		TaskID:  "perles-abc123",
+		TaskID:  "xorchestrator-abc123",
 		Summary: strings.Repeat("x", MinSummaryLength), // Exactly 20 chars
 	}
 
@@ -949,11 +949,11 @@ func TestValidateAccountabilitySummaryArgs_ExactlyMinSummaryLength(t *testing.T)
 // TestBuildAccountabilitySummaryMarkdown tests markdown generation with YAML frontmatter.
 func TestBuildAccountabilitySummaryMarkdown(t *testing.T) {
 	args := postAccountabilitySummaryArgs{
-		TaskID:             "perles-abc123",
+		TaskID:             "xorchestrator-abc123",
 		Summary:            "Implemented user validation with regex patterns.",
 		Commits:            []string{"abc123", "def456"},
-		IssuesDiscovered:   []string{"perles-xyz"},
-		IssuesClosed:       []string{"perles-abc123"},
+		IssuesDiscovered:   []string{"xorchestrator-xyz"},
+		IssuesClosed:       []string{"xorchestrator-abc123"},
 		VerificationPoints: []string{"Tests pass", "Manual verification"},
 		Retro: &RetroFeedback{
 			WentWell:  "Smooth implementation",
@@ -968,17 +968,17 @@ func TestBuildAccountabilitySummaryMarkdown(t *testing.T) {
 
 	// Verify YAML frontmatter
 	assert.Contains(t, md, "---\n")
-	assert.Contains(t, md, "task_id: perles-abc123")
+	assert.Contains(t, md, "task_id: xorchestrator-abc123")
 	assert.Contains(t, md, "worker_id: WORKER.1")
 	assert.Contains(t, md, "timestamp:")
 	assert.Contains(t, md, "commits:\n  - abc123\n  - def456")
-	assert.Contains(t, md, "issues_discovered:\n  - perles-xyz")
-	assert.Contains(t, md, "issues_closed:\n  - perles-abc123")
+	assert.Contains(t, md, "issues_discovered:\n  - xorchestrator-xyz")
+	assert.Contains(t, md, "issues_closed:\n  - xorchestrator-abc123")
 
 	// Verify header
 	assert.Contains(t, md, "# Worker Accountability Summary")
 	assert.Contains(t, md, "**Worker:** WORKER.1")
-	assert.Contains(t, md, "**Task:** perles-abc123")
+	assert.Contains(t, md, "**Task:** xorchestrator-abc123")
 	assert.Contains(t, md, "**Date:**")
 
 	// Verify all sections are present
@@ -990,7 +990,7 @@ func TestBuildAccountabilitySummaryMarkdown(t *testing.T) {
 	assert.Contains(t, md, "- Manual verification")
 
 	assert.Contains(t, md, "## Issues Discovered")
-	assert.Contains(t, md, "- perles-xyz")
+	assert.Contains(t, md, "- xorchestrator-xyz")
 
 	assert.Contains(t, md, "## Retro")
 	assert.Contains(t, md, "### What Went Well")
@@ -1097,7 +1097,7 @@ func TestBuildAccountabilitySummaryMarkdown_PartialOptionalFields(t *testing.T) 
 // TestBuildAccountabilitySummaryMarkdown_DateFormat tests that date is in expected format.
 func TestBuildAccountabilitySummaryMarkdown_DateFormat(t *testing.T) {
 	args := postAccountabilitySummaryArgs{
-		TaskID:  "perles-abc",
+		TaskID:  "xorchestrator-abc",
 		Summary: "Test summary for date format.",
 	}
 
@@ -1166,11 +1166,11 @@ func TestHandlePostAccountabilitySummary(t *testing.T) {
 	handler := ws.handlers["post_accountability_summary"]
 
 	args := `{
-		"task_id": "perles-abc123",
+		"task_id": "xorchestrator-abc123",
 		"summary": "Implemented feature X with comprehensive tests.",
 		"commits": ["abc123", "def456"],
-		"issues_discovered": ["perles-xyz"],
-		"issues_closed": ["perles-abc123"],
+		"issues_discovered": ["xorchestrator-xyz"],
+		"issues_closed": ["xorchestrator-abc123"],
 		"verification_points": ["Tests pass", "Manual verification"],
 		"retro": {
 			"went_well": "Smooth implementation",
@@ -1188,7 +1188,7 @@ func TestHandlePostAccountabilitySummary(t *testing.T) {
 	require.Len(t, writer.calls, 1, "Expected 1 write call")
 	require.Equal(t, "WORKER.1", writer.calls[0].WorkerID, "WorkerID mismatch")
 	require.Contains(t, string(writer.calls[0].Content), "# Worker Accountability Summary", "Content should be markdown")
-	require.Contains(t, string(writer.calls[0].Content), "task_id: perles-abc123", "Content should have YAML frontmatter")
+	require.Contains(t, string(writer.calls[0].Content), "task_id: xorchestrator-abc123", "Content should have YAML frontmatter")
 	require.Contains(t, string(writer.calls[0].Content), "Implemented feature X", "Content should contain summary")
 
 	// Verify structured response
@@ -1230,7 +1230,7 @@ func TestHandlePostAccountabilitySummary_EmptySummary(t *testing.T) {
 	handler := ws.handlers["post_accountability_summary"]
 
 	args := `{
-		"task_id": "perles-abc123",
+		"task_id": "xorchestrator-abc123",
 		"summary": ""
 	}`
 
@@ -1268,7 +1268,7 @@ func TestHandlePostAccountabilitySummary_SummaryTooShort(t *testing.T) {
 	handler := ws.handlers["post_accountability_summary"]
 
 	args := `{
-		"task_id": "perles-abc123",
+		"task_id": "xorchestrator-abc123",
 		"summary": "Too short"
 	}`
 
@@ -1286,7 +1286,7 @@ func TestHandlePostAccountabilitySummary_NilWriter(t *testing.T) {
 	handler := ws.handlers["post_accountability_summary"]
 
 	args := `{
-		"task_id": "perles-abc123",
+		"task_id": "xorchestrator-abc123",
 		"summary": "A valid summary that is at least twenty chars."
 	}`
 
@@ -1306,7 +1306,7 @@ func TestHandlePostAccountabilitySummary_WriterError(t *testing.T) {
 	handler := ws.handlers["post_accountability_summary"]
 
 	args := `{
-		"task_id": "perles-abc123",
+		"task_id": "xorchestrator-abc123",
 		"summary": "A valid summary that is at least twenty chars."
 	}`
 
@@ -1340,7 +1340,7 @@ func TestHandlePostAccountabilitySummary_OnlyRequiredFields(t *testing.T) {
 	handler := ws.handlers["post_accountability_summary"]
 
 	args := `{
-		"task_id": "perles-abc123",
+		"task_id": "xorchestrator-abc123",
 		"summary": "A valid summary that is at least twenty chars."
 	}`
 
@@ -1367,7 +1367,7 @@ func TestHandlePostAccountabilitySummary_NoMessageStore(t *testing.T) {
 	handler := ws.handlers["post_accountability_summary"]
 
 	args := `{
-		"task_id": "perles-abc123",
+		"task_id": "xorchestrator-abc123",
 		"summary": "A valid summary that is at least twenty chars."
 	}`
 

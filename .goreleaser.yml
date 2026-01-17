@@ -1,6 +1,6 @@
 version: 2
 
-project_name: perles
+project_name: xorchestrator
 
 before:
   hooks:
@@ -8,9 +8,9 @@ before:
     - go generate ./...
 
 builds:
-  - id: perles
+  - id: xorchestrator
     main: .
-    binary: perles
+    binary: xorchestrator
     env:
       - CGO_ENABLED=0
     goos:
@@ -64,31 +64,31 @@ changelog:
 release:
   github:
     owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
-    name: perles
+    name: xorchestrator
   draft: false
   prerelease: auto
   mode: replace
   header: |
-    ## Perles {{ .Version }}
+    ## Xorchestrator {{ .Version }}
 
     Terminal-based kanban board for beads issue tracking.
   footer: |
-    **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/perles/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/xorchestrator/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 # Homebrew tap configuration
-# Repository: https://github.com/zjrosen/homebrew-perles
+# Repository: https://github.com/zjrosen/homebrew-xorchestrator
 # Requires HOMEBREW_TAP_TOKEN secret with repo scope
 brews:
-  - name: perles
+  - name: xorchestrator
     repository:
       owner: zjrosen
-      name: homebrew-perles
+      name: homebrew-xorchestrator
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/zjrosen/perles"
+    homepage: "https://github.com/zjrosen/xorchestrator"
     description: "Terminal-based kanban board for beads issue tracking"
     license: "MIT"
     install: |
-      bin.install "perles"
+      bin.install "xorchestrator"
     test: |
-      system "#{bin}/perles", "--version"
+      system "#{bin}/xorchestrator", "--version"

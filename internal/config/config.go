@@ -1,4 +1,4 @@
-// Package config provides configuration types and defaults for perles.
+// Package config provides configuration types and defaults for xorchestrator.
 package config
 
 import (
@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // ColumnConfig defines a single kanban column.
@@ -28,7 +28,7 @@ type ViewConfig struct {
 	Columns []ColumnConfig `mapstructure:"columns"`
 }
 
-// Config holds all configuration options for perles.
+// Config holds all configuration options for xorchestrator.
 type Config struct {
 	BeadsDir      string              `mapstructure:"beads_dir"`
 	AutoRefresh   bool                `mapstructure:"auto_refresh"`
@@ -108,7 +108,7 @@ func flattenColors(prefix string, m map[string]any, result map[string]string) {
 // SessionStorageConfig holds session storage location configuration.
 type SessionStorageConfig struct {
 	// BaseDir is the root directory for session storage.
-	// Default: ~/.perles/sessions
+	// Default: ~/.xorchestrator/sessions
 	BaseDir string `mapstructure:"base_dir"`
 
 	// ApplicationName identifies the project/application.
@@ -217,7 +217,7 @@ type TracingConfig struct {
 	Exporter string `mapstructure:"exporter"`
 
 	// FilePath is the output file for "file" exporter.
-	// Default: ~/.config/perles/traces/traces.jsonl
+	// Default: ~/.config/xorchestrator/traces/traces.jsonl
 	FilePath string `mapstructure:"file_path"`
 
 	// OTLPEndpoint is the collector endpoint for "otlp" exporter.
@@ -255,23 +255,23 @@ type SoundConfig struct {
 }
 
 // DefaultTracesFilePath returns the default path for trace file export.
-// Returns ~/.config/perles/traces/traces.jsonl or empty string if home dir unavailable.
+// Returns ~/.config/xorchestrator/traces/traces.jsonl or empty string if home dir unavailable.
 func DefaultTracesFilePath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".config", "perles", "traces", "traces.jsonl")
+	return filepath.Join(home, ".config", "xorchestrator", "traces", "traces.jsonl")
 }
 
 // DefaultSessionStorageBaseDir returns the default path for session storage.
-// Returns ~/.perles/sessions or empty string if home dir unavailable.
+// Returns ~/.xorchestrator/sessions or empty string if home dir unavailable.
 func DefaultSessionStorageBaseDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".perles", "sessions")
+	return filepath.Join(home, ".xorchestrator", "sessions")
 }
 
 // DefaultColumns returns the default column configuration matching current behavior.
@@ -648,7 +648,7 @@ func Defaults() Config {
 
 // DefaultConfigTemplate returns the default config as a YAML string with comments.
 func DefaultConfigTemplate() string {
-	return `# Perles Configuration
+	return `# Xorchestrator Configuration
 
 # Path to beads database directory (default: current directory)
 # beads_dir: /path/to/project
@@ -666,11 +666,11 @@ ui:
 # Theme configuration
 # Use a preset theme or customize individual colors
 theme:
-  # Use a preset (run 'perles themes' to see available presets):
+  # Use a preset (run 'xorchestrator themes' to see available presets):
   # preset: catppuccin-mocha
   #
   # Available presets:
-  #   default           - Default perles theme
+  #   default           - Default xorchestrator theme
   #   catppuccin-mocha  - Warm, cozy dark theme
   #   catppuccin-latte  - Warm, cozy light theme
   #   dracula           - Dark theme with vibrant colors
@@ -683,7 +683,7 @@ theme:
   #   status.error: "#FF0000"
   #   priority.critical: "#FF5555"
   #
-  # See all available color tokens with 'perles themes --help' or docs
+  # See all available color tokens with 'xorchestrator themes --help' or docs
 
 # Board views - each view is a named collection of columns
 # Cycle through views with Shift+J (next) and Shift+K (previous)
@@ -755,9 +755,9 @@ orchestration:
     mode: smart    # free, rush, or smart (default)
 
   # Workflow templates (Ctrl+P to open picker in orchestration mode)
-  # User workflows are loaded from ~/.perles/workflows/*.md
+  # User workflows are loaded from ~/.xorchestrator/workflows/*.md
   # workflows:
-  #   # Define a user workflow (loaded from ~/.perles/workflows/)
+  #   # Define a user workflow (loaded from ~/.xorchestrator/workflows/)
   #   - name: "Code Review"
   #     description: "Multi-perspective code review"
   #     file: "code_review.md"

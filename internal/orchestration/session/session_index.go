@@ -13,7 +13,7 @@ const (
 	SessionIndexVersion = "1.0"
 )
 
-// SessionIndex tracks all sessions in a perles sessions directory.
+// SessionIndex tracks all sessions in a xorchestrator sessions directory.
 type SessionIndex struct {
 	// Version is the schema version for forward compatibility.
 	Version string `json:"version"`

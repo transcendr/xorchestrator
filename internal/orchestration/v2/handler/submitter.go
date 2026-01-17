@@ -5,8 +5,8 @@
 package handler
 
 import (
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/process"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/process"
 )
 
 // ProcessorLike is the interface satisfied by CommandProcessor for submitting commands.

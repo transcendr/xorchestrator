@@ -19,8 +19,8 @@
 *.out
 
 # Go binary
-/perles
 *.bin
+/xorchestrator
 
 # Go coverage
 *.coverprofile

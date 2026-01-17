@@ -3,8 +3,8 @@ package formmodal
 import (
 	"strings"
 
-	"github.com/zjrosen/perles/internal/ui/shared/overlay"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/overlay"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 
 	"github.com/charmbracelet/lipgloss"
 )

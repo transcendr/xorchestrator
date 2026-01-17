@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/flags"
-	"github.com/zjrosen/perles/internal/git"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/orchestration/session"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/flags"
+	"github.com/zjrosen/xorchestrator/internal/git"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/mode"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/session"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // TestBuildSessionPickerItems_EmptySessions verifies empty input returns empty output.
@@ -34,8 +34,8 @@ func TestBuildSessionPickerItems_SingleSession(t *testing.T) {
 	sessions := []session.SessionSummary{
 		{
 			ID:              "abc123",
-			ApplicationName: "perles",
-			SessionDir:      "/home/user/.perles/sessions/perles/2026-01-12/abc123",
+			ApplicationName: "xorchestrator",
+			SessionDir:      "/home/user/.xorchestrator/sessions/xorchestrator/2026-01-12/abc123",
 			StartTime:       startTime,
 			Status:          session.StatusCompleted,
 			WorkerCount:     3,
@@ -48,10 +48,10 @@ func TestBuildSessionPickerItems_SingleSession(t *testing.T) {
 	item := items[0]
 
 	// Check ID is session directory
-	require.Equal(t, "/home/user/.perles/sessions/perles/2026-01-12/abc123", item.ID)
+	require.Equal(t, "/home/user/.xorchestrator/sessions/xorchestrator/2026-01-12/abc123", item.ID)
 
 	// Check name format: "appName - Jan 2 15:04"
-	require.Equal(t, "perles - Jan 12 13:00", item.Name)
+	require.Equal(t, "xorchestrator - Jan 12 13:00", item.Name)
 
 	// Check description includes relative time, worker count, status, and truncated session ID
 	require.Contains(t, item.Description, "2h ago")

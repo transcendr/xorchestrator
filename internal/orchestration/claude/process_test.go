@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 
 	"github.com/stretchr/testify/require"
 )
@@ -897,9 +897,9 @@ func TestContentBlock_FormatToolDisplay(t *testing.T) {
 			block: client.ContentBlock{
 				Type:  "tool_use",
 				Name:  "Bash",
-				Input: json.RawMessage(`{"command":"find /Users/zack/Development/go/src/perles/internal -type d | wc -l"}`),
+				Input: json.RawMessage(`{"command":"find /Users/zack/Development/go/src/xorchestrator/internal -type d | wc -l"}`),
 			},
-			expected: "🔧 Bash: find /Users/zack/Development/go/src/perles/inte...",
+			expected: "🔧 Bash: find /Users/zack/Development/go/src/xorchestrat...",
 		},
 		{
 			name: "view with file path",

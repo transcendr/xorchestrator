@@ -60,7 +60,7 @@ func buildArgs(cfg Config, isResume bool) []string {
 		}
 
 		// MCP configuration via -c flag with TOML syntax
-		// Format: mcp_servers.perles-worker={url="http://localhost:PORT/worker/ID"}
+		// Format: mcp_servers.xorchestrator-worker={url="http://localhost:PORT/worker/ID"}
 		if cfg.MCPConfig != "" {
 			args = append(args, "-c", cfg.MCPConfig)
 		}

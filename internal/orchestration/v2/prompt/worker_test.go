@@ -13,13 +13,13 @@ import (
 
 // TestReviewAssignmentPromptSimple_ReturnsNonEmpty verifies the function returns non-empty string.
 func TestReviewAssignmentPromptSimple_ReturnsNonEmpty(t *testing.T) {
-	prompt := ReviewAssignmentPromptSimple("perles-abc.1", "worker-1")
+	prompt := ReviewAssignmentPromptSimple("xorchestrator-abc.1", "worker-1")
 	require.NotEmpty(t, prompt, "Prompt should not be empty")
 }
 
 // TestReviewAssignmentPromptSimple_ContainsTaskIDAndImplementerID verifies parameters are used.
 func TestReviewAssignmentPromptSimple_ContainsTaskIDAndImplementerID(t *testing.T) {
-	taskID := "perles-xyz.42"
+	taskID := "xorchestrator-xyz.42"
 	implementerID := "worker-7"
 	prompt := ReviewAssignmentPromptSimple(taskID, implementerID)
 
@@ -90,7 +90,7 @@ func TestReviewAssignmentPromptSimple_IsShorterThanComplex(t *testing.T) {
 
 // TestCommitApprovalPrompt_UsesAccountabilitySummary verifies post_accountability_summary is referenced.
 func TestCommitApprovalPrompt_UsesAccountabilitySummary(t *testing.T) {
-	taskID := "perles-abc.1"
+	taskID := "xorchestrator-abc.1"
 	prompt := CommitApprovalPrompt(taskID, "")
 
 	require.Contains(t, prompt, "post_accountability_summary",

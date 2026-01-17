@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/modal"
 )
 
 func TestNew_CreatesModalWithCorrectConfig(t *testing.T) {

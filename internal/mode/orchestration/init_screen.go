@@ -10,9 +10,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/zjrosen/perles/internal/git"
-	"github.com/zjrosen/perles/internal/ui/shared/chainart"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/git"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/chainart"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // spinnerFrames defines the braille spinner animation sequence.

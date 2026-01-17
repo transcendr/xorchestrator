@@ -8,7 +8,7 @@
 //
 // Import this package to register the Codex client with the client registry:
 //
-//	import _ "github.com/zjrosen/perles/internal/orchestration/codex"
+//	import _ "github.com/zjrosen/xorchestrator/internal/orchestration/codex"
 //
 // Then create a client using the registry:
 //
@@ -69,7 +69,7 @@
 //
 // Example MCP configuration for orchestration:
 //
-//	-c 'mcp_servers.perles-worker={url="http://localhost:9000/worker/worker-1"}'
+//	-c 'mcp_servers.xorchestrator-worker={url="http://localhost:9000/worker/worker-1"}'
 //
 // # Sandbox Mode Options
 //

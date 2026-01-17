@@ -3,7 +3,7 @@ package chatpanel
 import (
 	"time"
 
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/workflow"
 )
 
 // Config holds configuration for the chat panel.

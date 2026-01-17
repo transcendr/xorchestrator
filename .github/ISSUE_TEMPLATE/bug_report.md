@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug to help us improve perles
+about: Report a bug to help us improve xorchestrator
 title: ''
 labels: bug
 assignees: ''
@@ -30,7 +30,7 @@ If applicable, add screenshots to help explain your problem.
 
 ## Environment
 
-- **Perles version**: (run `perles --version`)
+- **Xorchestrator version**: (run `xorchestrator --version`)
 - **Go version**: (run `go version`)
 - **OS**: (e.g., macOS 14.0, Ubuntu 22.04)
 - **Terminal**: (e.g., iTerm2, Terminal.app, Alacritty)

@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/orchestration/v2/types"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/types"
 )
 
 // ===========================================================================
@@ -35,7 +35,7 @@ func TestAssignTaskHandler_AssignsToReadyWorker(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// Mock for AssignTaskHandler: ShowIssue and UpdateStatus
-	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "perles-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
+	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "xorchestrator-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
 	bdExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	// Add ready worker process
@@ -51,7 +51,7 @@ func TestAssignTaskHandler_AssignsToReadyWorker(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Implement feature X")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "Implement feature X")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestAssignTaskHandler_AssignsToReadyWorker(t *testing.T) {
 	require.Equal(t, repository.StatusReady, updated.Status, "expected status StatusReady (delivery sets Working)")
 	require.NotNil(t, updated.Phase)
 	require.Equal(t, events.ProcessPhaseImplementing, *updated.Phase)
-	require.Equal(t, "perles-abc1.2", updated.TaskID)
+	require.Equal(t, "xorchestrator-abc1.2", updated.TaskID)
 
 	// Verify follow-up command was created
 	require.Len(t, result.FollowUp, 1)
@@ -75,7 +75,7 @@ func TestAssignTaskHandler_AssignsToReadyWorker(t *testing.T) {
 	require.Equal(t, 1, queue.Size())
 
 	// Verify task was created
-	task, err := taskRepo.Get("perles-abc1.2")
+	task, err := taskRepo.Get("xorchestrator-abc1.2")
 	require.NoError(t, err, "task not found")
 	require.Equal(t, "worker-1", task.Implementer)
 	require.Equal(t, repository.TaskImplementing, task.Status)
@@ -99,7 +99,7 @@ func TestAssignTaskHandler_FailsIfWorkerNotReady(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for non-ready process")
@@ -124,7 +124,7 @@ func TestAssignTaskHandler_FailsIfWorkerNotIdlePhase(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for non-idle phase process")
@@ -150,7 +150,7 @@ func TestAssignTaskHandler_FailsIfWorkerAlreadyHasTask(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for process with existing task")
@@ -162,7 +162,7 @@ func TestAssignTaskHandler_FailsIfWorkerAlreadyImplementer(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// Mock for ShowIssue (called before the check that fails)
-	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "perles-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
+	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "xorchestrator-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
 
 	// Add ready process
 	proc := &repository.Process{
@@ -186,7 +186,7 @@ func TestAssignTaskHandler_FailsIfWorkerAlreadyImplementer(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for process already implementing a task")
@@ -198,7 +198,7 @@ func TestAssignTaskHandler_QueuesPromptAndCreatesDeliveryFollowUp(t *testing.T) 
 	taskRepo := repository.NewMemoryTaskRepository()
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// Mock for AssignTaskHandler: ShowIssue and UpdateStatus
-	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "perles-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
+	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "xorchestrator-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
 	bdExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	proc := &repository.Process{
@@ -213,7 +213,7 @@ func TestAssignTaskHandler_QueuesPromptAndCreatesDeliveryFollowUp(t *testing.T) 
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Implement feature")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "Implement feature")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -242,7 +242,7 @@ func TestAssignTaskHandler_CreatesTaskAssignment(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// Mock for AssignTaskHandler: ShowIssue and UpdateStatus
-	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "perles-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
+	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "xorchestrator-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
 	bdExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	proc := &repository.Process{
@@ -257,12 +257,12 @@ func TestAssignTaskHandler_CreatesTaskAssignment(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
 
-	task, err := taskRepo.Get("perles-abc1.2")
+	task, err := taskRepo.Get("xorchestrator-abc1.2")
 	require.NoError(t, err, "task not created")
 
 	require.Equal(t, "worker-1", task.Implementer)
@@ -275,7 +275,7 @@ func TestAssignTaskHandler_EmitsStatusChangeEvent(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// Mock for AssignTaskHandler: ShowIssue and UpdateStatus
-	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "perles-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
+	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "xorchestrator-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
 	bdExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	proc := &repository.Process{
@@ -290,7 +290,7 @@ func TestAssignTaskHandler_EmitsStatusChangeEvent(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -305,7 +305,7 @@ func TestAssignTaskHandler_EmitsStatusChangeEvent(t *testing.T) {
 	require.Equal(t, events.ProcessStatusReady, event.Status)
 	require.NotNil(t, event.Phase)
 	require.Equal(t, events.ProcessPhaseImplementing, *event.Phase)
-	require.Equal(t, "perles-abc1.2", event.TaskID)
+	require.Equal(t, "xorchestrator-abc1.2", event.TaskID)
 }
 
 func TestAssignTaskHandler_FailsForUnknownWorker(t *testing.T) {
@@ -316,7 +316,7 @@ func TestAssignTaskHandler_FailsForUnknownWorker(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "unknown-worker", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "unknown-worker", "xorchestrator-abc1.2", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for unknown process")
@@ -328,7 +328,7 @@ func TestAssignTaskHandler_ReturnsAssignTaskResult(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// Mock for AssignTaskHandler: ShowIssue and UpdateStatus
-	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "perles-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
+	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "xorchestrator-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
 	bdExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	proc := &repository.Process{
@@ -343,7 +343,7 @@ func TestAssignTaskHandler_ReturnsAssignTaskResult(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Implement feature X")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "Implement feature X")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -352,7 +352,7 @@ func TestAssignTaskHandler_ReturnsAssignTaskResult(t *testing.T) {
 	require.True(t, ok, "expected AssignTaskResult, got: %T", result.Data)
 
 	require.Equal(t, "worker-1", assignResult.WorkerID)
-	require.Equal(t, "perles-abc1.2", assignResult.TaskID)
+	require.Equal(t, "xorchestrator-abc1.2", assignResult.TaskID)
 	require.Equal(t, "Implement feature X", assignResult.Summary)
 }
 
@@ -370,7 +370,7 @@ func TestAssignReviewHandler_AssignsReviewer(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -387,7 +387,7 @@ func TestAssignReviewHandler_AssignsReviewer(t *testing.T) {
 
 	// Add existing task
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -397,7 +397,7 @@ func TestAssignReviewHandler_AssignsReviewer(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -408,7 +408,7 @@ func TestAssignReviewHandler_AssignsReviewer(t *testing.T) {
 	require.Equal(t, repository.StatusReady, updated.Status, "expected status StatusReady (delivery sets Working)")
 	require.NotNil(t, updated.Phase)
 	require.Equal(t, events.ProcessPhaseReviewing, *updated.Phase)
-	require.Equal(t, "perles-abc1.2", updated.TaskID)
+	require.Equal(t, "xorchestrator-abc1.2", updated.TaskID)
 
 	// Verify follow-up command was created
 	require.Len(t, result.FollowUp, 1)
@@ -421,7 +421,7 @@ func TestAssignReviewHandler_AssignsReviewer(t *testing.T) {
 	require.Equal(t, 1, queue.Size())
 
 	// Verify task was updated
-	updatedTask, _ := taskRepo.Get("perles-abc1.2")
+	updatedTask, _ := taskRepo.Get("xorchestrator-abc1.2")
 	require.Equal(t, "worker-2", updatedTask.Reviewer)
 	require.Equal(t, repository.TaskInReview, updatedTask.Status)
 }
@@ -433,7 +433,7 @@ func TestAssignReviewHandler_FailsIfReviewerIsImplementer(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for reviewer == implementer")
@@ -457,7 +457,7 @@ func TestAssignReviewHandler_FailsIfReviewerNotReady(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for non-ready reviewer")
@@ -481,7 +481,7 @@ func TestAssignReviewHandler_FailsIfReviewerNotIdlePhase(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for non-idle phase reviewer")
@@ -502,7 +502,7 @@ func TestAssignReviewHandler_UpdatesReviewerPhaseToReviewing(t *testing.T) {
 	processRepo.AddProcess(reviewer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -512,7 +512,7 @@ func TestAssignReviewHandler_UpdatesReviewerPhaseToReviewing(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -529,7 +529,7 @@ func TestAssignReviewHandler_FailsForUnknownReviewer(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "unknown-worker", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "unknown-worker", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for unknown reviewer")
@@ -573,7 +573,7 @@ func TestAssignReviewHandler_FailsForMismatchedImplementer(t *testing.T) {
 
 	// Task has different implementer
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-3", // Different from command
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -583,7 +583,7 @@ func TestAssignReviewHandler_FailsForMismatchedImplementer(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for mismatched implementer")
@@ -604,7 +604,7 @@ func TestAssignReviewHandler_EmitsStatusChangeEvent(t *testing.T) {
 	processRepo.AddProcess(reviewer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -614,7 +614,7 @@ func TestAssignReviewHandler_EmitsStatusChangeEvent(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -645,7 +645,7 @@ func TestAssignReviewHandler_ReturnsAssignReviewResult(t *testing.T) {
 	processRepo.AddProcess(reviewer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -655,7 +655,7 @@ func TestAssignReviewHandler_ReturnsAssignReviewResult(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -664,7 +664,7 @@ func TestAssignReviewHandler_ReturnsAssignReviewResult(t *testing.T) {
 	require.True(t, ok, "expected AssignReviewResult, got: %T", result.Data)
 
 	require.Equal(t, "worker-2", reviewResult.ReviewerID)
-	require.Equal(t, "perles-abc1.2", reviewResult.TaskID)
+	require.Equal(t, "xorchestrator-abc1.2", reviewResult.TaskID)
 	require.Equal(t, "worker-1", reviewResult.ImplementerID)
 }
 
@@ -682,7 +682,7 @@ func TestAssignReviewHandler_UsesSimplePromptForSimpleReviewType(t *testing.T) {
 	processRepo.AddProcess(reviewer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -692,7 +692,7 @@ func TestAssignReviewHandler_UsesSimplePromptForSimpleReviewType(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeSimple)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeSimple)
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -720,7 +720,7 @@ func TestAssignReviewHandler_UsesComplexPromptForComplexReviewType(t *testing.T)
 	processRepo.AddProcess(reviewer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -730,7 +730,7 @@ func TestAssignReviewHandler_UsesComplexPromptForComplexReviewType(t *testing.T)
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -759,7 +759,7 @@ func TestAssignReviewHandler_UsesComplexPromptWhenReviewTypeEmpty(t *testing.T) 
 	processRepo.AddProcess(reviewer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -770,7 +770,7 @@ func TestAssignReviewHandler_UsesComplexPromptWhenReviewTypeEmpty(t *testing.T) 
 	handler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
 
 	// Empty ReviewType should default to complex
-	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", "")
+	cmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -799,14 +799,14 @@ func TestApproveCommitHandler_TransitionsToCommitting(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
 
 	// Add approved task
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskApproved,
@@ -817,7 +817,7 @@ func TestApproveCommitHandler_TransitionsToCommitting(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewApproveCommitHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2")
+	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -829,7 +829,7 @@ func TestApproveCommitHandler_TransitionsToCommitting(t *testing.T) {
 	require.Equal(t, events.ProcessPhaseCommitting, *updated.Phase)
 
 	// Verify task was updated
-	updatedTask, _ := taskRepo.Get("perles-abc1.2")
+	updatedTask, _ := taskRepo.Get("xorchestrator-abc1.2")
 	require.Equal(t, repository.TaskCommitting, updatedTask.Status)
 }
 
@@ -842,14 +842,14 @@ func TestApproveCommitHandler_FailsIfNotApproved(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
 
 	// Task is in review, not approved
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,
@@ -860,7 +860,7 @@ func TestApproveCommitHandler_FailsIfNotApproved(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewApproveCommitHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2")
+	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for non-approved task")
@@ -877,13 +877,13 @@ func TestApproveCommitHandler_FailsIfNotAwaitingReview(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing), // Wrong phase
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskApproved,
@@ -894,7 +894,7 @@ func TestApproveCommitHandler_FailsIfNotAwaitingReview(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewApproveCommitHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2")
+	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for process not awaiting review")
@@ -919,7 +919,7 @@ func TestApproveCommitHandler_FailsForMismatchedImplementer(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-3", // Different implementer
 		Reviewer:    "worker-2",
 		Status:      repository.TaskApproved,
@@ -930,7 +930,7 @@ func TestApproveCommitHandler_FailsForMismatchedImplementer(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewApproveCommitHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2")
+	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for mismatched implementer")
@@ -942,7 +942,7 @@ func TestApproveCommitHandler_FailsForUnknownImplementer(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "unknown-worker",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskApproved,
@@ -953,7 +953,7 @@ func TestApproveCommitHandler_FailsForUnknownImplementer(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewApproveCommitHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "unknown-worker", "perles-abc1.2")
+	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "unknown-worker", "xorchestrator-abc1.2")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for unknown implementer")
@@ -969,13 +969,13 @@ func TestApproveCommitHandler_EmitsStatusChangeEvent(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskApproved,
@@ -986,7 +986,7 @@ func TestApproveCommitHandler_EmitsStatusChangeEvent(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewApproveCommitHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2")
+	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -1010,13 +1010,13 @@ func TestApproveCommitHandler_ReturnsApproveCommitResult(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskApproved,
@@ -1027,7 +1027,7 @@ func TestApproveCommitHandler_ReturnsApproveCommitResult(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewApproveCommitHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2")
+	cmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -1036,7 +1036,7 @@ func TestApproveCommitHandler_ReturnsApproveCommitResult(t *testing.T) {
 	require.True(t, ok, "expected ApproveCommitResult, got: %T", result.Data)
 
 	require.Equal(t, "worker-1", approveResult.ImplementerID)
-	require.Equal(t, "perles-abc1.2", approveResult.TaskID)
+	require.Equal(t, "xorchestrator-abc1.2", approveResult.TaskID)
 }
 
 // ===========================================================================
@@ -1048,7 +1048,7 @@ func TestFullAssignReviewApproveWorkflow(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// Mock for AssignTaskHandler: ShowIssue and UpdateStatus
-	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "perles-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
+	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "xorchestrator-abc1.2", Status: beads.StatusOpen}, nil).Maybe()
 	bdExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	// Add two processes
@@ -1073,7 +1073,7 @@ func TestFullAssignReviewApproveWorkflow(t *testing.T) {
 	// Step 1: Assign task to implementer
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	assignHandler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
-	assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "")
 	result, err := assignHandler.Handle(context.Background(), assignCmd)
 	require.NoError(t, err, "assign task error")
 	require.True(t, result.Success, "assign task failed: %v", result.Error)
@@ -1094,13 +1094,13 @@ func TestFullAssignReviewApproveWorkflow(t *testing.T) {
 	_ = processRepo.Save(impl)
 
 	// Update task status to be ready for review
-	task, _ := taskRepo.Get("perles-abc1.2")
+	task, _ := taskRepo.Get("xorchestrator-abc1.2")
 	task.Status = repository.TaskImplementing
 	_ = taskRepo.Save(task)
 
 	// Step 3: Assign reviewer
 	reviewHandler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
-	reviewCmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	reviewCmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	result, err = reviewHandler.Handle(context.Background(), reviewCmd)
 	require.NoError(t, err, "assign review error")
 	require.True(t, result.Success, "assign review failed: %v", result.Error)
@@ -1116,13 +1116,13 @@ func TestFullAssignReviewApproveWorkflow(t *testing.T) {
 	_ = processRepo.Save(rev)
 
 	// Step 4: Simulate review approval
-	task, _ = taskRepo.Get("perles-abc1.2")
+	task, _ = taskRepo.Get("xorchestrator-abc1.2")
 	task.Status = repository.TaskApproved
 	_ = taskRepo.Save(task)
 
 	// Step 5: Approve commit
 	approveHandler := NewApproveCommitHandler(processRepo, taskRepo, queueRepo)
-	approveCmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2")
+	approveCmd := command.NewApproveCommitCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2")
 	result, err = approveHandler.Handle(context.Background(), approveCmd)
 	require.NoError(t, err, "approve commit error")
 	require.True(t, result.Success, "approve commit failed: %v", result.Error)
@@ -1132,7 +1132,7 @@ func TestFullAssignReviewApproveWorkflow(t *testing.T) {
 	require.NotNil(t, impl.Phase)
 	require.Equal(t, events.ProcessPhaseCommitting, *impl.Phase)
 
-	task, _ = taskRepo.Get("perles-abc1.2")
+	task, _ = taskRepo.Get("xorchestrator-abc1.2")
 	require.Equal(t, repository.TaskCommitting, task.Status)
 }
 
@@ -1145,7 +1145,7 @@ func TestAssignTaskHandler_FailsOnBDError(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// ShowIssue must succeed before UpdateStatus fails
-	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "perles-test123", Status: beads.StatusOpen}, nil)
+	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "xorchestrator-test123", Status: beads.StatusOpen}, nil)
 	bdExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(errors.New("bd CLI connection failed"))
 
 	proc := &repository.Process{
@@ -1160,7 +1160,7 @@ func TestAssignTaskHandler_FailsOnBDError(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-test123", "Test task")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-test123", "Test task")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	// Command should fail due to BD error
@@ -1176,7 +1176,7 @@ func TestAssignTaskHandler_PropagatesBDError(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	// ShowIssue must succeed before UpdateStatus fails
-	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "perles-abc1.2", Status: beads.StatusOpen}, nil)
+	bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "xorchestrator-abc1.2", Status: beads.StatusOpen}, nil)
 	bdExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(errors.New("bd database locked"))
 
 	proc := &repository.Process{
@@ -1191,7 +1191,7 @@ func TestAssignTaskHandler_PropagatesBDError(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Test task")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "Test task")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	// Verify command failed with BD error
@@ -1222,14 +1222,14 @@ func TestAssignReviewFeedbackHandler_TransitionsToAddressingFeedback(t *testing.
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
 
 	// Add denied task
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskDenied,
@@ -1240,7 +1240,7 @@ func TestAssignReviewFeedbackHandler_TransitionsToAddressingFeedback(t *testing.
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewFeedbackHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewFeedbackCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Please fix the error handling")
+	cmd := command.NewAssignReviewFeedbackCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "Please fix the error handling")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -1252,7 +1252,7 @@ func TestAssignReviewFeedbackHandler_TransitionsToAddressingFeedback(t *testing.
 	require.Equal(t, events.ProcessPhaseAddressingFeedback, *updated.Phase)
 
 	// Verify task was updated back to implementing
-	updatedTask, _ := taskRepo.Get("perles-abc1.2")
+	updatedTask, _ := taskRepo.Get("xorchestrator-abc1.2")
 	require.Equal(t, repository.TaskImplementing, updatedTask.Status)
 
 	// Verify message was queued
@@ -1269,14 +1269,14 @@ func TestAssignReviewFeedbackHandler_FailsIfNotDenied(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
 
 	// Task is in review, not denied
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,
@@ -1287,7 +1287,7 @@ func TestAssignReviewFeedbackHandler_FailsIfNotDenied(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewFeedbackHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewFeedbackCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Feedback")
+	cmd := command.NewAssignReviewFeedbackCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "Feedback")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for non-denied task")
@@ -1304,13 +1304,13 @@ func TestAssignReviewFeedbackHandler_FailsIfNotAwaitingReview(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing), // Wrong phase
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskDenied,
@@ -1321,7 +1321,7 @@ func TestAssignReviewFeedbackHandler_FailsIfNotAwaitingReview(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignReviewFeedbackHandler(processRepo, taskRepo, queueRepo)
 
-	cmd := command.NewAssignReviewFeedbackCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Feedback")
+	cmd := command.NewAssignReviewFeedbackCommand(command.SourceMCPTool, "worker-1", "xorchestrator-abc1.2", "Feedback")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for process not awaiting review")

@@ -14,7 +14,7 @@ const noMarginStyle = `{
 	}
 }`
 
-// Renderer wraps glamour with perles-specific configuration.
+// Renderer wraps glamour with xorchestrator-specific configuration.
 type Renderer struct {
 	renderer *glamour.TermRenderer
 	width    int

@@ -3,8 +3,8 @@
 package processor
 
 import (
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/types"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/types"
 )
 
 // ErrUnknownCommandType is returned when no handler is registered for a command type.

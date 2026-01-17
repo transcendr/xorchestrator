@@ -182,7 +182,7 @@ func TestCalculatePosition_NegativeClamping(t *testing.T) {
 }
 
 // TestPlace_Center_Golden uses teatest golden file comparison
-// Run with -update flag to update golden files: go test perles/internal/ui/shared/overlay -update
+// Run with -update flag to update golden files: go test xorchestrator/internal/ui/shared/overlay -update
 func TestPlace_Center_Golden(t *testing.T) {
 	bg := strings.Repeat(strings.Repeat(".", 20)+"\n", 10)
 	bg = strings.TrimSuffix(bg, "\n")

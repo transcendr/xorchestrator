@@ -1,7 +1,7 @@
 package events
 
 import (
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/metrics"
 )
 
 // ProcessEventType identifies the kind of process event.

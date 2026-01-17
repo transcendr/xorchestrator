@@ -7,9 +7,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/panes"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // Worker pane styles
@@ -104,7 +104,7 @@ func phaseShortName(phase events.ProcessPhase) string {
 }
 
 // formatWorkerTitle builds the left title for a worker pane.
-// Format: "● WORKER-1 perles-abc.1 (impl)" when working with task,
+// Format: "● WORKER-1 xorchestrator-abc.1 (impl)" when working with task,
 // or "○ WORKER-1" when idle/ready.
 func formatWorkerTitle(workerID string, status events.ProcessStatus, taskID string, phase events.ProcessPhase) string {
 	indicator, indicatorStyle := statusIndicator(status)
@@ -205,7 +205,7 @@ func (m Model) renderSingleWorkerPane(workerID string, width, height int) string
 	taskID := m.workerPane.workerTaskIDs[workerID]
 	phase := m.workerPane.workerPhases[workerID]
 
-	// Build title with task context: "● WORKER-1 perles-abc.1 (impl)"
+	// Build title with task context: "● WORKER-1 xorchestrator-abc.1 (impl)"
 	leftTitle := formatWorkerTitle(workerID, status, taskID, phase)
 
 	// Build metrics display for right title

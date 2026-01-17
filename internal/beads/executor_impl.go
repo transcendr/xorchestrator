@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/log"
 )
 
 // Compile-time check that RealExecutor implements BeadsExecutor.

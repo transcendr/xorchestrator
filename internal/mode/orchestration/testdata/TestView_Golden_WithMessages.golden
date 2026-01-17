@@ -15,10 +15,10 @@
 │                                        ││                                    │                                        
 │                                        ││                                    │                                        
 │                                        ││                                    │                                        
-│                                        ││                                    │                                        
 │                                        │││ 14:30 COORDINATOR → ALL           │                                        
-│                                        │││ Starting epic perles-auth. 4      │                                        
-│                                        │││ tasks identified.                 │                                        
+│                                        │││ Starting epic                     │                                        
+│                                        │││ xorchestrator-auth. 4 tasks       │                                        
+│                                        │││ identified.                       │                                        
 │                                        ││                                    │                                        
 │                                        │││ 14:32 WORKER.1 → COORDINATOR      │                                        
 │                                        │││ Task complete. Added OAuth        │                                        

@@ -1,4 +1,4 @@
-╭─ ○ COORDINATOR (8467) ────────────────────────╮╭─ MESSAGE LOG ────────────────────────────╮╭─ ○ WORKER-1 perles-auth.1 (idle) ───────────╮
+╭─ ○ COORDINATOR (8467) ────────────────────────╮╭─ MESSAGE LOG ────────────────────────────╮╭─ ○ WORKER-1 xorchestrator-auth.1 (idle) ────╮
 │                                               ││                                          ││                                             │
 │                                               ││                                          ││                                             │
 │                                               ││                                          ││                                             │
@@ -13,7 +13,7 @@
 │                                               ││                                          ││Worker                                       │
 │                                               ││                                          ││OAuth setup complete                         │
 │                                               ││                                          │╰─────────────────────────────────────────────╯
-│                                               ││                                          │╭─ ● WORKER-2 perles-auth.2 (review) ─────────╮
+│                                               ││                                          │╭─ ● WORKER-2 xorchestrator-auth.2 (review) ──╮
 │                                               ││                                          ││                                             │
 │                                               ││                                          ││                                             │
 │                                               ││                                          ││                                             │
@@ -21,7 +21,7 @@
 │                                               ││                                          ││                                             │
 │                                               ││                                          ││                                             │
 │                                               │││ 14:30 COORDINATOR → ALL                 ││                                             │
-│                                               │││ Starting epic perles-auth.              ││                                             │
+│                                               │││ Starting epic xorchestrator-auth.       ││                                             │
 │User                                           ││                                          ││                                             │
 │Start working on the auth epic                 │││ 14:31 WORKER.1 → COORDINATOR            ││                                             │
 │                                               │││ Task .1 complete. Tests passing.        ││                                             │

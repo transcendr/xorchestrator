@@ -3,11 +3,11 @@ package coleditor
 import (
 	"testing"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/colorpicker"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/modal"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
@@ -702,11 +702,11 @@ func TestTypeSelector_DefaultIsBQL(t *testing.T) {
 }
 
 func TestTypeSelector_LoadsFromConfig(t *testing.T) {
-	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123"}}
 	ed := New(0, columns, nil, false)
 
 	require.Equal(t, "tree", ed.ColumnType())
-	require.Equal(t, "perles-123", ed.IssueIDInput().Value())
+	require.Equal(t, "xorchestrator-123", ed.IssueIDInput().Value())
 }
 
 func TestTypeSelector_ToggleWithRightArrow(t *testing.T) {
@@ -730,7 +730,7 @@ func TestTypeSelector_ToggleWithRightArrow(t *testing.T) {
 }
 
 func TestTypeSelector_ToggleWithLeftArrow(t *testing.T) {
-	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123"}}
 	ed := New(0, columns, nil, false)
 
 	// Navigate to FieldType
@@ -750,7 +750,7 @@ func TestTypeSelector_ToggleWithLeftArrow(t *testing.T) {
 }
 
 func TestTypeSelector_NavigationSkipsHiddenFields(t *testing.T) {
-	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123"}}
 	ed := New(0, columns, nil, false)
 
 	// For tree type: Name -> Type -> Color -> IssueID -> TreeMode -> Save (skips Query)
@@ -803,12 +803,12 @@ func TestTypeSelector_CurrentConfigIncludesType(t *testing.T) {
 	require.Empty(t, cfg.IssueID)
 
 	// Test tree config with IssueID set
-	treeColumns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-456"}}
+	treeColumns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-456"}}
 	treeEd := New(0, treeColumns, nil, false)
 
 	cfg = treeEd.CurrentConfig()
 	require.Equal(t, "tree", cfg.Type)
-	require.Equal(t, "perles-456", cfg.IssueID)
+	require.Equal(t, "xorchestrator-456", cfg.IssueID)
 	require.Empty(t, cfg.Query) // Query is not set for tree type
 }
 
@@ -858,7 +858,7 @@ func TestNewForCreate_TreeColumn_ReturnsAddMsg(t *testing.T) {
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Color -> IssueID
 	require.Equal(t, FieldIssueID, ed.Focused())
-	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("perles-123")})
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("xorchestrator-123")})
 
 	// Navigate to Save and press Enter
 	for ed.Focused() != FieldSave {
@@ -873,14 +873,14 @@ func TestNewForCreate_TreeColumn_ReturnsAddMsg(t *testing.T) {
 	require.True(t, ok, "Expected AddMsg but got %T", msg)
 	require.Equal(t, "Dependencies", addMsg.Config.Name)
 	require.Equal(t, "tree", addMsg.Config.Type)
-	require.Equal(t, "perles-123", addMsg.Config.IssueID)
+	require.Equal(t, "xorchestrator-123", addMsg.Config.IssueID)
 	require.Empty(t, addMsg.Config.Query, "Query should be empty for tree columns")
 }
 
 // Integration test: Saved config has correct type and issue_id
 func TestEdit_TreeColumn_ReturnsSaveMsgWithType(t *testing.T) {
 	columns := []config.ColumnConfig{
-		{Name: "Tree Col", Type: "tree", IssueID: "perles-old"},
+		{Name: "Tree Col", Type: "tree", IssueID: "xorchestrator-old"},
 	}
 	ed := New(0, columns, nil, false)
 
@@ -892,10 +892,10 @@ func TestEdit_TreeColumn_ReturnsSaveMsgWithType(t *testing.T) {
 	require.Equal(t, FieldIssueID, ed.Focused())
 
 	// Clear and type new ID
-	for i := 0; i < 10; i++ { // Clear "perles-old"
+	for i := 0; i < 17; i++ { // Clear "xorchestrator-old"
 		ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 	}
-	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("perles-new")})
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("xorchestrator-new")})
 
 	// Navigate to Save and press Enter
 	for ed.Focused() != FieldSave {
@@ -910,27 +910,27 @@ func TestEdit_TreeColumn_ReturnsSaveMsgWithType(t *testing.T) {
 	require.True(t, ok, "Expected SaveMsg but got %T", msg)
 	require.Equal(t, "Tree Col", saveMsg.Config.Name)
 	require.Equal(t, "tree", saveMsg.Config.Type)
-	require.Equal(t, "perles-new", saveMsg.Config.IssueID)
+	require.Equal(t, "xorchestrator-new", saveMsg.Config.IssueID)
 }
 
 // Tests for tree mode selector
 
 func TestTreeModeSelector_DefaultIsDeps(t *testing.T) {
-	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123"}}
 	ed := New(0, columns, nil, false)
 
 	require.Equal(t, "deps", ed.TreeMode())
 }
 
 func TestTreeModeSelector_LoadsFromConfig(t *testing.T) {
-	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123", TreeMode: "child"}}
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123", TreeMode: "child"}}
 	ed := New(0, columns, nil, false)
 
 	require.Equal(t, "child", ed.TreeMode())
 }
 
 func TestTreeModeSelector_ToggleWithRightArrow(t *testing.T) {
-	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123"}}
 	ed := New(0, columns, nil, false)
 
 	// Navigate to TreeMode field: Name -> Type -> Color -> IssueID -> TreeMode
@@ -953,7 +953,7 @@ func TestTreeModeSelector_ToggleWithRightArrow(t *testing.T) {
 }
 
 func TestTreeModeSelector_ToggleWithLeftArrow(t *testing.T) {
-	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123", TreeMode: "child"}}
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123", TreeMode: "child"}}
 	ed := New(0, columns, nil, false)
 
 	// Navigate to TreeMode field
@@ -976,7 +976,7 @@ func TestTreeModeSelector_ToggleWithLeftArrow(t *testing.T) {
 }
 
 func TestTreeModeSelector_CurrentConfigIncludesTreeMode(t *testing.T) {
-	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123", TreeMode: "child"}}
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123", TreeMode: "child"}}
 	ed := New(0, columns, nil, false)
 
 	cfg := ed.CurrentConfig()
@@ -984,7 +984,7 @@ func TestTreeModeSelector_CurrentConfigIncludesTreeMode(t *testing.T) {
 }
 
 func TestTreeModeSelector_ViewRendersSelector(t *testing.T) {
-	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123"}}
 	ed := New(0, columns, nil, false).SetSize(80, 40)
 
 	view := ed.View()
@@ -994,7 +994,7 @@ func TestTreeModeSelector_ViewRendersSelector(t *testing.T) {
 }
 
 func TestTreeModeSelector_SaveIncludesTreeMode(t *testing.T) {
-	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "xorchestrator-123"}}
 	ed := New(0, columns, nil, false)
 
 	// Navigate to TreeMode and toggle to children

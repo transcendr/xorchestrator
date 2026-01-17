@@ -10,7 +10,7 @@ target_mode: "orchestration"
 
 ## Overview
 
-This workflow coordinates multiple AI workers to complete all tasks from a **single epic** with mandatory code review, using the perles orchestration mode.
+This workflow coordinates multiple AI workers to complete all tasks from a **single epic** with mandatory code review, using the xorchestrator orchestration mode.
 
 **Important:** This workflow is scoped to exactly one epic. When all tasks in the epic are complete, the epic itself must be closed.
 
@@ -19,7 +19,7 @@ This workflow coordinates multiple AI workers to complete all tasks from a **sin
 **First, ask the user which epic to work on:**
 
 ```
-Which epic would you like me to work on? Please provide the epic ID (e.g., perles-abc1).
+Which epic would you like me to work on? Please provide the epic ID (e.g., xorchestrator-abc1).
 ```
 
 Once the user provides the epic ID, validate it exists and show the tasks:
@@ -265,8 +265,8 @@ The reviewer will call `report_review_verdict(verdict, comments)` which:
 
 Example for Task 1 where worker-1 implemented and worker-2 reviewed:
 ```
-replace_worker(worker-1, "Completed perles-abc1.1, cycling for fresh context")
-replace_worker(worker-2, "Reviewed perles-abc1.1, cycling for fresh context")
+replace_worker(worker-1, "Completed xorchestrator-abc1.1, cycling for fresh context")
+replace_worker(worker-2, "Reviewed xorchestrator-abc1.1, cycling for fresh context")
 # WAIT for both new workers to report ready before starting Task 2
 ```
 
@@ -549,17 +549,17 @@ Every worker (implementation and review) must read the proposal to understand:
 ```
 [Getting Started]
 Coordinator: "Which epic would you like me to work on?"
-User: "perles-abc1"
+User: "xorchestrator-abc1"
 Coordinator: Validates epic exists, shows 7 tasks
 Coordinator: Presents execution plan → User approves
 
-[Task 1: perles-abc1.1]
+[Task 1: xorchestrator-abc1.1]
 # Query state before assignment
 Coordinator: query_worker_state()
 # Response: task not assigned, worker-1, worker-2 in ready_workers
 
 # Assign implementation
-Coordinator: assign_task(worker_id="worker-1", task_id="perles-abc1.1")
+Coordinator: assign_task(worker_id="worker-1", task_id="xorchestrator-abc1.1")
 # worker-1 phase transitions: Idle → Implementing
 
 # Wait for implementation completion
@@ -574,7 +574,7 @@ Coordinator: query_worker_state()
 # Assign review
 Coordinator: assign_task_review(
     reviewer_id="worker-2",
-    task_id="perles-abc1.1",
+    task_id="xorchestrator-abc1.1",
     implementer_id="worker-1",
     summary="Added validation logic for user input"
 )
@@ -588,34 +588,34 @@ Worker-2: report_review_verdict(verdict="APPROVED", comments="All tests pass, co
 # Approve commit
 Coordinator: approve_commit(
     implementer_id="worker-1",
-    task_id="perles-abc1.1",
+    task_id="xorchestrator-abc1.1",
     commit_message="feat(validation): add user input validation"
 )
 # worker-1 phase transitions: AwaitingReview → Committing
 
 # Wait for commit confirmation, then YOU MUST mark task complete
-Coordinator: mark_task_complete(task_id="perles-abc1.1")
+Coordinator: mark_task_complete(task_id="xorchestrator-abc1.1")
 
 # Cycle workers
-Coordinator: replace_worker(worker-1, "Completed perles-abc1.1")
-Coordinator: replace_worker(worker-2, "Reviewed perles-abc1.1")
+Coordinator: replace_worker(worker-1, "Completed xorchestrator-abc1.1")
+Coordinator: replace_worker(worker-2, "Reviewed xorchestrator-abc1.1")
 
-[Task 2: perles-abc1.2]
+[Task 2: xorchestrator-abc1.2]
 # Same pattern with worker-3 (implement) and worker-4 (review)
 Coordinator: query_worker_state()
-Coordinator: assign_task(worker_id="worker-3", task_id="perles-abc1.2")
+Coordinator: assign_task(worker_id="worker-3", task_id="xorchestrator-abc1.2")
 Worker-3: report_implementation_complete(summary="...")
 Coordinator: assign_task_review(reviewer_id="worker-4", ...)
 Worker-4: report_review_verdict(verdict="APPROVED", comments="...")
 Coordinator: approve_commit(implementer_id="worker-3", ...)
-Coordinator: mark_task_complete(task_id="perles-abc1.2"), replace workers
+Coordinator: mark_task_complete(task_id="xorchestrator-abc1.2"), replace workers
 
 [Continue pattern for remaining tasks...]
 
 [Epic Completion]
-Coordinator: Verifies all 7 tasks are closed via bd show perles-abc1 --json
-Coordinator: bd close perles-abc1 --reason "All tasks completed"
-Coordinator: "Epic perles-abc1 is now complete. All 7 tasks implemented and reviewed."
+Coordinator: Verifies all 7 tasks are closed via bd show xorchestrator-abc1 --json
+Coordinator: bd close xorchestrator-abc1 --reason "All tasks completed"
+Coordinator: "Epic xorchestrator-abc1 is now complete. All 7 tasks implemented and reviewed."
 Coordinator: signal_workflow_complete(
    status="success",
    summary="Completed epic <epic-id>: <epic-title>. All X tasks implemented, reviewed, and committed.",
@@ -754,7 +754,7 @@ query_worker_state()
 query_worker_state()
 # Response shows task not in task_assignments
 # worker-1, worker-2 in ready_workers
-assign_task(worker_id="worker-1", task_id="perles-abc.1")
+assign_task(worker_id="worker-1", task_id="xorchestrator-abc.1")
 ```
 
 **Before assigning review:**
@@ -762,7 +762,7 @@ assign_task(worker_id="worker-1", task_id="perles-abc.1")
 query_worker_state()
 # Response shows worker-1 phase is "awaiting_review"
 # worker-2 in ready_workers (and worker-2 ≠ worker-1)
-assign_task_review(reviewer_id="worker-2", task_id="perles-abc.1", implementer_id="worker-1", summary="...")
+assign_task_review(reviewer_id="worker-2", task_id="xorchestrator-abc.1", implementer_id="worker-1", summary="...")
 ```
 
 ---
@@ -794,12 +794,12 @@ This workflow uses a **hybrid approach** for communication:
 
 **Good:**
 ```
-assign_task(worker_id="worker-1", task_id="perles-abc.1")
+assign_task(worker_id="worker-1", task_id="xorchestrator-abc.1")
 send_to_worker(worker_id="worker-1", "Note: Pay special attention to error handling in the validation logic")
 ```
 
 **Bad:**
 ```
 # Don't use send_to_worker for task assignment!
-send_to_worker(worker_id="worker-1", "You are being assigned task perles-abc.1...")  # ❌ NO STATE TRACKING
+send_to_worker(worker_id="worker-1", "You are being assigned task xorchestrator-abc.1...")  # ❌ NO STATE TRACKING
 ```

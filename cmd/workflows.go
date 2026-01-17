@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/workflow"
 
 	"github.com/spf13/cobra"
 )

@@ -3,8 +3,8 @@
 package handler
 
 import (
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/orchestration/v2/types"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/types"
 )
 
 // Process lifecycle errors

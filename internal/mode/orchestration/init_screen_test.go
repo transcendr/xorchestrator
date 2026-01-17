@@ -806,7 +806,7 @@ func TestGetPhaseIndicatorAndStyle_Worktree_Completed(t *testing.T) {
 }
 
 // ===========================================================================
-// worktreeErrorMessage Tests for ErrInvalidBranchName (Task perles-s8xg.4)
+// worktreeErrorMessage Tests for ErrInvalidBranchName (Task xorchestrator-s8xg.4)
 // ===========================================================================
 
 func TestWorktreeErrorMessage_InvalidBranchName_SentinelError(t *testing.T) {

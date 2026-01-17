@@ -4,14 +4,14 @@ package mode
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/flags"
-	"github.com/zjrosen/perles/internal/git"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/sound"
-	"github.com/zjrosen/perles/internal/ui/shared/toaster"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/bql"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/flags"
+	"github.com/zjrosen/xorchestrator/internal/git"
+	"github.com/zjrosen/xorchestrator/internal/mode/shared"
+	"github.com/zjrosen/xorchestrator/internal/sound"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/toaster"
 )
 
 // AppMode identifies the current application mode.
@@ -53,7 +53,7 @@ type Services struct {
 	Config     *config.Config
 	ConfigPath string
 	DBPath     string
-	WorkDir    string // Application root directory (where perles was invoked)
+	WorkDir    string // Application root directory (where xorchestrator was invoked)
 	Clipboard  shared.Clipboard
 	Clock      shared.Clock
 	Flags      *flags.Registry

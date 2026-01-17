@@ -1,11 +1,11 @@
-// Package main is the entry point for the perles TUI application.
+// Package main is the entry point for the xorchestrator TUI application.
 package main
 
 import (
 	"fmt"
 	"os"
 
-	"github.com/zjrosen/perles/cmd"
+	"github.com/zjrosen/xorchestrator/cmd"
 )
 
 // Build information injected via ldflags at build time.

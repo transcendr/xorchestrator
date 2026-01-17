@@ -11,13 +11,13 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/orchestration/v2/types"
-	"github.com/zjrosen/perles/internal/sound"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/mocks"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/types"
+	"github.com/zjrosen/xorchestrator/internal/sound"
 )
 
 // ===========================================================================
@@ -137,7 +137,7 @@ func TestReportCompleteHandler_TransitionsToAwaitingReview(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	queueRepo := repository.NewMemoryQueueRepository(0) // 0 = unlimited
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", "coordinator", "Implementation complete: Implemented feature X").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", "coordinator", "Implementation complete: Implemented feature X").Return(nil)
 
 	// Add implementing worker
 	worker := &repository.Process{
@@ -145,14 +145,14 @@ func TestReportCompleteHandler_TransitionsToAwaitingReview(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
 
 	// Add task
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -174,7 +174,7 @@ func TestReportCompleteHandler_TransitionsToAwaitingReview(t *testing.T) {
 	require.Equal(t, repository.StatusReady, updated.Status)
 
 	// Verify task was updated
-	updatedTask, _ := taskRepo.Get("perles-abc1.2")
+	updatedTask, _ := taskRepo.Get("xorchestrator-abc1.2")
 	require.Equal(t, repository.TaskInReview, updatedTask.Status)
 }
 
@@ -190,7 +190,7 @@ func TestReportCompleteHandler_FailsIfNotImplementingPhase(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing), // Wrong phase
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
@@ -215,13 +215,13 @@ func TestReportCompleteHandler_SetsWorkerToReady(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -250,13 +250,13 @@ func TestReportCompleteHandler_CreatesDeliverQueuedIfQueueNonEmpty(t *testing.T)
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -294,13 +294,13 @@ func TestReportCompleteHandler_NoFollowUpIfQueueEmpty(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -369,13 +369,13 @@ func TestReportCompleteHandler_EmitsStatusChangeEvent(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -405,7 +405,7 @@ func TestReportCompleteHandler_WorksFromAddressingFeedback(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", "coordinator", "Implementation complete: Fixed issues").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", "coordinator", "Implementation complete: Fixed issues").Return(nil)
 
 	// Worker addressing feedback can also report complete
 	worker := &repository.Process{
@@ -413,13 +413,13 @@ func TestReportCompleteHandler_WorksFromAddressingFeedback(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAddressingFeedback),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskDenied,
 		StartedAt:   time.Now(),
@@ -448,7 +448,7 @@ func TestReportVerdictHandler_ApprovedTransitionsCorrectly(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", mock.Anything, "Review APPROVED by worker-2").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", mock.Anything, "Review APPROVED by worker-2").Return(nil)
 
 	// Add implementer
 	implementer := &repository.Process{
@@ -456,7 +456,7 @@ func TestReportVerdictHandler_ApprovedTransitionsCorrectly(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -467,14 +467,14 @@ func TestReportVerdictHandler_ApprovedTransitionsCorrectly(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(reviewer)
 
 	// Add task in review
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,
@@ -491,7 +491,7 @@ func TestReportVerdictHandler_ApprovedTransitionsCorrectly(t *testing.T) {
 	require.True(t, result.Success, "expected success, got failure: %v", result.Error)
 
 	// Verify task was approved
-	updatedTask, _ := taskRepo.Get("perles-abc1.2")
+	updatedTask, _ := taskRepo.Get("xorchestrator-abc1.2")
 	require.Equal(t, repository.TaskApproved, updatedTask.Status)
 
 	// Verify reviewer went idle
@@ -507,7 +507,7 @@ func TestReportVerdictHandler_DeniedTransitionsImplementerToAddressingFeedback(t
 	taskRepo := repository.NewMemoryTaskRepository()
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", mock.Anything, "Review DENIED by worker-2: Needs error handling").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", mock.Anything, "Review DENIED by worker-2: Needs error handling").Return(nil)
 
 	// Add implementer
 	implementer := &repository.Process{
@@ -515,7 +515,7 @@ func TestReportVerdictHandler_DeniedTransitionsImplementerToAddressingFeedback(t
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -526,14 +526,14 @@ func TestReportVerdictHandler_DeniedTransitionsImplementerToAddressingFeedback(t
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(reviewer)
 
 	// Add task in review
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,
@@ -550,7 +550,7 @@ func TestReportVerdictHandler_DeniedTransitionsImplementerToAddressingFeedback(t
 	require.True(t, result.Success, "expected success, got failure: %v", result.Error)
 
 	// Verify task was denied
-	updatedTask, _ := taskRepo.Get("perles-abc1.2")
+	updatedTask, _ := taskRepo.Get("xorchestrator-abc1.2")
 	require.Equal(t, repository.TaskDenied, updatedTask.Status)
 
 	// Verify reviewer went idle
@@ -575,7 +575,7 @@ func TestReportVerdictHandler_FailsForInvalidVerdict(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
@@ -595,14 +595,14 @@ func TestReportVerdictHandler_EmitsEventsForBothWorkers(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", mock.Anything, "Review DENIED by worker-2: Needs work").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", mock.Anything, "Review DENIED by worker-2: Needs work").Return(nil)
 
 	implementer := &repository.Process{
 		ID:        "worker-1",
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -612,13 +612,13 @@ func TestReportVerdictHandler_EmitsEventsForBothWorkers(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(reviewer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,
@@ -723,7 +723,7 @@ func TestTransitionPhaseHandler_TransitionToIdleClearsTaskID(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseCommitting),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
@@ -749,7 +749,7 @@ func TestTransitionPhaseHandler_CreatesDeliverQueuedOnIdleWithQueue(t *testing.T
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseCommitting),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
@@ -789,7 +789,7 @@ func TestFullImplementReviewApproveCycle(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -805,7 +805,7 @@ func TestFullImplementReviewApproveCycle(t *testing.T) {
 
 	// Add task
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -825,7 +825,7 @@ func TestFullImplementReviewApproveCycle(t *testing.T) {
 
 	// Step 2: Assign reviewer
 	reviewAssignHandler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
-	reviewAssignCmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	reviewAssignCmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	_, err = reviewAssignHandler.Handle(context.Background(), reviewAssignCmd)
 	require.NoError(t, err, "assign review error")
 
@@ -836,7 +836,7 @@ func TestFullImplementReviewApproveCycle(t *testing.T) {
 	require.NoError(t, err, "report verdict error")
 
 	// Verify final state
-	finalTask, _ := taskRepo.Get("perles-abc1.2")
+	finalTask, _ := taskRepo.Get("xorchestrator-abc1.2")
 	require.Equal(t, repository.TaskApproved, finalTask.Status)
 
 	finalReviewer, _ := processRepo.Get("worker-2")
@@ -859,7 +859,7 @@ func TestImplementReviewDenyAddressReviewCycle(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -874,7 +874,7 @@ func TestImplementReviewDenyAddressReviewCycle(t *testing.T) {
 	processRepo.AddProcess(reviewer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -888,7 +888,7 @@ func TestImplementReviewDenyAddressReviewCycle(t *testing.T) {
 
 	// Step 2: Assign reviewer
 	reviewAssignHandler := NewAssignReviewHandler(processRepo, taskRepo, queueRepo)
-	reviewAssignCmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	reviewAssignCmd := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	_, _ = reviewAssignHandler.Handle(context.Background(), reviewAssignCmd)
 
 	// Step 3: DENY verdict
@@ -913,7 +913,7 @@ func TestImplementReviewDenyAddressReviewCycle(t *testing.T) {
 	require.Equal(t, events.ProcessPhaseAwaitingReview, *impl.Phase)
 
 	// Step 5: Re-assign reviewer (they're now idle)
-	reviewAssignCmd2 := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "perles-abc1.2", "worker-1", command.ReviewTypeComplex)
+	reviewAssignCmd2 := command.NewAssignReviewCommand(command.SourceMCPTool, "worker-2", "xorchestrator-abc1.2", "worker-1", command.ReviewTypeComplex)
 	_, _ = reviewAssignHandler.Handle(context.Background(), reviewAssignCmd2)
 
 	// Step 6: Approve
@@ -922,7 +922,7 @@ func TestImplementReviewDenyAddressReviewCycle(t *testing.T) {
 	require.NoError(t, err, "approve verdict error")
 
 	// Verify final approval
-	finalTask, _ := taskRepo.Get("perles-abc1.2")
+	finalTask, _ := taskRepo.Get("xorchestrator-abc1.2")
 	require.Equal(t, repository.TaskApproved, finalTask.Status)
 }
 
@@ -965,13 +965,13 @@ func TestReportComplete_RaceWithNewMessage(t *testing.T) {
 				Role:      repository.RoleWorker,
 				Status:    repository.StatusWorking,
 				Phase:     phasePtr(events.ProcessPhaseImplementing),
-				TaskID:    "perles-abc1.2",
+				TaskID:    "xorchestrator-abc1.2",
 				CreatedAt: time.Now(),
 			}
 			processRepo.AddProcess(worker)
 
 			task := &repository.TaskAssignment{
-				TaskID:      "perles-abc1.2",
+				TaskID:      "xorchestrator-abc1.2",
 				Implementer: "worker-1",
 				Status:      repository.TaskImplementing,
 				StartedAt:   time.Now(),
@@ -1031,7 +1031,7 @@ func TestReportVerdict_RaceWithNewTask(t *testing.T) {
 			queueRepo := repository.NewMemoryQueueRepository(0)
 			bdExecutor := mocks.NewMockBeadsExecutor(t)
 			// Mock for AssignTaskHandler: ShowIssue and UpdateStatus
-			bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "perles-xyz9.1", Status: beads.StatusOpen}, nil).Maybe()
+			bdExecutor.EXPECT().ShowIssue(mock.Anything).Return(&beads.Issue{ID: "xorchestrator-xyz9.1", Status: beads.StatusOpen}, nil).Maybe()
 			bdExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 			// Create a separate mock for verdict handler
@@ -1044,7 +1044,7 @@ func TestReportVerdict_RaceWithNewTask(t *testing.T) {
 				Role:      repository.RoleWorker,
 				Status:    repository.StatusWorking,
 				Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-				TaskID:    "perles-abc1.2",
+				TaskID:    "xorchestrator-abc1.2",
 				CreatedAt: time.Now(),
 			}
 			processRepo.AddProcess(implementer)
@@ -1054,13 +1054,13 @@ func TestReportVerdict_RaceWithNewTask(t *testing.T) {
 				Role:      repository.RoleWorker,
 				Status:    repository.StatusWorking,
 				Phase:     phasePtr(events.ProcessPhaseReviewing),
-				TaskID:    "perles-abc1.2",
+				TaskID:    "xorchestrator-abc1.2",
 				CreatedAt: time.Now(),
 			}
 			processRepo.AddProcess(reviewer)
 
 			task := &repository.TaskAssignment{
-				TaskID:      "perles-abc1.2",
+				TaskID:      "xorchestrator-abc1.2",
 				Implementer: "worker-1",
 				Reviewer:    "worker-2",
 				Status:      repository.TaskInReview,
@@ -1082,7 +1082,7 @@ func TestReportVerdict_RaceWithNewTask(t *testing.T) {
 			assignHandler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
 			verdictCmd := command.NewReportVerdictCommand(command.SourceMCPTool, "worker-2", command.VerdictApproved, "LGTM")
-			assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-3", "perles-xyz9.1", "New task")
+			assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-3", "xorchestrator-xyz9.1", "New task")
 
 			var verdictErr, assignErr error
 
@@ -1099,10 +1099,10 @@ func TestReportVerdict_RaceWithNewTask(t *testing.T) {
 			require.NoError(t, assignErr, "assign error")
 
 			// Verify state consistency
-			finalTask, _ := taskRepo.Get("perles-abc1.2")
+			finalTask, _ := taskRepo.Get("xorchestrator-abc1.2")
 			require.Equal(t, repository.TaskApproved, finalTask.Status)
 
-			newTask, err := taskRepo.Get("perles-xyz9.1")
+			newTask, err := taskRepo.Get("xorchestrator-xyz9.1")
 			require.NoError(t, err, "new task should exist")
 			require.Equal(t, "worker-3", newTask.Implementer)
 		})
@@ -1174,13 +1174,13 @@ func TestReportComplete_RaceWithRetire(t *testing.T) {
 				Role:      repository.RoleWorker,
 				Status:    repository.StatusWorking,
 				Phase:     phasePtr(events.ProcessPhaseImplementing),
-				TaskID:    "perles-abc1.2",
+				TaskID:    "xorchestrator-abc1.2",
 				CreatedAt: time.Now(),
 			}
 			processRepo.AddProcess(worker)
 
 			task := &repository.TaskAssignment{
-				TaskID:      "perles-abc1.2",
+				TaskID:      "xorchestrator-abc1.2",
 				Implementer: "worker-1",
 				Status:      repository.TaskImplementing,
 				StartedAt:   time.Now(),
@@ -1249,7 +1249,7 @@ func TestReportVerdict_RaceWithWorkerRetire(t *testing.T) {
 				Role:      repository.RoleWorker,
 				Status:    repository.StatusWorking,
 				Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-				TaskID:    "perles-abc1.2",
+				TaskID:    "xorchestrator-abc1.2",
 				CreatedAt: time.Now(),
 			}
 			processRepo.AddProcess(implementer)
@@ -1259,13 +1259,13 @@ func TestReportVerdict_RaceWithWorkerRetire(t *testing.T) {
 				Role:      repository.RoleWorker,
 				Status:    repository.StatusWorking,
 				Phase:     phasePtr(events.ProcessPhaseReviewing),
-				TaskID:    "perles-abc1.2",
+				TaskID:    "xorchestrator-abc1.2",
 				CreatedAt: time.Now(),
 			}
 			processRepo.AddProcess(reviewer)
 
 			task := &repository.TaskAssignment{
-				TaskID:      "perles-abc1.2",
+				TaskID:      "xorchestrator-abc1.2",
 				Implementer: "worker-1",
 				Reviewer:    "worker-2",
 				Status:      repository.TaskInReview,
@@ -1485,14 +1485,14 @@ func TestReportCompleteHandler_FailsOnBDError(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-test456",
+		TaskID:    "xorchestrator-test456",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
 
 	// Add task
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-test456",
+		TaskID:      "xorchestrator-test456",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -1525,13 +1525,13 @@ func TestReportCompleteHandler_SkipsCommentWhenSummaryEmpty(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -1560,20 +1560,20 @@ func TestReportCompleteHandler_CallsBDSynchronously(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", mock.Anything, "Implementation complete: Feature implemented").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", mock.Anything, "Implementation complete: Feature implemented").Return(nil)
 
 	worker := &repository.Process{
 		ID:        "worker-1",
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseImplementing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(worker)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
@@ -1613,7 +1613,7 @@ func TestReportVerdictHandler_FailsOnBDError(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-test789",
+		TaskID:    "xorchestrator-test789",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -1624,14 +1624,14 @@ func TestReportVerdictHandler_FailsOnBDError(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing),
-		TaskID:    "perles-test789",
+		TaskID:    "xorchestrator-test789",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(reviewer)
 
 	// Add task
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-test789",
+		TaskID:      "xorchestrator-test789",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,
@@ -1657,14 +1657,14 @@ func TestReportVerdictHandler_CallsBDSynchronously(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", mock.Anything, "Review DENIED by worker-2: Needs fixes").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", mock.Anything, "Review DENIED by worker-2: Needs fixes").Return(nil)
 
 	implementer := &repository.Process{
 		ID:        "worker-1",
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -1674,13 +1674,13 @@ func TestReportVerdictHandler_CallsBDSynchronously(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(reviewer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,
@@ -1703,14 +1703,14 @@ func TestReportVerdictHandler_CorrectCommentForApproved(t *testing.T) {
 	taskRepo := repository.NewMemoryTaskRepository()
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
-	bdExecutor.EXPECT().AddComment("perles-verdict-test", mock.Anything, "Review APPROVED by worker-2").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-verdict-test", mock.Anything, "Review APPROVED by worker-2").Return(nil)
 
 	implementer := &repository.Process{
 		ID:        "worker-1",
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-verdict-test",
+		TaskID:    "xorchestrator-verdict-test",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -1720,13 +1720,13 @@ func TestReportVerdictHandler_CorrectCommentForApproved(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing),
-		TaskID:    "perles-verdict-test",
+		TaskID:    "xorchestrator-verdict-test",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(reviewer)
 
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-verdict-test",
+		TaskID:      "xorchestrator-verdict-test",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,
@@ -1762,7 +1762,7 @@ func TestReportVerdictHandler_PlaysApproveSound(t *testing.T) {
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	soundService := mocks.NewMockSoundService(t)
 
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", mock.Anything, "Review APPROVED by worker-2").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", mock.Anything, "Review APPROVED by worker-2").Return(nil)
 	soundService.EXPECT().Play("approve", "review_verdict_approve").Once()
 
 	// Add implementer
@@ -1771,7 +1771,7 @@ func TestReportVerdictHandler_PlaysApproveSound(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -1782,14 +1782,14 @@ func TestReportVerdictHandler_PlaysApproveSound(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(reviewer)
 
 	// Add task in review
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,
@@ -1817,7 +1817,7 @@ func TestReportVerdictHandler_PlaysDenySound(t *testing.T) {
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 	soundService := mocks.NewMockSoundService(t)
 
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", mock.Anything, "Review DENIED by worker-2: Needs error handling").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", mock.Anything, "Review DENIED by worker-2: Needs error handling").Return(nil)
 	soundService.EXPECT().Play("deny", "review_verdict_deny").Once()
 
 	// Add implementer
@@ -1826,7 +1826,7 @@ func TestReportVerdictHandler_PlaysDenySound(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -1837,14 +1837,14 @@ func TestReportVerdictHandler_PlaysDenySound(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(reviewer)
 
 	// Add task in review
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,
@@ -1871,7 +1871,7 @@ func TestReportVerdictHandler_NilSoundService(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	bdExecutor := mocks.NewMockBeadsExecutor(t)
 
-	bdExecutor.EXPECT().AddComment("perles-abc1.2", mock.Anything, "Review APPROVED by worker-2").Return(nil)
+	bdExecutor.EXPECT().AddComment("xorchestrator-abc1.2", mock.Anything, "Review APPROVED by worker-2").Return(nil)
 
 	// Add implementer
 	implementer := &repository.Process{
@@ -1879,7 +1879,7 @@ func TestReportVerdictHandler_NilSoundService(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseAwaitingReview),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(implementer)
@@ -1890,14 +1890,14 @@ func TestReportVerdictHandler_NilSoundService(t *testing.T) {
 		Role:      repository.RoleWorker,
 		Status:    repository.StatusWorking,
 		Phase:     phasePtr(events.ProcessPhaseReviewing),
-		TaskID:    "perles-abc1.2",
+		TaskID:    "xorchestrator-abc1.2",
 		CreatedAt: time.Now(),
 	}
 	processRepo.AddProcess(reviewer)
 
 	// Add task in review
 	task := &repository.TaskAssignment{
-		TaskID:      "perles-abc1.2",
+		TaskID:      "xorchestrator-abc1.2",
 		Implementer: "worker-1",
 		Reviewer:    "worker-2",
 		Status:      repository.TaskInReview,

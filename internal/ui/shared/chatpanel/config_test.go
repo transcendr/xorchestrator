@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/workflow"
 )
 
 func TestConfig_WithWorkflowRegistry(t *testing.T) {

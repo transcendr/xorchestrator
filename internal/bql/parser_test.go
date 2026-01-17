@@ -314,7 +314,7 @@ func TestParser_ComplexQueries(t *testing.T) {
 		{"full example 3", "ready = true and priority <= P1 order by priority asc"},
 		{"full example 4", "label not in (backlog) and status = open order by updated desc"},
 		{"full example 5", "(type = bug or type = task) and blocked = false order by priority asc, created desc"},
-		{"with hyphenated id", "id = perles-123"},
+		{"with hyphenated id", "id = xorchestrator-123"},
 	}
 
 	for _, tt := range tests {

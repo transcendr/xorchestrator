@@ -18,7 +18,7 @@ func TestDefaultConfig(t *testing.T) {
 	require.Equal(t, "", cfg.FilePath, "file path should be empty by default")
 	require.Equal(t, "localhost:4317", cfg.OTLPEndpoint, "default OTLP endpoint")
 	require.Equal(t, 1.0, cfg.SampleRate, "default sample rate should be 1.0")
-	require.Equal(t, "perles-orchestrator", cfg.ServiceName, "default service name")
+	require.Equal(t, "xorchestrator-orchestrator", cfg.ServiceName, "default service name")
 }
 
 func TestNewProvider_Disabled(t *testing.T) {

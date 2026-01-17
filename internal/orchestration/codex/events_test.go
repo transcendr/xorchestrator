@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
 )
 
 // readTestData reads a test fixture file from the testdata directory.
@@ -239,7 +239,7 @@ func TestParseEvent_ErrorEvent(t *testing.T) {
 func TestParseEvent_ItemStartedMCPToolCall(t *testing.T) {
 	// Test: item.started (mcp_tool_call) -> EventToolUse
 	// Uses real Codex format: "tool" instead of "tool_name", "arguments" instead of "tool_input"
-	data := []byte(`{"type":"item.started","item":{"id":"mcp_1","type":"mcp_tool_call","server":"perles-worker","tool":"read_file","arguments":{"path":"/tmp/test.txt"},"status":"in_progress"}}`)
+	data := []byte(`{"type":"item.started","item":{"id":"mcp_1","type":"mcp_tool_call","server":"xorchestrator-worker","tool":"read_file","arguments":{"path":"/tmp/test.txt"},"status":"in_progress"}}`)
 
 	event, err := ParseEvent(data)
 	require.NoError(t, err)
@@ -255,7 +255,7 @@ func TestParseEvent_ItemStartedMCPToolCall(t *testing.T) {
 func TestParseEvent_ItemCompletedMCPToolCall(t *testing.T) {
 	// Test: item.completed (mcp_tool_call) -> EventToolResult
 	// Uses real Codex format: "tool" and "result" with content array
-	data := []byte(`{"type":"item.completed","item":{"id":"mcp_1","type":"mcp_tool_call","server":"perles-worker","tool":"read_file","result":{"content":[{"type":"text","text":"File contents here"}]}}}`)
+	data := []byte(`{"type":"item.completed","item":{"id":"mcp_1","type":"mcp_tool_call","server":"xorchestrator-worker","tool":"read_file","result":{"content":[{"type":"text","text":"File contents here"}]}}}`)
 
 	event, err := ParseEvent(data)
 	require.NoError(t, err)

@@ -5,9 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/v2/process"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/client"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/process"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
 )
 
 func TestProcessRegistrySessionProvider_New(t *testing.T) {
@@ -64,7 +64,7 @@ func TestProcessRegistrySessionProvider_GenerateProcessMCPConfig_Worker_HTTP(t *
 	config, err := provider.GenerateProcessMCPConfig("worker-1")
 	require.NoError(t, err)
 	require.Contains(t, config, "http://localhost:8765/worker/worker-1")
-	require.Contains(t, config, "perles-worker")
+	require.Contains(t, config, "xorchestrator-worker")
 	require.Contains(t, config, "mcpServers") // Claude format includes mcpServers wrapper
 }
 
@@ -76,7 +76,7 @@ func TestProcessRegistrySessionProvider_GenerateProcessMCPConfig_Worker_Amp(t *t
 	config, err := provider.GenerateProcessMCPConfig("worker-2")
 	require.NoError(t, err)
 	require.Contains(t, config, "http://localhost:9999/worker/worker-2")
-	require.Contains(t, config, "perles-worker")
+	require.Contains(t, config, "xorchestrator-worker")
 	// Amp format doesn't have mcpServers wrapper
 	require.NotContains(t, config, "mcpServers")
 }
@@ -90,7 +90,7 @@ func TestProcessRegistrySessionProvider_GenerateProcessMCPConfig_Coordinator_HTT
 	config, err := provider.GenerateProcessMCPConfig(repository.CoordinatorID)
 	require.NoError(t, err)
 	require.Contains(t, config, "http://localhost:8765/mcp")
-	require.Contains(t, config, "perles-orchestrator") // Coordinator server name
+	require.Contains(t, config, "xorchestrator-orchestrator") // Coordinator server name
 	require.Contains(t, config, "mcpServers")          // Claude format includes mcpServers wrapper
 }
 
@@ -102,7 +102,7 @@ func TestProcessRegistrySessionProvider_GenerateProcessMCPConfig_Coordinator_Amp
 	config, err := provider.GenerateProcessMCPConfig(repository.CoordinatorID)
 	require.NoError(t, err)
 	require.Contains(t, config, "http://localhost:9999/mcp")
-	require.Contains(t, config, "perles-orchestrator") // Coordinator server name
+	require.Contains(t, config, "xorchestrator-orchestrator") // Coordinator server name
 	// Amp format doesn't have mcpServers wrapper
 	require.NotContains(t, config, "mcpServers")
 }

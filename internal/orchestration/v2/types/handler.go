@@ -5,7 +5,7 @@ package types
 import (
 	"context"
 
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
 )
 
 // CommandHandler processes a command and returns a result.

@@ -50,7 +50,7 @@ type InfrastructureConfig struct {
 	// SessionID is the session identifier for accountability summary generation.
 	SessionID string
 	// SessionDir is the directory where session files are stored.
-	// For centralized storage: ~/.perles/sessions/{app}/{date}/{id}/
+	// For centralized storage: ~/.xorchestrator/sessions/{app}/{date}/{id}/
 	SessionDir string
 	// Tracer is the OpenTelemetry tracer for distributed tracing (optional).
 	// When provided, TracingMiddleware will be registered in the command processor.

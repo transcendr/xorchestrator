@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/metrics"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
 
 	"github.com/stretchr/testify/require"
 )

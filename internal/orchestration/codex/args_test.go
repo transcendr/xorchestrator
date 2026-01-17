@@ -129,7 +129,7 @@ func TestBuildArgs_WorkingDirectory(t *testing.T) {
 
 func TestBuildArgs_MCPConfig(t *testing.T) {
 	// MCP config uses TOML syntax via -c flag
-	mcpConfig := `mcp_servers.perles-worker={url="http://localhost:8765/worker/WORKER-1"}`
+	mcpConfig := `mcp_servers.xorchestrator-worker={url="http://localhost:8765/worker/WORKER-1"}`
 	cfg := Config{
 		MCPConfig: mcpConfig,
 		Prompt:    "Hello",
@@ -141,7 +141,7 @@ func TestBuildArgs_MCPConfig(t *testing.T) {
 }
 
 func TestBuildArgs_FullConfigCombination(t *testing.T) {
-	mcpConfig := `mcp_servers.perles-worker={url="http://localhost:8765/worker/WORKER-1"}`
+	mcpConfig := `mcp_servers.xorchestrator-worker={url="http://localhost:8765/worker/WORKER-1"}`
 	cfg := Config{
 		WorkDir:     "/home/user/project",
 		Prompt:      "Implement a feature",

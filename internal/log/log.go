@@ -1,6 +1,6 @@
-// Package log provides structured logging for Perles.
+// Package log provides structured logging for Xorchestrator.
 // It wraps tea.LogToFile with structured fields (level, category, timestamp)
-// and conditionally enables logging via --debug flag or PERLES_DEBUG env.
+// and conditionally enables logging via --debug flag or XORCHESTRATOR_DEBUG env.
 package log
 
 import (
@@ -14,7 +14,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
 )
 
 // Level represents log severity.

@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/prompt/roles"
 
 	"gopkg.in/yaml.v3"
 )
@@ -183,13 +183,13 @@ func ParseWorkflowFile(content, filename, filePath string, source Source) (Workf
 }
 
 // UserWorkflowDir returns the default user workflow directory path.
-// Returns ~/.perles/workflows/
+// Returns ~/.xorchestrator/workflows/
 func UserWorkflowDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".perles", "workflows")
+	return filepath.Join(home, ".xorchestrator", "workflows")
 }
 
 // EnsureUserWorkflowDir creates the user workflow directory if it doesn't exist.
@@ -207,7 +207,7 @@ func EnsureUserWorkflowDir() (string, error) {
 	return dir, nil
 }
 
-// LoadUserWorkflows loads user-defined workflows from ~/.perles/workflows/.
+// LoadUserWorkflows loads user-defined workflows from ~/.xorchestrator/workflows/.
 // Returns an empty slice if the directory doesn't exist (not an error).
 // Workflows with invalid frontmatter are skipped (logged as warnings).
 func LoadUserWorkflows() ([]Workflow, error) {

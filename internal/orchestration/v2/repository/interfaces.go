@@ -7,11 +7,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/metrics"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/prompt/roles"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
 )
 
 // ===========================================================================
@@ -139,7 +139,7 @@ const (
 // TaskAssignment represents a task assigned to workers for implementation and review.
 // This is the aggregate root for the Task bounded context.
 type TaskAssignment struct {
-	// TaskID is the bd task ID (e.g., "perles-abc1.2").
+	// TaskID is the bd task ID (e.g., "xorchestrator-abc1.2").
 	TaskID string
 	// Implementer is the worker ID assigned to implement this task.
 	Implementer string

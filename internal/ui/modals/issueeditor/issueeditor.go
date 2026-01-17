@@ -7,10 +7,10 @@ package issueeditor
 import (
 	"strconv"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
-	"github.com/zjrosen/perles/internal/ui/shared/issuebadge"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/mode/shared"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/formmodal"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/issuebadge"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

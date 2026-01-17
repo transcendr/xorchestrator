@@ -6,19 +6,19 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/zjrosen/perles/internal/beads"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/board"
-	"github.com/zjrosen/perles/internal/ui/modals/help"
-	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
-	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
-	"github.com/zjrosen/perles/internal/ui/styles"
-	"github.com/zjrosen/perles/internal/ui/tree"
+	"github.com/zjrosen/xorchestrator/internal/beads"
+	"github.com/zjrosen/xorchestrator/internal/bql"
+	"github.com/zjrosen/xorchestrator/internal/config"
+	"github.com/zjrosen/xorchestrator/internal/keys"
+	"github.com/zjrosen/xorchestrator/internal/mode/shared"
+	"github.com/zjrosen/xorchestrator/internal/ui/board"
+	"github.com/zjrosen/xorchestrator/internal/ui/modals/help"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/colorpicker"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/modal"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/panes"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/vimtextarea"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/ui/tree"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -158,7 +158,7 @@ func New(columnIndex int, allColumns []config.ColumnConfig, executor bql.BQLExec
 	issueIDInput.SetValue(cfg.IssueID)
 	issueIDInput.CharLimit = 50
 	issueIDInput.Prompt = ""
-	issueIDInput.Placeholder = "perles-123"
+	issueIDInput.Placeholder = "xorchestrator-123"
 
 	// Initialize color picker
 	picker := colorpicker.New().SetSelected(cfg.Color)
@@ -226,7 +226,7 @@ func NewForCreate(insertAfterIndex int, allColumns []config.ColumnConfig, execut
 	issueIDInput.SetValue("")
 	issueIDInput.CharLimit = 50
 	issueIDInput.Prompt = ""
-	issueIDInput.Placeholder = "perles-123"
+	issueIDInput.Placeholder = "xorchestrator-123"
 
 	// Initialize color picker with default color
 	picker := colorpicker.New().SetSelected(cfg.Color)

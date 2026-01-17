@@ -1,8 +1,8 @@
-# Perles
+# Xorchestrator
 
-Perles is a terminal UI for [beads](https://github.com/steveyegge/beads) issue tracking, powered by a custom **BQL (Beads Query Language)**. Search with boolean logic, filter by dates, traverse dependency trees, and build custom kanban views without leaving your terminal. Each kanban swimlane column is defined by a BQL query, so you can slice your issues however you want.
+Xorchestrator is a terminal UI for [beads](https://github.com/steveyegge/beads) issue tracking, powered by a custom **BQL (Beads Query Language)**. Search with boolean logic, filter by dates, traverse dependency trees, and build custom kanban views without leaving your terminal. Each kanban swimlane column is defined by a BQL query, so you can slice your issues however you want.
 
-Perles has its own [Orchestration Mode](ORCHESTRATION.md) that spawns a headless coordinator agent that can manage and recycle multiple headless worker agents for you with built-in multi-agent workflows or user defined workflows.
+Xorchestrator has its own [Orchestration Mode](ORCHESTRATION.md) that spawns a headless coordinator agent that can manage and recycle multiple headless worker agents for you with built-in multi-agent workflows or user defined workflows.
 
 <p align="center">
   <img src="./assets/search.png" width="1440" alt="search">
@@ -33,14 +33,14 @@ Perles has its own [Orchestration Mode](ORCHESTRATION.md) that spawns a headless
 ### Install Script
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/zjrosen/perles/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/zjrosen/xorchestrator/main/install.sh | bash
 ```
 
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew tap zjrosen/perles
-brew install perles
+brew tap zjrosen/xorchestrator
+brew install xorchestrator
 ```
 
 ### Go Install
@@ -48,34 +48,34 @@ brew install perles
 Requires Go 1.21+
 
 ```bash
-go install github.com/zjrosen/perles@latest
+go install github.com/zjrosen/xorchestrator@latest
 ```
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/zjrosen/perles.git
-cd perles
+git clone https://github.com/zjrosen/xorchestrator.git
+cd xorchestrator
 make install
-perles
+xorchestrator
 ```
 
 ### Binary Downloads
 
-Pre-built binaries for Linux and macOS (both Intel and Apple Silicon) are available on the [Releases](https://github.com/zjrosen/perles/releases) page.
+Pre-built binaries for Linux and macOS (both Intel and Apple Silicon) are available on the [Releases](https://github.com/zjrosen/xorchestrator/releases) page.
 
 1. Download the archive for your platform
-2. Extract: `tar -xzf perles_*.tar.gz`
-3. Move to PATH: `sudo mv perles /usr/local/bin/`
-4. Verify: `perles --version`
+2. Extract: `tar -xzf xorchestrator_*.tar.gz`
+3. Move to PATH: `sudo mv xorchestrator /usr/local/bin/`
+4. Verify: `xorchestrator --version`
 
 ## Usage
 
-Run `perles` in any directory containing a `.beads/` folder:
+Run `xorchestrator` in any directory containing a `.beads/` folder:
 
 ```bash
 cd your-project
-perles
+xorchestrator
 ```
 
 ### CLI Flags
@@ -93,9 +93,9 @@ perles
 
 | Command | Description |
 |---------|-------------|
-| `perles` | Launch the TUI application |
-| `perles themes` | List available theme presets |
-| `perles workflows` | List available workflow templates |
+| `xorchestrator` | Launch the TUI application |
+| `xorchestrator themes` | List available theme presets |
+| `xorchestrator workflows` | List available workflow templates |
 
 ### Global Keybindings
 
@@ -281,7 +281,7 @@ Visualize and navigate issue relationships — blockers, dependencies, and paren
 
 ## BQL Query Language
 
-Perles uses BQL (Beads Query Language) to filter and organize issues. BQL is used in column definitions and search mode.
+Xorchestrator uses BQL (Beads Query Language) to filter and organize issues. BQL is used in column definitions and search mode.
 
 ### Basic Syntax
 
@@ -440,10 +440,10 @@ type = epic expand down depth *
 
 ## Configuration
 
-Perles looks for configuration in these locations (in order):
+Xorchestrator looks for configuration in these locations (in order):
 1. `--config` flag
-2. `.perles/config.yaml` (current directory)
-3. `~/.config/perles/config.yaml`
+2. `.xorchestrator/config.yaml` (current directory)
+3. `~/.config/xorchestrator/config.yaml`
 
 ### Configuration Options
 
@@ -457,7 +457,7 @@ Perles looks for configuration in these locations (in order):
 | `theme.colors.*` | hex | varies | Individual color token overrides |
 | `orchestration.client` | string | `"claude"` | AI client: claude, amp, or codex |
 | `orchestration.disable_worktrees` | bool | `false` | Disable git worktree isolation |
-| `orchestration.session_storage.base_dir` | string | `~/.perles/sessions` | Root directory for session storage |
+| `orchestration.session_storage.base_dir` | string | `~/.xorchestrator/sessions` | Root directory for session storage |
 | `orchestration.session_storage.application_name` | string | auto | Override application name (default: derived from git remote) |
 
 ### Example Configuration
@@ -529,7 +529,7 @@ orchestration:
   client: claude                       # claude (default), amp, or codex
   disable_worktrees: false             # Disable git worktree isolation
   session_storage:
-    base_dir: ~/.perles/sessions       # Default session storage location
+    base_dir: ~/.xorchestrator/sessions       # Default session storage location
     # application_name: my-project     # Optional: override auto-derived name
 ```
 
@@ -537,7 +537,7 @@ orchestration:
 
 ## Theming
 
-Perles supports comprehensive theming with built-in presets and customizable color tokens.
+Xorchestrator supports comprehensive theming with built-in presets and customizable color tokens.
 
 ### Quick Start with Presets
 
@@ -550,11 +550,11 @@ theme:
 
 ### Available Presets
 
-Run `perles themes` to see all available presets:
+Run `xorchestrator themes` to see all available presets:
 
 | Preset | Description |
 |--------|-------------|
-| `default` | Default perles theme |
+| `default` | Default xorchestrator theme |
 | `catppuccin-mocha` | Warm, cozy dark theme |
 | `catppuccin-latte` | Warm, cozy light theme |
 | `dracula` | Dark theme with vibrant colors |
@@ -615,18 +615,18 @@ Developer mode provides logging and debugging tools for troubleshooting and deve
 
 ```bash
 # Via flag
-perles --debug
+xorchestrator --debug
 
 # Via environment variable
-PERLES_DEBUG=1 perles
+XORCHESTRATOR_DEBUG=1 xorchestrator
 
 # With custom log path
-PERLES_LOG=/tmp/perles.log perles --debug
+XORCHESTRATOR_LOG=/tmp/xorchestrator.log xorchestrator --debug
 ```
 
 ### Features
 
-- **Log file**: All log output is written to `debug.log` (or custom path via `PERLES_LOG`)
+- **Log file**: All log output is written to `debug.log` (or custom path via `XORCHESTRATOR_LOG`)
 - **Log overlay**: Press `ctrl+x` to view logs in-app without leaving the TUI
 - **Lifecycle logging**: Application startup and shutdown events are logged
 
@@ -638,7 +638,7 @@ PERLES_LOG=/tmp/perles.log perles --debug
 
 When reporting bugs, please include the `debug.log` file to help with diagnosis:
 
-1. Run perles with `--debug` flag
+1. Run xorchestrator with `--debug` flag
 2. Reproduce the issue
 3. Attach `debug.log` to your bug report
 

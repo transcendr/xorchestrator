@@ -5,7 +5,7 @@ package repository
 import (
 	"sync"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
 )
 
 // DefaultQueueMaxSize is the default maximum size for message queues.

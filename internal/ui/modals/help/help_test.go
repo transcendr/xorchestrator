@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/xorchestrator/internal/keys"
 
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"

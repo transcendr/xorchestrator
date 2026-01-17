@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/pubsub"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/metrics"
+	"github.com/zjrosen/xorchestrator/internal/pubsub"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/chatrender"
 )
 
 // phasePtr is a helper to create *ProcessPhase from ProcessPhase constants.
@@ -222,8 +222,8 @@ func TestMetadata_EpicIDAndAccountabilitySummaryPath(t *testing.T) {
 		EndTime:                   now.Add(time.Hour),
 		Status:                    StatusCompleted,
 		SessionDir:                "/test/work/dir",
-		EpicID:                    "perles-abc",
-		AccountabilitySummaryPath: ".perles/sessions/test-session-123/accountability_summary.md",
+		EpicID:                    "xorchestrator-abc",
+		AccountabilitySummaryPath: ".xorchestrator/sessions/test-session-123/accountability_summary.md",
 		Workers:                   []WorkerMetadata{},
 	}
 
@@ -236,8 +236,8 @@ func TestMetadata_EpicIDAndAccountabilitySummaryPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify new fields
-	require.Equal(t, "perles-abc", loaded.EpicID)
-	require.Equal(t, ".perles/sessions/test-session-123/accountability_summary.md", loaded.AccountabilitySummaryPath)
+	require.Equal(t, "xorchestrator-abc", loaded.EpicID)
+	require.Equal(t, ".xorchestrator/sessions/test-session-123/accountability_summary.md", loaded.AccountabilitySummaryPath)
 }
 
 func TestMetadata_BackwardCompatibility(t *testing.T) {
@@ -598,7 +598,7 @@ func TestMetadata_FullSessionResumption(t *testing.T) {
 		StartTime:             now,
 		EndTime:               now.Add(time.Hour),
 		Status:                StatusCompleted,
-		SessionDir:            "/home/user/.perles/sessions/2026-01-11/full-resumption-session",
+		SessionDir:            "/home/user/.xorchestrator/sessions/2026-01-11/full-resumption-session",
 		CoordinatorID:         "coordinator",
 		CoordinatorSessionRef: "claude-coord-session-main-12345",
 		Resumable:             true,
@@ -661,7 +661,7 @@ func TestMetadata_FullSessionResumption(t *testing.T) {
 func TestNew_CreatesDirectoryStructure(t *testing.T) {
 	baseDir := t.TempDir()
 	sessionID := "test-session-123"
-	sessionDir := filepath.Join(baseDir, ".perles", "sessions", sessionID)
+	sessionDir := filepath.Join(baseDir, ".xorchestrator", "sessions", sessionID)
 
 	session, err := New(sessionID, sessionDir)
 	require.NoError(t, err)
@@ -2721,7 +2721,7 @@ func TestWriteWorkerAccountabilitySummary_Success(t *testing.T) {
 	require.NotNil(t, session)
 
 	// Write an accountability summary (taskID is now in YAML frontmatter)
-	content := []byte("---\ntask_id: perles-abc.1\nworker_id: worker-1\n---\n\n# Worker Accountability Summary\n\n**Worker:** worker-1\n**Task:** perles-abc.1\n\n## Summary\n\nImplemented user validation with regex patterns.\n")
+	content := []byte("---\ntask_id: xorchestrator-abc.1\nworker_id: worker-1\n---\n\n# Worker Accountability Summary\n\n**Worker:** worker-1\n**Task:** xorchestrator-abc.1\n\n## Summary\n\nImplemented user validation with regex patterns.\n")
 	filePath, err := session.WriteWorkerAccountabilitySummary("worker-1", content)
 	require.NoError(t, err)
 	require.NotEmpty(t, filePath)
@@ -3090,7 +3090,7 @@ func TestNew_WithApplicationName(t *testing.T) {
 	sessionsDir := filepath.Join(baseDir, "sessions")
 	sessionID := "test-session-appname"
 	sessionDir := filepath.Join(sessionsDir, sessionID)
-	appName := "perles"
+	appName := "xorchestrator"
 
 	sess, err := New(sessionID, sessionDir, WithApplicationName(appName))
 	require.NoError(t, err)
@@ -3889,7 +3889,7 @@ func TestSession_HandleProcessEvent_WorkerSpawned(t *testing.T) {
 	require.Equal(t, "Worker spawned", decoded.Content)
 }
 
-// Tests for Session Resumption Methods (perles-v1n6.2)
+// Tests for Session Resumption Methods (xorchestrator-v1n6.2)
 
 func TestSession_SetCoordinatorSessionRef_PersistsImmediately(t *testing.T) {
 	baseDir := t.TempDir()

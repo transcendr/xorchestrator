@@ -784,21 +784,21 @@ Coordinator: Spawns 4 workers, generates plan filename
 Mediator: Creates docs/plans/2025-01-15-1430-clipboard-support-plan.md
 
 [Phase 2: Task Breakdown]
-Writer: Creates epic perles-xyz, 4 tasks
-- perles-xyz.1: Add clipboard package + unit tests
-- perles-xyz.2: Add copy keybinding + keyboard tests
-- perles-xyz.3: Add paste support + integration tests
-- perles-xyz.4: Add visual feedback + UI tests
+Writer: Creates epic xorchestrator-xyz, 4 tasks
+- xorchestrator-xyz.1: Add clipboard package + unit tests
+- xorchestrator-xyz.2: Add copy keybinding + keyboard tests
+- xorchestrator-xyz.3: Add paste support + integration tests
+- xorchestrator-xyz.4: Add visual feedback + UI tests
 
 [Phase 3: Implementation Review]
 Impl Reviewer: CHANGES NEEDED
-- perles-xyz.2: Scope too large, split keybinding from handler
-- perles-xyz.4: Missing dependency on xyz.2
+- xorchestrator-xyz.2: Scope too large, split keybinding from handler
+- xorchestrator-xyz.4: Missing dependency on xyz.2
 
 [Phase 4: Test Review]
 Test Reviewer: CHANGES NEEDED
-- perles-xyz.1: Missing error case tests
-- perles-xyz.3: Edge case for empty clipboard not covered
+- xorchestrator-xyz.1: Missing error case tests
+- xorchestrator-xyz.3: Edge case for empty clipboard not covered
 
 [Phase 5: Revisions]
 Writer:
@@ -815,13 +815,13 @@ Test Reviewer: APPROVED - test coverage now comprehensive
 
 [Phase 7: Summary]
 Mediator: Writes final summary
-- Epic perles-xyz ready with 5 tasks
+- Epic xorchestrator-xyz ready with 5 tasks
 - All tasks include specific tests
 - Proper dependency chain established
 - Ready for /cook execution
 
 [Complete]
-Coordinator: "Epic perles-xyz planned and ready. See docs/plans/2025-01-15-1430-clipboard-support-plan.md"
+Coordinator: "Epic xorchestrator-xyz planned and ready. See docs/plans/2025-01-15-1430-clipboard-support-plan.md"
 ```
 
 ---

@@ -6,11 +6,11 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/events"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/workflow"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/chatrender"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/panes"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
 // Border colors for assistant status (matches orchestration mode)
@@ -593,7 +593,7 @@ func (m Model) renderEmptyWorkflowsState(contentHeight int) string {
 	lines = append(lines, "")
 	lines = append(lines, messageStyle.Render("No workflows available"))
 	lines = append(lines, "")
-	lines = append(lines, messageStyle.Render("Add workflows to ~/.config/perles/workflows/"))
+	lines = append(lines, messageStyle.Render("Add workflows to ~/.config/xorchestrator/workflows/"))
 
 	content := strings.Join(lines, "\n")
 

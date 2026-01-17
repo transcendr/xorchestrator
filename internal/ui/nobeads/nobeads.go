@@ -4,9 +4,9 @@ package nobeads
 import (
 	"strings"
 
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/ui/shared/chainart"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/xorchestrator/internal/keys"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/chainart"
+	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -77,13 +77,13 @@ func (m Model) View() string {
 	content.WriteString("\n\n")
 	content.WriteString(messageStyle.Render("Try one of these options:"))
 	content.WriteString("\n\n")
-	content.WriteString(messageStyle.Render("  1. (Recommended) Run perles from a directory containing .beads/"))
+	content.WriteString(messageStyle.Render("  1. (Recommended) Run xorchestrator from a directory containing .beads/"))
 	content.WriteString("\n")
-	content.WriteString(messageStyle.Render("  2. Use the --beads-dir flag: perles --beads-dir /path/to/project"))
+	content.WriteString(messageStyle.Render("  2. Use the --beads-dir flag: xorchestrator --beads-dir /path/to/project"))
 	content.WriteString("\n")
-	content.WriteString(messageStyle.Render("  3. Run 'perles init' to create a local config file, then set beads_dir"))
+	content.WriteString(messageStyle.Render("  3. Run 'xorchestrator init' to create a local config file, then set beads_dir"))
 	content.WriteString("\n")
-	content.WriteString(messageStyle.Render("  4. Set beads_dir in your config file (~/.config/perles/config.yaml)"))
+	content.WriteString(messageStyle.Render("  4. Set beads_dir in your config file (~/.config/xorchestrator/config.yaml)"))
 	content.WriteString("\n\n")
 	content.WriteString(hintStyle.Render("Press q to quit"))
 

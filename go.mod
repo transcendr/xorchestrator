@@ -1,4 +1,4 @@
-module github.com/zjrosen/perles
+module github.com/zjrosen/xorchestrator
 
 go 1.24.9
 

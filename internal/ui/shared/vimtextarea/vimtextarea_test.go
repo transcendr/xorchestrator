@@ -585,7 +585,7 @@ func TestKeyToString_UnknownKeyType_ReturnsEmpty(t *testing.T) {
 }
 
 // ============================================================================
-// Mode Switching Tests (perles-nz7d.3)
+// Mode Switching Tests (xorchestrator-nz7d.3)
 // ============================================================================
 
 func keyMsg(r rune) tea.KeyMsg {
@@ -856,7 +856,7 @@ func TestRapidModeSwitch_i_then_ESC(t *testing.T) {
 }
 
 // ============================================================================
-// Character Motion Tests (perles-nz7d.4)
+// Character Motion Tests (xorchestrator-nz7d.4)
 // ============================================================================
 
 func TestMotion_h_MovesLeft(t *testing.T) {
@@ -1098,7 +1098,7 @@ func TestMotion_l_UpdatesPreferredColumn(t *testing.T) {
 }
 
 // ============================================================================
-// Word Motion Tests (perles-nz7d.5)
+// Word Motion Tests (xorchestrator-nz7d.5)
 // ============================================================================
 
 func TestMotion_w_MovesToNextWordStart(t *testing.T) {
@@ -1454,7 +1454,7 @@ func TestMotion_e_UpdatesPreferredColumn(t *testing.T) {
 }
 
 // ============================================================================
-// Line Motion Tests (perles-nz7d.6)
+// Line Motion Tests (xorchestrator-nz7d.6)
 // ============================================================================
 
 func TestMotion_0_MovesToColumnZero(t *testing.T) {
@@ -1734,7 +1734,7 @@ func TestPendingCommand_ClearedOnBlur(t *testing.T) {
 }
 
 // ============================================================================
-// Delete Operation Tests (perles-nz7d.7)
+// Delete Operation Tests (xorchestrator-nz7d.7)
 // ============================================================================
 
 func TestDelete_x_DeletesCharacterUnderCursor(t *testing.T) {
@@ -2098,7 +2098,7 @@ func TestDelete_dj_AtLastLine_DeletesOnlyCurrentLine(t *testing.T) {
 }
 
 // ============================================================================
-// Undo/Redo Tests (perles-nz7d.8)
+// Undo/Redo Tests (xorchestrator-nz7d.8)
 // ============================================================================
 
 func ctrlRKey() tea.KeyMsg {
@@ -2409,7 +2409,7 @@ func TestUndo_RestoresMultiLineContent(t *testing.T) {
 }
 
 // ============================================================================
-// Insert Mode Text Input Tests (perles-nz7d.9)
+// Insert Mode Text Input Tests (xorchestrator-nz7d.9)
 // ============================================================================
 
 func enterKey() tea.KeyMsg {
@@ -3007,7 +3007,7 @@ func TestInsertMode_VimDisabled_EnterSubmits(t *testing.T) {
 }
 
 // ============================================================================
-// Space Key Tests (perles-nz7d.14)
+// Space Key Tests (xorchestrator-nz7d.14)
 // ============================================================================
 
 func spaceKey() tea.KeyMsg {

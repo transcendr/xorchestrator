@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	mcptypes "github.com/zjrosen/perles/internal/orchestration/mcp/types"
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/xorchestrator/internal/log"
+	mcptypes "github.com/zjrosen/xorchestrator/internal/orchestration/mcp/types"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/message"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/command"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/processor"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/prompt/roles"
+	"github.com/zjrosen/xorchestrator/internal/orchestration/v2/repository"
 )
 
 // DefaultTimeout is the default timeout for command execution.
@@ -88,7 +88,7 @@ func WithMessageRepository(repo repository.MessageRepository) Option {
 
 // WithSessionID sets the session ID, work directory, and session directory for accountability
 // summary generation. The sessionDir is the actual path where session files are stored
-// (e.g., ~/.perles/sessions/{app}/{date}/{id}/ for centralized storage).
+// (e.g., ~/.xorchestrator/sessions/{app}/{date}/{id}/ for centralized storage).
 func WithSessionID(sessionID, workDir, sessionDir string) Option {
 	return func(a *V2Adapter) {
 		a.sessionID = sessionID

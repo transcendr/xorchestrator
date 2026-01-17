@@ -205,14 +205,14 @@ description: "User-defined workflow"
 
 # Custom Content
 `
-	wf, err := ParseWorkflowFile(content, "custom.md", "/home/user/.perles/workflows/custom.md", SourceUser)
+	wf, err := ParseWorkflowFile(content, "custom.md", "/home/user/.xorchestrator/workflows/custom.md", SourceUser)
 	require.NoError(t, err)
 
 	assert.Equal(t, "custom", wf.ID)
 	assert.Equal(t, "Custom Workflow", wf.Name)
 	assert.Equal(t, "User-defined workflow", wf.Description)
 	assert.Equal(t, SourceUser, wf.Source)
-	assert.Equal(t, "/home/user/.perles/workflows/custom.md", wf.FilePath)
+	assert.Equal(t, "/home/user/.xorchestrator/workflows/custom.md", wf.FilePath)
 }
 
 func TestLoadBuiltinWorkflows(t *testing.T) {
@@ -431,8 +431,8 @@ description: "Valid"
 
 func TestUserWorkflowDir(t *testing.T) {
 	dir := UserWorkflowDir()
-	// Should return a path ending in .perles/workflows
-	assert.Contains(t, dir, ".perles")
+	// Should return a path ending in .xorchestrator/workflows
+	assert.Contains(t, dir, ".xorchestrator")
 	assert.True(t, filepath.IsAbs(dir))
 }
 
