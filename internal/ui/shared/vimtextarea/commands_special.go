@@ -233,7 +233,7 @@ func (c *SubmitCommand) Execute(m *Model) ExecuteResult {
 
 // Keys returns the trigger keys for this command.
 func (c *SubmitCommand) Keys() []string {
-	return []string{"<enter>", "<ctrl+j>"}
+	return []string{"<enter>", "<ctrl+j>", "<submit>"}
 }
 
 // Mode returns the mode this command operates in.

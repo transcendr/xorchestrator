@@ -73,6 +73,7 @@ func newTestModelWithContent(lines ...string) *Model {
 		mode:           ModeNormal,
 		history:        NewCommandHistory(),
 		pendingBuilder: NewPendingCommandBuilder(),
+		keymap:         VimKeymap{}, // Default to vim keymap for tests
 	}
 }
 

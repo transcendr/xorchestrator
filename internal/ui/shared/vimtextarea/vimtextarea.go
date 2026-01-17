@@ -110,6 +110,9 @@ type Model struct {
 	// Command-based undo/redo
 	history *CommandHistory
 
+	// Keymap selection
+	keymap Keymap // Keymap for translating physical keys to canonical keys
+
 	// Display state
 	width   int
 	height  int
@@ -138,6 +141,14 @@ func New(cfg Config) Model {
 		mode = ModeInsert
 	}
 
+	// Select keymap based on VimEnabled setting
+	var km Keymap
+	if cfg.VimEnabled {
+		km = VimKeymap{}
+	} else {
+		km = ReadlineKeymap{}
+	}
+
 	return Model{
 		config:         cfg,
 		content:        []string{""},
@@ -146,6 +157,7 @@ func New(cfg Config) Model {
 		mode:           mode,
 		pendingBuilder: NewPendingCommandBuilder(),
 		history:        NewCommandHistory(),
+		keymap:         km,
 		focused:        false,
 	}
 }
@@ -250,16 +262,16 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m.handlePendingCommand(msg)
 	}
 
-	// Convert key to registry string
-	keyStr := keyToString(msg)
-	if keyStr == "" {
-		return m, nil
-	}
-
 	// Determine effective mode (vim disabled = always Insert mode)
 	mode := m.mode
 	if !m.config.VimEnabled {
 		mode = ModeInsert
+	}
+
+	// Delegate to keymap for key resolution
+	keyStr := m.keymap.Resolve(msg, mode, m.pendingBuilder)
+	if keyStr == "" {
+		return m, nil
 	}
 
 	// Pure registry dispatch

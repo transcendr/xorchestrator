@@ -355,7 +355,7 @@ func TestSubmitCommand_Execute(t *testing.T) {
 // TestSubmitCommand_Metadata verifies command metadata
 func TestSubmitCommand_Metadata(t *testing.T) {
 	cmd := &SubmitCommand{}
-	require.Equal(t, []string{"<enter>", "<ctrl+j>"}, cmd.Keys())
+	require.Equal(t, []string{"<enter>", "<ctrl+j>", "<submit>"}, cmd.Keys())
 	require.Equal(t, ModeInsert, cmd.Mode())
 	require.Equal(t, "submit", cmd.ID())
 	require.False(t, cmd.IsUndoable())

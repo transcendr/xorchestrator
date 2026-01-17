@@ -2991,14 +2991,16 @@ func TestInsertMode_VimDisabled_BackspaceWorks(t *testing.T) {
 }
 
 func TestInsertMode_VimDisabled_EnterSubmits(t *testing.T) {
-	// When vim is disabled, Enter submits instead of inserting a newline
+	// When vim is disabled (readline mode), Ctrl+D submits
 	m := New(Config{VimEnabled: false})
 	m.SetValue("hello")
 	m.cursorCol = 2
 
-	_, cmd := m.Update(enterKey())
+	// Ctrl+D should submit in readline mode
+	ctrlDKey := tea.KeyMsg{Type: tea.KeyCtrlD}
+	_, cmd := m.Update(ctrlDKey)
 
-	// Should emit SubmitMsg, not insert a newline
+	// Should emit SubmitMsg
 	require.NotNil(t, cmd)
 	msg := cmd()
 	submitMsg, ok := msg.(SubmitMsg)

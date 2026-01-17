@@ -251,7 +251,7 @@ func TestInsertTextCommand_Metadata(t *testing.T) {
 // TestSplitLineCommand_Metadata verifies command metadata
 func TestSplitLineCommand_Metadata(t *testing.T) {
 	cmd := &SplitLineCommand{}
-	require.Equal(t, []string{"<alt+enter>"}, cmd.Keys())
+	require.Equal(t, []string{"<alt+enter>", "<newline>"}, cmd.Keys())
 	require.Equal(t, ModeInsert, cmd.Mode())
 	require.Equal(t, "insert.split_line", cmd.ID())
 	require.True(t, cmd.IsUndoable())

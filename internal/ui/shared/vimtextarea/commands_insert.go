@@ -210,7 +210,7 @@ func (c *SplitLineCommand) Undo(m *Model) error {
 
 // Keys returns the trigger keys for this command.
 func (c *SplitLineCommand) Keys() []string {
-	return []string{"<alt+enter>"}
+	return []string{"<alt+enter>", "<newline>"}
 }
 
 // Mode returns the mode this command operates in.
