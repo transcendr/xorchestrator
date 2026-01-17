@@ -425,36 +425,6 @@ func (c *ResumeProcessCommand) Validate() error {
 }
 
 // ===========================================================================
-// Coordinator-Specific Commands
-// ===========================================================================
-
-// ReplaceCoordinatorCommand replaces the coordinator with handoff protocol.
-// This command is coordinator-specific because it implements context handoff:
-// 1. Posts handoff message to message log (notify current coordinator)
-// 2. Waits for current coordinator to complete current turn
-// 3. Builds replace prompt via buildReplacePrompt() for context transfer
-// 4. Spawns new coordinator with the replace prompt
-// 5. Retires old coordinator
-type ReplaceCoordinatorCommand struct {
-	*BaseCommand
-	Reason string // Optional: reason for replacement (e.g., "context window limit")
-}
-
-// NewReplaceCoordinatorCommand creates a new ReplaceCoordinatorCommand.
-func NewReplaceCoordinatorCommand(source CommandSource, reason string) *ReplaceCoordinatorCommand {
-	base := NewBaseCommand(CmdReplaceCoordinator, source)
-	return &ReplaceCoordinatorCommand{
-		BaseCommand: &base,
-		Reason:      reason,
-	}
-}
-
-// Validate always returns nil since no required fields.
-func (c *ReplaceCoordinatorCommand) Validate() error {
-	return nil
-}
-
-// ===========================================================================
 // Process Control Commands
 // ===========================================================================
 

@@ -969,7 +969,6 @@ func TestAllCommandsImplementCommandInterface(t *testing.T) {
 		&ProcessTurnCompleteCommand{},
 		&PauseProcessCommand{},
 		&ResumeProcessCommand{},
-		&ReplaceCoordinatorCommand{},
 		&AssignTaskCommand{},
 		&AssignReviewCommand{},
 		&ApproveCommitCommand{},
@@ -982,17 +981,7 @@ func TestAllCommandsImplementCommandInterface(t *testing.T) {
 		&StopProcessCommand{},
 	}
 
-	require.Len(t, commands, 19)
-}
-
-func TestReplaceCoordinatorCommand_Validate(t *testing.T) {
-	// ReplaceCoordinatorCommand has no required fields, so Validate always returns nil
-	cmd := NewReplaceCoordinatorCommand(SourceUser, "context window limit")
-	require.NoError(t, cmd.Validate())
-
-	// Even without reason, validation passes
-	cmd2 := NewReplaceCoordinatorCommand(SourceUser, "")
-	require.NoError(t, cmd2.Validate())
+	require.Len(t, commands, 18)
 }
 
 // ===========================================================================

@@ -79,9 +79,6 @@ const (
 	CmdPauseProcess CommandType = "pause_process"
 	// CmdResumeProcess resumes a paused coordinator/process (Paused → Ready).
 	CmdResumeProcess CommandType = "resume_process"
-	// CmdReplaceCoordinator replaces coordinator with handoff protocol.
-	// Posts handoff message, waits for turn completion, spawns with replace prompt.
-	CmdReplaceCoordinator CommandType = "replace_coordinator"
 
 	// Aggregation Commands
 

@@ -27,6 +27,14 @@ type SpawnOptions struct {
 	// If set, the compose functions use three-tier resolution:
 	// base prompts → override (if set) → append (if set).
 	WorkflowConfig *roles.WorkflowConfig
+
+	// InitialPromptOverride overrides the initial prompt sent to the process.
+	// Empty string means use the default prompt.
+	InitialPromptOverride string
+
+	// SystemPromptOverride overrides the system prompt for the process.
+	// Empty string means use the default prompt.
+	SystemPromptOverride string
 }
 
 // UnifiedProcessSpawnerImpl implements UnifiedProcessSpawner for spawning real AI processes.
@@ -78,14 +86,29 @@ func (s *UnifiedProcessSpawnerImpl) SpawnProcess(ctx context.Context, id string,
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate coordinator MCP config: %w", err)
 		}
-		systemPrompt, err := prompt.BuildCoordinatorSystemPrompt()
-		if err != nil {
-			return nil, fmt.Errorf("failed to build coordinator system prompt: %w", err)
+
+		// Apply system prompt override or use default
+		var systemPrompt string
+		if opts.SystemPromptOverride != "" {
+			systemPrompt = opts.SystemPromptOverride
+		} else {
+			systemPrompt, err = prompt.BuildCoordinatorSystemPrompt()
+			if err != nil {
+				return nil, fmt.Errorf("failed to build coordinator system prompt: %w", err)
+			}
 		}
-		initialPrompt, err := prompt.BuildCoordinatorInitialPrompt()
-		if err != nil {
-			return nil, fmt.Errorf("failed to build coordinator initial prompt: %w", err)
+
+		// Apply initial prompt override or use default
+		var initialPrompt string
+		if opts.InitialPromptOverride != "" {
+			initialPrompt = opts.InitialPromptOverride
+		} else {
+			initialPrompt, err = prompt.BuildCoordinatorInitialPrompt()
+			if err != nil {
+				return nil, fmt.Errorf("failed to build coordinator initial prompt: %w", err)
+			}
 		}
+
 		cfg = client.Config{
 			WorkDir:         s.workDir,
 			SystemPrompt:    systemPrompt,

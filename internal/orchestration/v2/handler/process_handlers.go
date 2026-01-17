@@ -1199,6 +1199,9 @@ func (h *ReplaceProcessHandler) Handle(ctx context.Context, cmd command.Command)
 }
 
 // replaceCoordinator handles coordinator replacement with context handoff.
+// Unlike workers, coordinators receive a handoff prompt via BuildReplacePrompt() that provides
+// context about the replacement (why it happened, what state to recover). This enables the new
+// coordinator to understand its role in an ongoing session and recover orchestration state.
 func (h *ReplaceProcessHandler) replaceCoordinator(ctx context.Context, proc *repository.Process, _ string) (*command.CommandResult, error) {
 	// Stop the old coordinator
 	if h.registry != nil {
@@ -1231,7 +1234,12 @@ func (h *ReplaceProcessHandler) replaceCoordinator(ctx context.Context, proc *re
 	// Spawn new coordinator process
 	if h.spawner != nil {
 		// Coordinator always uses default (generic) agent type
-		newLiveProcess, err := h.spawner.SpawnProcess(ctx, repository.CoordinatorID, repository.RoleCoordinator, SpawnOptions{})
+		// Pass replace prompt to provide context refresh instructions
+		replacePrompt := prompt.BuildReplacePrompt()
+		opts := SpawnOptions{
+			InitialPromptOverride: replacePrompt,
+		}
+		newLiveProcess, err := h.spawner.SpawnProcess(ctx, repository.CoordinatorID, repository.RoleCoordinator, opts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to spawn new coordinator: %w", err)
 		}
@@ -1277,6 +1285,10 @@ func (h *ReplaceProcessHandler) replaceCoordinator(ctx context.Context, proc *re
 }
 
 // replaceWorker handles worker replacement with simple retire and spawn.
+// Workers do NOT receive a handoff prompt (unlike coordinators) because workers are stateless
+// task executors. Each worker receives fresh task assignments from the coordinator, so there's
+// no context to hand off - the coordinator maintains all orchestration state and will simply
+// assign new work to the replacement worker.
 func (h *ReplaceProcessHandler) replaceWorker(ctx context.Context, proc *repository.Process, _ string) (*command.CommandResult, error) {
 	// Generate new worker ID
 	workers := h.processRepo.Workers()
@@ -1552,210 +1564,4 @@ type ResumeProcessResult struct {
 	ProcessID      string
 	WasNoOp        bool // true if process was already ready/working
 	QueuedDelivery bool // true if DeliverProcessQueuedCommand was added to follow-ups
-}
-
-// ===========================================================================
-// ReplaceCoordinatorHandler
-// ===========================================================================
-
-// MessagePoster is responsible for posting messages to the message log.
-// Used for handoff protocol during coordinator replacement.
-type MessagePoster interface {
-	// PostHandoff posts a system-generated handoff message.
-	PostHandoff(content string) error
-}
-
-// CoordinatorSpawnerWithPrompt creates a new coordinator AI process with a custom prompt.
-// Used for coordinator replacement with handoff prompt.
-type CoordinatorSpawnerWithPrompt interface {
-	// SpawnCoordinatorWithPrompt creates and starts a coordinator with a custom prompt.
-	// Returns the created process.Process instance.
-	SpawnCoordinatorWithPrompt(ctx context.Context, prompt string) (*process.Process, error)
-}
-
-// ReplaceCoordinatorHandler handles CmdReplaceCoordinator commands.
-// It implements the full handoff protocol from v1 coordinator Replace():
-//  1. Post handoff message to message log (notify current coordinator)
-//  2. Wait for current coordinator to complete current turn
-//  3. Build replace prompt via buildReplacePrompt() for context transfer
-//  4. Spawn new coordinator with the replace prompt
-//  5. Retire old coordinator
-type ReplaceCoordinatorHandler struct {
-	processRepo   repository.ProcessRepository
-	registry      *process.ProcessRegistry
-	spawner       CoordinatorSpawnerWithPrompt
-	messagePoster MessagePoster
-}
-
-// ReplaceCoordinatorHandlerOption configures ReplaceCoordinatorHandler.
-type ReplaceCoordinatorHandlerOption func(*ReplaceCoordinatorHandler)
-
-// WithCoordinatorSpawnerWithPrompt sets the coordinator spawner for replacement.
-func WithCoordinatorSpawnerWithPrompt(spawner CoordinatorSpawnerWithPrompt) ReplaceCoordinatorHandlerOption {
-	return func(h *ReplaceCoordinatorHandler) {
-		h.spawner = spawner
-	}
-}
-
-// WithMessagePoster sets the message poster for handoff messages.
-func WithMessagePoster(poster MessagePoster) ReplaceCoordinatorHandlerOption {
-	return func(h *ReplaceCoordinatorHandler) {
-		h.messagePoster = poster
-	}
-}
-
-// NewReplaceCoordinatorHandler creates a new ReplaceCoordinatorHandler.
-func NewReplaceCoordinatorHandler(
-	processRepo repository.ProcessRepository,
-	registry *process.ProcessRegistry,
-	opts ...ReplaceCoordinatorHandlerOption,
-) *ReplaceCoordinatorHandler {
-	h := &ReplaceCoordinatorHandler{
-		processRepo: processRepo,
-		registry:    registry,
-	}
-	for _, opt := range opts {
-		opt(h)
-	}
-	return h
-}
-
-// Handle processes a ReplaceCoordinatorCommand.
-// Implements the full handoff protocol for coordinator replacement.
-func (h *ReplaceCoordinatorHandler) Handle(ctx context.Context, cmd command.Command) (*command.CommandResult, error) {
-	replaceCmd := cmd.(*command.ReplaceCoordinatorCommand)
-
-	// Get coordinator from repository
-	proc, err := h.processRepo.GetCoordinator()
-	if err != nil {
-		if errors.Is(err, repository.ErrProcessNotFound) {
-			return nil, ErrProcessNotFound
-		}
-		return nil, fmt.Errorf("failed to get coordinator: %w", err)
-	}
-
-	// Check if coordinator is in a terminal state
-	if proc.Status.IsTerminal() {
-		return nil, ErrProcessRetired
-	}
-
-	// Step 1: Post handoff message to message log
-	if h.messagePoster != nil {
-		handoffContent := "[SYSTEM HANDOFF]\nCoordinator context refresh initiated. "
-		if replaceCmd.Reason != "" {
-			handoffContent += "Reason: " + replaceCmd.Reason + ". "
-		}
-		handoffContent += "New coordinator will read this message log to understand current state."
-		_ = h.messagePoster.PostHandoff(handoffContent) // Non-fatal: ignore error and continue
-	}
-
-	// Step 2: Wait for current coordinator to complete current turn (if working)
-	if h.registry != nil {
-		liveProcess := h.registry.Get(proc.ID)
-		if liveProcess != nil && liveProcess.IsRunning() {
-			// Wait for current turn to complete with timeout
-			waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-
-			select {
-			case <-waitCtx.Done():
-				// Timeout - proceed anyway (coordinator might be stuck)
-			default:
-				// Try to wait for the process to finish its current operation
-				_ = liveProcess.Wait() // Non-fatal: process might already be done
-			}
-		}
-	}
-
-	// Step 3: Stop the old coordinator
-	if h.registry != nil {
-		oldProcess := h.registry.Get(proc.ID)
-		if oldProcess != nil {
-			oldProcess.Stop()
-		}
-	}
-
-	// Step 4: Mark old as retired
-	proc.Status = repository.StatusRetired
-	proc.RetiredAt = time.Now()
-	if err := h.processRepo.Save(proc); err != nil {
-		return nil, fmt.Errorf("failed to retire old coordinator: %w", err)
-	}
-
-	// Step 5: Build replace prompt (using the same logic as v1 buildReplacePrompt)
-	replacePrompt := prompt.BuildReplacePrompt()
-
-	// Step 6: Spawn new coordinator with replace prompt
-	var newLiveProcess *process.Process
-	if h.spawner != nil {
-		var err error
-		newLiveProcess, err = h.spawner.SpawnCoordinatorWithPrompt(ctx, replacePrompt)
-		if err != nil {
-			return nil, fmt.Errorf("failed to spawn new coordinator: %w", err)
-		}
-
-		// Update registry
-		if h.registry != nil {
-			h.registry.Unregister(proc.ID)
-			h.registry.Register(newLiveProcess)
-		}
-	}
-
-	// Step 7: Create new coordinator entity (reuse same ID)
-	newProc := &repository.Process{
-		ID:             repository.CoordinatorID,
-		Role:           repository.RoleCoordinator,
-		Status:         repository.StatusWorking, // New coordinator starts working (processing replace prompt)
-		CreatedAt:      time.Now(),
-		LastActivityAt: time.Now(),
-	}
-
-	if err := h.processRepo.Save(newProc); err != nil {
-		return nil, fmt.Errorf("failed to save new coordinator: %w", err)
-	}
-
-	// Emit events
-	var resultEvents []any
-
-	// Old coordinator retired
-	retiredEvent := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      events.RoleCoordinator,
-		Status:    events.ProcessStatusRetired,
-	}
-	resultEvents = append(resultEvents, retiredEvent)
-
-	// Notify that coordinator was replaced
-	chatEvent := events.ProcessEvent{
-		Type:      events.ProcessOutput,
-		ProcessID: repository.CoordinatorID,
-		Role:      events.RoleCoordinator,
-		Output:    "Coordinator replaced with fresh context window",
-	}
-	resultEvents = append(resultEvents, chatEvent)
-
-	// New coordinator working (processing replace prompt)
-	workingEvent := events.ProcessEvent{
-		Type:      events.ProcessWorking,
-		ProcessID: repository.CoordinatorID,
-		Role:      events.RoleCoordinator,
-		Status:    events.ProcessStatusWorking,
-	}
-	resultEvents = append(resultEvents, workingEvent)
-
-	result := &ReplaceCoordinatorResult{
-		OldProcessID:  proc.ID,
-		NewProcessID:  repository.CoordinatorID,
-		ReplacePrompt: replacePrompt,
-	}
-
-	return SuccessWithEvents(result, resultEvents...), nil
-}
-
-// ReplaceCoordinatorResult contains the result of replacing the coordinator.
-type ReplaceCoordinatorResult struct {
-	OldProcessID  string
-	NewProcessID  string
-	ReplacePrompt string // The handoff prompt sent to the new coordinator
 }

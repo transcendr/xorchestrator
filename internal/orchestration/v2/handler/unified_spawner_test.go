@@ -204,3 +204,118 @@ func TestUnifiedProcessSpawner_GenerateCoordinatorMCPConfig_OpenCode(t *testing.
 	// Should NOT contain mcpServers (that's Claude format)
 	assert.NotContains(t, config, "mcpServers")
 }
+
+func TestUnifiedProcessSpawner_SpawnCoordinator_UsesSystemPromptOverride(t *testing.T) {
+	var capturedConfig client.Config
+	mockClient := mock.NewClient()
+	mockClient.SpawnFunc = func(ctx context.Context, cfg client.Config) (client.HeadlessProcess, error) {
+		capturedConfig = cfg
+		return mock.NewProcess(), nil
+	}
+
+	eventBus := pubsub.NewBroker[any]()
+	submitter := &mockCommandSubmitter{}
+
+	spawner := NewUnifiedProcessSpawner(UnifiedSpawnerConfig{
+		Client:     mockClient,
+		WorkDir:    "/test/workdir",
+		Port:       8080,
+		Extensions: nil,
+		Submitter:  submitter,
+		EventBus:   eventBus,
+	})
+
+	customSystemPrompt := "Custom system prompt for coordinator"
+	opts := SpawnOptions{
+		SystemPromptOverride: customSystemPrompt,
+	}
+
+	proc, err := spawner.SpawnProcess(context.Background(), repository.CoordinatorID, repository.RoleCoordinator, opts)
+	require.NoError(t, err)
+	require.NotNil(t, proc)
+
+	// Verify the system prompt override was used
+	assert.Equal(t, customSystemPrompt, capturedConfig.SystemPrompt)
+	// Initial prompt should use default since not overridden
+	assert.NotEmpty(t, capturedConfig.Prompt)
+
+	// Cleanup
+	proc.Stop()
+}
+
+func TestUnifiedProcessSpawner_SpawnCoordinator_UsesInitialPromptOverride(t *testing.T) {
+	var capturedConfig client.Config
+	mockClient := mock.NewClient()
+	mockClient.SpawnFunc = func(ctx context.Context, cfg client.Config) (client.HeadlessProcess, error) {
+		capturedConfig = cfg
+		return mock.NewProcess(), nil
+	}
+
+	eventBus := pubsub.NewBroker[any]()
+	submitter := &mockCommandSubmitter{}
+
+	spawner := NewUnifiedProcessSpawner(UnifiedSpawnerConfig{
+		Client:     mockClient,
+		WorkDir:    "/test/workdir",
+		Port:       8080,
+		Extensions: nil,
+		Submitter:  submitter,
+		EventBus:   eventBus,
+	})
+
+	customInitialPrompt := "Custom initial prompt for coordinator"
+	opts := SpawnOptions{
+		InitialPromptOverride: customInitialPrompt,
+	}
+
+	proc, err := spawner.SpawnProcess(context.Background(), repository.CoordinatorID, repository.RoleCoordinator, opts)
+	require.NoError(t, err)
+	require.NotNil(t, proc)
+
+	// Verify the initial prompt override was used
+	assert.Equal(t, customInitialPrompt, capturedConfig.Prompt)
+	// System prompt should use default since not overridden
+	assert.NotEmpty(t, capturedConfig.SystemPrompt)
+
+	// Cleanup
+	proc.Stop()
+}
+
+func TestUnifiedProcessSpawner_SpawnCoordinator_UsesDefaultWhenNoOverride(t *testing.T) {
+	var capturedConfig client.Config
+	mockClient := mock.NewClient()
+	mockClient.SpawnFunc = func(ctx context.Context, cfg client.Config) (client.HeadlessProcess, error) {
+		capturedConfig = cfg
+		return mock.NewProcess(), nil
+	}
+
+	eventBus := pubsub.NewBroker[any]()
+	submitter := &mockCommandSubmitter{}
+
+	spawner := NewUnifiedProcessSpawner(UnifiedSpawnerConfig{
+		Client:     mockClient,
+		WorkDir:    "/test/workdir",
+		Port:       8080,
+		Extensions: nil,
+		Submitter:  submitter,
+		EventBus:   eventBus,
+	})
+
+	// Empty SpawnOptions - no overrides
+	opts := SpawnOptions{}
+
+	proc, err := spawner.SpawnProcess(context.Background(), repository.CoordinatorID, repository.RoleCoordinator, opts)
+	require.NoError(t, err)
+	require.NotNil(t, proc)
+
+	// Verify default prompts were used (non-empty)
+	assert.NotEmpty(t, capturedConfig.SystemPrompt)
+	assert.NotEmpty(t, capturedConfig.Prompt)
+
+	// Verify these are the actual default prompts by checking they contain expected content
+	// The coordinator system prompt should contain coordinator-specific instructions
+	assert.Contains(t, capturedConfig.SystemPrompt, "Coordinator")
+
+	// Cleanup
+	proc.Stop()
+}

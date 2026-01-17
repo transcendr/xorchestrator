@@ -62,16 +62,14 @@ flowchart LR
         Retire["RetireProcess"]
         StopProcess["StopProcess"]
         Replace["ReplaceProcess"]
-        ReplaceCoord["ReplaceCoordinator"]
         Pause["PauseProcess"]
         Resume["ResumeProcess"]
     end
-    
+
     Spawn -->|creates| Process
     Retire -->|terminates| Process
     StopProcess -->|graceful→force| Process
     Replace -->|retire+spawn| Process
-    ReplaceCoord -->|handoff| Coordinator
     Pause -->|suspends| Process
     Resume -->|continues| Process
 ```
@@ -81,8 +79,7 @@ flowchart LR
 | `CmdSpawnProcess` | `SpawnProcessHandler` | Creates new coordinator or worker process |
 | `CmdRetireProcess` | `RetireProcessHandler` | Gracefully terminates a process (terminal state) |
 | `CmdStopProcess` | `StopProcessHandler` | Stops process with tiered graceful→force escalation (resumable) |
-| `CmdReplaceProcess` | `ReplaceProcessHandler` | Retires then respawns a process |
-| `CmdReplaceCoordinator` | `ReplaceCoordinatorHandler` | Full handoff protocol with prompt transfer |
+| `CmdReplaceProcess` | `ReplaceProcessHandler` | Retires then respawns a process (coordinator includes handoff prompt) |
 | `CmdPauseProcess` | `PauseProcessHandler` | Pauses process (Ready/Working → Paused) |
 | `CmdResumeProcess` | `ResumeProcessHandler` | Resumes paused or stopped process (triggers queue drain) |
 

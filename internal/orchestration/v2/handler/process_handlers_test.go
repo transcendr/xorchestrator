@@ -34,13 +34,14 @@ type mockProcessSpawner struct {
 }
 
 type spawnCall struct {
-	ID        string
-	Role      repository.ProcessRole
-	AgentType roles.AgentType
+	ID                    string
+	Role                  repository.ProcessRole
+	AgentType             roles.AgentType
+	InitialPromptOverride string
 }
 
 func (m *mockProcessSpawner) SpawnProcess(ctx context.Context, id string, role repository.ProcessRole, opts handler.SpawnOptions) (*process.Process, error) {
-	m.spawnCalls = append(m.spawnCalls, spawnCall{ID: id, Role: role, AgentType: opts.AgentType})
+	m.spawnCalls = append(m.spawnCalls, spawnCall{ID: id, Role: role, AgentType: opts.AgentType, InitialPromptOverride: opts.InitialPromptOverride})
 	if m.spawnErr != nil {
 		return nil, m.spawnErr
 	}
@@ -2358,6 +2359,38 @@ func TestReplaceProcessHandler_EmitsRetiredAndSpawnedEvents(t *testing.T) {
 	assert.Equal(t, events.ProcessSpawned, spawnedEvent.Type)
 }
 
+func TestReplaceProcessHandler_ReplaceCoordinator_PassesReplacePrompt(t *testing.T) {
+	processRepo, _ := setupProcessRepos()
+	spawner := &mockProcessSpawner{}
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	// Pass nil registry to avoid registering the nil process returned by mock
+	h := handler.NewReplaceProcessHandler(processRepo, nil, handler.WithReplaceSpawner(spawner))
+
+	cmd := command.NewReplaceProcessCommand(command.SourceMCPTool, repository.CoordinatorID, "context window full")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify spawner was called with the replace prompt
+	require.Len(t, spawner.spawnCalls, 1)
+	call := spawner.spawnCalls[0]
+	assert.Equal(t, repository.CoordinatorID, call.ID)
+	assert.Equal(t, repository.RoleCoordinator, call.Role)
+
+	// Verify replace prompt was passed through
+	expectedPrompt := prompt.BuildReplacePrompt()
+	assert.Equal(t, expectedPrompt, call.InitialPromptOverride)
+	assert.Contains(t, call.InitialPromptOverride, "[CONTEXT REFRESH - NEW SESSION]")
+}
+
 // ===========================================================================
 // PauseProcessHandler Tests
 // ===========================================================================
@@ -2767,213 +2800,6 @@ func TestResumeProcessHandler_UpdatesLastActivityAt(t *testing.T) {
 
 	updated, _ := processRepo.Get(repository.CoordinatorID)
 	assert.True(t, updated.LastActivityAt.After(before))
-}
-
-// ===========================================================================
-// ReplaceCoordinatorHandler Tests
-// ===========================================================================
-
-// mockMessagePoster is a test implementation of MessagePoster.
-type mockMessagePoster struct {
-	handoffMessages []string
-	postErr         error
-}
-
-func (m *mockMessagePoster) PostHandoff(content string) error {
-	if m.postErr != nil {
-		return m.postErr
-	}
-	m.handoffMessages = append(m.handoffMessages, content)
-	return nil
-}
-
-// mockCoordinatorSpawnerWithPrompt is a test implementation of CoordinatorSpawnerWithPrompt.
-type mockCoordinatorSpawnerWithPrompt struct {
-	spawnCalls []coordinatorSpawnCall
-	spawnErr   error
-}
-
-type coordinatorSpawnCall struct {
-	Prompt string
-}
-
-func (m *mockCoordinatorSpawnerWithPrompt) SpawnCoordinatorWithPrompt(ctx context.Context, prompt string) (*process.Process, error) {
-	m.spawnCalls = append(m.spawnCalls, coordinatorSpawnCall{Prompt: prompt})
-	if m.spawnErr != nil {
-		return nil, m.spawnErr
-	}
-	return nil, nil
-}
-
-func TestReplaceCoordinatorHandler_PostsHandoffMessage(t *testing.T) {
-	processRepo, _ := setupProcessRepos()
-	poster := &mockMessagePoster{}
-
-	// Create coordinator in Ready status
-	coord := &repository.Process{
-		ID:     repository.CoordinatorID,
-		Role:   repository.RoleCoordinator,
-		Status: repository.StatusReady,
-	}
-	processRepo.AddProcess(coord)
-
-	h := handler.NewReplaceCoordinatorHandler(processRepo, nil,
-		handler.WithMessagePoster(poster))
-
-	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "context window limit")
-	result, err := h.Handle(context.Background(), cmd)
-
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-
-	// Verify handoff message was posted
-	require.Len(t, poster.handoffMessages, 1)
-	assert.Contains(t, poster.handoffMessages[0], "SYSTEM HANDOFF")
-	assert.Contains(t, poster.handoffMessages[0], "context window limit")
-}
-
-func TestReplaceCoordinatorHandler_SpawnsNewCoordinatorWithReplacePrompt(t *testing.T) {
-	processRepo, _ := setupProcessRepos()
-	spawner := &mockCoordinatorSpawnerWithPrompt{}
-
-	// Create coordinator in Ready status
-	coord := &repository.Process{
-		ID:     repository.CoordinatorID,
-		Role:   repository.RoleCoordinator,
-		Status: repository.StatusReady,
-	}
-	processRepo.AddProcess(coord)
-
-	h := handler.NewReplaceCoordinatorHandler(processRepo, nil,
-		handler.WithCoordinatorSpawnerWithPrompt(spawner))
-
-	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
-	result, err := h.Handle(context.Background(), cmd)
-
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-
-	// Verify new coordinator was spawned with replace prompt
-	require.Len(t, spawner.spawnCalls, 1)
-	assert.Contains(t, spawner.spawnCalls[0].Prompt, "CONTEXT REFRESH - NEW SESSION")
-	assert.Contains(t, spawner.spawnCalls[0].Prompt, "READ THE HANDOFF FIRST")
-}
-
-func TestReplaceCoordinatorHandler_RetiresOldCoordinator(t *testing.T) {
-	processRepo, _ := setupProcessRepos()
-
-	// Create coordinator in Working status
-	coord := &repository.Process{
-		ID:     repository.CoordinatorID,
-		Role:   repository.RoleCoordinator,
-		Status: repository.StatusWorking,
-	}
-	processRepo.AddProcess(coord)
-
-	h := handler.NewReplaceCoordinatorHandler(processRepo, nil)
-
-	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
-	result, err := h.Handle(context.Background(), cmd)
-
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-
-	// The process should exist and be in Working status now (new coordinator)
-	// because the handler creates a new coordinator entity after retiring the old one
-	updated, err := processRepo.Get(repository.CoordinatorID)
-	require.NoError(t, err)
-	assert.Equal(t, repository.StatusWorking, updated.Status)
-}
-
-func TestReplaceCoordinatorHandler_EmitsCorrectEvents(t *testing.T) {
-	processRepo, _ := setupProcessRepos()
-
-	coord := &repository.Process{
-		ID:     repository.CoordinatorID,
-		Role:   repository.RoleCoordinator,
-		Status: repository.StatusReady,
-	}
-	processRepo.AddProcess(coord)
-
-	h := handler.NewReplaceCoordinatorHandler(processRepo, nil)
-
-	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
-	result, err := h.Handle(context.Background(), cmd)
-
-	require.NoError(t, err)
-	require.Len(t, result.Events, 3)
-
-	// Event 1: Old coordinator retired
-	retiredEvent := result.Events[0].(events.ProcessEvent)
-	assert.Equal(t, events.ProcessStatusChange, retiredEvent.Type)
-	assert.Equal(t, events.ProcessStatusRetired, retiredEvent.Status)
-	assert.Equal(t, events.RoleCoordinator, retiredEvent.Role)
-
-	// Event 2: Output notification
-	outputEvent := result.Events[1].(events.ProcessEvent)
-	assert.Equal(t, events.ProcessOutput, outputEvent.Type)
-	assert.Contains(t, outputEvent.Output, "replaced with fresh context window")
-
-	// Event 3: New coordinator working
-	workingEvent := result.Events[2].(events.ProcessEvent)
-	assert.Equal(t, events.ProcessWorking, workingEvent.Type)
-	assert.Equal(t, events.ProcessStatusWorking, workingEvent.Status)
-}
-
-func TestReplaceCoordinatorHandler_UnknownCoordinator_ReturnsError(t *testing.T) {
-	processRepo, _ := setupProcessRepos()
-	// No coordinator added
-
-	h := handler.NewReplaceCoordinatorHandler(processRepo, nil)
-
-	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
-	result, err := h.Handle(context.Background(), cmd)
-
-	assert.Nil(t, result)
-	assert.ErrorIs(t, err, handler.ErrProcessNotFound)
-}
-
-func TestReplaceCoordinatorHandler_RetiredCoordinator_ReturnsError(t *testing.T) {
-	processRepo, _ := setupProcessRepos()
-
-	coord := &repository.Process{
-		ID:     repository.CoordinatorID,
-		Role:   repository.RoleCoordinator,
-		Status: repository.StatusRetired,
-	}
-	processRepo.AddProcess(coord)
-
-	h := handler.NewReplaceCoordinatorHandler(processRepo, nil)
-
-	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
-	result, err := h.Handle(context.Background(), cmd)
-
-	assert.Nil(t, result)
-	assert.ErrorIs(t, err, handler.ErrProcessRetired)
-}
-
-func TestReplaceCoordinatorHandler_ResultContainsReplacePrompt(t *testing.T) {
-	processRepo, _ := setupProcessRepos()
-
-	coord := &repository.Process{
-		ID:     repository.CoordinatorID,
-		Role:   repository.RoleCoordinator,
-		Status: repository.StatusReady,
-	}
-	processRepo.AddProcess(coord)
-
-	h := handler.NewReplaceCoordinatorHandler(processRepo, nil)
-
-	cmd := command.NewReplaceCoordinatorCommand(command.SourceUser, "")
-	result, err := h.Handle(context.Background(), cmd)
-
-	require.NoError(t, err)
-
-	replaceResult := result.Data.(*handler.ReplaceCoordinatorResult)
-	assert.Equal(t, repository.CoordinatorID, replaceResult.OldProcessID)
-	assert.Equal(t, repository.CoordinatorID, replaceResult.NewProcessID)
-	assert.Contains(t, replaceResult.ReplacePrompt, "CONTEXT REFRESH")
-	assert.Contains(t, replaceResult.ReplacePrompt, "READ THE HANDOFF FIRST")
 }
 
 // ===========================================================================
