@@ -1,4 +1,4 @@
-.PHONY: all build run install test test-v test-update clean lint mocks mocks-clean playground up down jaeger
+.PHONY: all build build-dev run install test test-v test-update clean lint mocks mocks-clean playground up down jaeger
 
 # Version from git (tag or commit hash)
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -7,9 +7,14 @@ LDFLAGS := -X 'main.version=$(VERSION)'
 # Default target
 all: build test
 
-# Build the binary with version info
+# Build the binary with version info (stable)
 build:
 	go build -ldflags "$(LDFLAGS)" -o xorchestrator .
+
+# Build pre-stable dev binary to bin/ directory
+build-dev:
+	@mkdir -p bin
+	go build -ldflags "$(LDFLAGS)" -o bin/xorchestrator .
 
 # Build and run the binary
 run: build
@@ -78,6 +83,7 @@ mocks-clean:
 # Clean build artifacts
 clean:
 	rm -f xorchestrator
+	rm -rf bin
 	go clean ./...
 
 # Start docker-compose services (Jaeger for tracing)
