@@ -378,6 +378,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// When vim is disabled, Enter should submit (readline keymap maps Enter to newline).
+		if !m.input.VimEnabled() && msg.Type == tea.KeyEnter && !msg.Alt {
+			content := m.input.Value()
+			return m, func() tea.Msg {
+				return vimtextarea.SubmitMsg{Content: content}
+			}
+		}
+
 		// Forward all other keys to vimtextarea (including ESC which switches to Normal when vim enabled)
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
