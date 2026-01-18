@@ -287,24 +287,12 @@ func TestUpdate_InputEmpty_NoSubmit(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Focus input but leave empty
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	require.True(t, m.input.Focused())
-
-	// With vim disabled, Enter submits which emits SubmitMsg
-	// Then SubmitMsg handler checks if content is empty
+	// With vim disabled, Enter inserts a newline (readline behavior), not submit
 	var cmd tea.Cmd
 	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// First phase: vimtextarea emits SubmitMsg
-	require.NotNil(t, cmd)
-	submitMsg := cmd()
-	_, isSubmitMsg := submitMsg.(vimtextarea.SubmitMsg)
-	require.True(t, isSubmitMsg, "expected SubmitMsg")
-
-	// Second phase: SubmitMsg handler returns nil for empty content
-	_, cmd = m.Update(submitMsg)
-	require.Nil(t, cmd, "empty input should not produce UserInputMsg")
+	require.Nil(t, cmd, "Enter should not submit when vim is disabled")
+	require.Equal(t, "\n", m.input.Value(), "Enter should insert a newline into empty input")
 }
 
 func TestUpdate_QuitMsg(t *testing.T) {
@@ -569,36 +557,24 @@ func TestVim_ShiftEnterSubmitsMessage(t *testing.T) {
 	require.Equal(t, "Test message", userMsg.Content)
 }
 
-func TestVim_EnterSubmitsMessage_VimDisabled(t *testing.T) {
-	// Integration test: With vim disabled, Enter submits message
+func TestVim_EnterInsertsNewline_VimDisabled(t *testing.T) {
+	// Integration test: With vim disabled, Enter inserts newline (readline behavior)
 	m := New(Config{}) // VimMode: false by default
 	m = m.SetSize(120, 40)
 	m.initializer = newTestInitializer(InitReady, nil)
 
-	// Type some text
-	m.input.SetValue("Line 1")
+	// Type some text so cursor is at end
+	for _, r := range "Line 1" {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	require.Equal(t, "Line 1", m.input.Value())
 
-	// Press Enter (vim disabled, so Enter submits)
+	// Press Enter (vim disabled, so Enter inserts newline)
 	require.Equal(t, vimtextarea.ModeInsert, m.input.Mode())
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// First phase: vimtextarea emits SubmitMsg
-	require.NotNil(t, cmd, "Enter should produce a command")
-	msg := cmd()
-	submitMsg, isSubmitMsg := msg.(vimtextarea.SubmitMsg)
-	require.True(t, isSubmitMsg, "Enter should produce SubmitMsg")
-	require.Equal(t, "Line 1", submitMsg.Content)
-
-	// Second phase: SubmitMsg handler produces UserInputMsg
-	m, cmd = m.Update(submitMsg)
-	require.NotNil(t, cmd, "SubmitMsg should produce UserInputMsg command")
-	msg = cmd()
-	userInput, isUserInput := msg.(UserInputMsg)
-	require.True(t, isUserInput, "SubmitMsg handler should produce UserInputMsg")
-	require.Equal(t, "Line 1", userInput.Content)
-
-	// Input should be cleared after submit
-	require.Empty(t, m.input.Value(), "Input should be cleared after submit")
+	require.Nil(t, cmd, "Enter should not submit when vim is disabled")
+	require.Equal(t, "Line 1\n", m.input.Value(), "Enter should insert newline at cursor")
 }
 
 func TestVim_MessageSubmissionWorksEndToEnd(t *testing.T) {
