@@ -431,6 +431,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			AgentProvider:        orchConfig.AgentProvider(),
 			WorkflowRegistry:     m.workflowRegistry,
 			VimMode:              m.services.Config.UI.VimMode,
+			InputMaxHeight:       orchConfig.CoordinatorInputMaxHeight,
 			DebugMode:            m.debugMode,
 			DisableWorktrees:     orchConfig.DisableWorktrees,
 			TracingConfig:        orchConfig.Tracing,

@@ -108,8 +108,9 @@ type Model struct {
 	showCommandPane bool
 
 	// User input
-	input   vimtextarea.Model
-	vimMode vimtextarea.Mode // Track current vim mode for display
+	input          vimtextarea.Model
+	inputMaxHeight int              // Max visible lines for coordinator input (from config)
+	vimMode        vimtextarea.Mode // Track current vim mode for display
 
 	// Error display (modal overlay)
 	errorModal *modal.Model
@@ -245,8 +246,9 @@ type Config struct {
 	// Workflow templates
 	WorkflowRegistry *workflow.Registry // Pre-loaded workflow registry (optional)
 	// UI settings
-	VimMode   bool // Enable vim keybindings in text input areas
-	DebugMode bool // Show command pane by default when true
+	VimMode        bool // Enable vim keybindings in text input areas
+	InputMaxHeight int  // Max visible lines for coordinator input (content lines, not counting borders)
+	DebugMode      bool // Show command pane by default when true
 	// Worktree settings
 	DisableWorktrees bool // Skip worktree prompt and always run in current directory
 	// Tracing settings
@@ -260,12 +262,16 @@ type Config struct {
 // New creates a new orchestration mode model with the given configuration.
 func New(cfg Config) Model {
 	defaultMode := vimtextarea.ModeInsert // Start in Insert mode for immediate typing
+	// Default to 4 lines if not specified or invalid
+	if cfg.InputMaxHeight <= 0 {
+		cfg.InputMaxHeight = 4
+	}
 	ta := vimtextarea.New(vimtextarea.Config{
 		VimEnabled:  cfg.VimMode,
 		DefaultMode: defaultMode,
 		Placeholder: "Type message to coordinator...",
 		CharLimit:   0,
-		MaxHeight:   2, // Allow wrapping within 2 lines
+		MaxHeight:   cfg.InputMaxHeight,
 	})
 	ta.Focus() // Focus input by default
 
@@ -277,6 +283,7 @@ func New(cfg Config) Model {
 
 	return Model{
 		input:                 ta,
+		inputMaxHeight:        cfg.InputMaxHeight,
 		vimMode:               defaultMode, // Initialize mode tracking
 		coordinatorPane:       newCoordinatorPane(),
 		messagePane:           newMessagePane(),
@@ -363,9 +370,9 @@ func (m Model) SetSize(width, height int) Model {
 	m.height = height
 
 	// Input takes full width (accounting for borders and padding)
-	// Height is set to max allowed (4 lines) so content can grow
+	// Height is set to max allowed so content can grow
 	// Actual visible height is controlled by calculateInputHeight()
-	m.input.SetSize(width-4, 4)
+	m.input.SetSize(width-4, m.inputMaxHeight)
 
 	// Mark all panes as dirty for re-render on resize.
 	// Viewport dimensions and proportional scroll preservation are handled

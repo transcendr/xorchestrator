@@ -18,12 +18,13 @@ func isReadlineWordChar(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_'
 }
 
-// readlineFindPrevWordStart finds the start of the previous/current word
+// readlineFindPrevWordStart finds the start of the previous word
 // using readline/bash/Emacs semantics (punctuation as separator).
 //
 // Algorithm:
-// 1. If on word char → scan backward to start of current word
-// 2. Else (on delimiter) → skip delimiters backward, then scan to start of previous word
+// - If at start of a word (current is word char, prev is delimiter), move to previous word
+// - If in middle of word, move to start of current word
+// - If on delimiter, skip delimiters backward, then move to start of previous word
 //
 // Returns the position at the start of the word (cursor should land here).
 func readlineFindPrevWordStart(content []string, pos Position) Position {
@@ -69,6 +70,16 @@ func readlineFindPrevWordStart(content []string, pos Position) Position {
 
 	// Start from current position
 	currentPos := pos
+
+	// Check if we're at a word boundary (on word char, prev is delimiter)
+	// If so, step back once to move to previous word
+	if isReadlineWordChar(charAt(currentPos)) {
+		prevPos := movePrev(currentPos)
+		if prevPos != currentPos && !isReadlineWordChar(charAt(prevPos)) {
+			// At word boundary - step back to trigger previous word search
+			currentPos = prevPos
+		}
+	}
 
 	// Phase 1: Skip delimiters backward (if currently on delimiter)
 	for !isReadlineWordChar(charAt(currentPos)) {

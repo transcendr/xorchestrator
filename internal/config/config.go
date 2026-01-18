@@ -158,6 +158,8 @@ type OrchestrationConfig struct {
 	Tracing          TracingConfig        `mapstructure:"tracing"`         // Distributed tracing configuration
 	SessionStorage   SessionStorageConfig `mapstructure:"session_storage"` // Session storage location configuration
 	Timeouts         TimeoutsConfig       `mapstructure:"timeouts"`        // Initialization phase timeout configuration
+	// Max visible lines for coordinator input (content lines, not counting borders).
+	CoordinatorInputMaxHeight int `mapstructure:"coordinator_input_max_height"`
 }
 
 // ClaudeClientConfig holds Claude-specific settings.
@@ -620,6 +622,7 @@ func Defaults() Config {
 			Gemini: GeminiClientConfig{
 				Model: "gemini-3-pro-preview",
 			},
+			CoordinatorInputMaxHeight: 4,
 			Tracing: TracingConfig{
 				Enabled:      false,
 				Exporter:     "file",

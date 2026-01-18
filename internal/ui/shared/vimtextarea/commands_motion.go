@@ -574,7 +574,7 @@ func (c *MoveToLineStartInsertCommand) Execute(m *Model) ExecuteResult {
 }
 
 // Keys returns the trigger keys for this command.
-func (c *MoveToLineStartInsertCommand) Keys() []string { return []string{"<ctrl+a>"} }
+func (c *MoveToLineStartInsertCommand) Keys() []string { return []string{"<ctrl+a>", "<home>"} }
 
 // Mode returns the mode this command operates in.
 func (c *MoveToLineStartInsertCommand) Mode() Mode { return ModeInsert }
@@ -596,7 +596,7 @@ func (c *MoveToLineEndInsertCommand) Execute(m *Model) ExecuteResult {
 }
 
 // Keys returns the trigger keys for this command.
-func (c *MoveToLineEndInsertCommand) Keys() []string { return []string{"<ctrl+e>"} }
+func (c *MoveToLineEndInsertCommand) Keys() []string { return []string{"<ctrl+e>", "<end>"} }
 
 // Mode returns the mode this command operates in.
 func (c *MoveToLineEndInsertCommand) Mode() Mode { return ModeInsert }

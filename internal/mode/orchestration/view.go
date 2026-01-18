@@ -138,14 +138,19 @@ func (m Model) renderMainView() string {
 }
 
 // calculateInputHeight returns the height of the input bar based on content.
-// Height starts at 4 (2 content lines + 2 borders) and can grow to 6 (4 content + 2 borders).
+// Height starts at 4 (2 content lines + 2 borders) and can grow to max content height + 2 borders.
 // Uses display lines (accounting for soft-wrap) rather than logical lines.
 func (m Model) calculateInputHeight() int {
 	// Border takes 2 lines (top + bottom)
 	displayLines := m.input.TotalDisplayLines()
 
-	// Height = display lines + 2 for borders, clamped to [4, 6]
-	return max(min(displayLines+2, 6), 4)
+	// Calculate max total height (content + borders)
+	maxHeight := m.inputMaxHeight + 2
+	if maxHeight < 4 {
+		maxHeight = 4
+	}
+	// Height = display lines + 2 for borders, clamped to [4, maxHeight]
+	return max(min(displayLines+2, maxHeight), 4)
 }
 
 // renderInputBar renders the bottom input bar.

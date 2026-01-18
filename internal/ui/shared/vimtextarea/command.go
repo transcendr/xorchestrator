@@ -636,6 +636,14 @@ func newDefaultRegistry() *CommandRegistry {
 	r.Register(&MoveWordBackwardInsertCommand{})
 	r.Register(&MoveWordForwardInsertCommand{})
 
+	// Readline-style arrow commands with special boundary behavior
+	r.Register(&ArrowUpReadlineCommand{})
+	r.Register(&ArrowDownReadlineCommand{})
+
+	// Readline-style word deletion (Insert mode only)
+	r.Register(&DeleteWordBackwardInsertCommand{})
+	r.Register(&DeleteWordForwardInsertCommand{})
+
 	// Arrow keys and Ctrl+B/F for Normal mode (reuse Insert mode commands)
 	r.registerWithModeKeys(ModeNormal, &ArrowLeftCommand{})
 	r.registerWithModeKeys(ModeNormal, &ArrowRightCommand{})

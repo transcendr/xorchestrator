@@ -236,6 +236,10 @@ func keyToString(msg tea.KeyMsg) string {
 		return "<ctrl+b>"
 	case tea.KeyCtrlC:
 		return "<ctrl+c>"
+	case tea.KeyHome:
+		return "<home>"
+	case tea.KeyEnd:
+		return "<end>"
 	default:
 		return ""
 	}

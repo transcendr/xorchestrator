@@ -133,7 +133,7 @@ func New(cfg Config) Model {
 		VimEnabled:  cfg.VimMode,
 		DefaultMode: vimtextarea.ModeInsert,
 		CharLimit:   0, // No limit
-		MaxHeight:   4, // Allow up to 4 lines for input (matches input pane height)
+		MaxHeight:   8, // Allow up to 8 lines for input
 	})
 
 	// Create initial session

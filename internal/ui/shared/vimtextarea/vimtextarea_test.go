@@ -3009,6 +3009,80 @@ func TestInsertMode_VimDisabled_EnterSubmits(t *testing.T) {
 }
 
 // ============================================================================
+// Readline Mode Integration Tests
+// ============================================================================
+
+func TestReadlineMode_EnterInsertsNewline(t *testing.T) {
+	// When vim is disabled (readline mode), Enter inserts newline
+	m := New(Config{VimEnabled: false})
+	m.SetValue("hi")
+	m.cursorCol = 2
+
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	assert.Equal(t, "hi\n", m.Value())
+	assert.Nil(t, cmd) // No submit command
+}
+
+func TestReadlineMode_UpOnFirstLineMovesToStart(t *testing.T) {
+	// In readline mode, Up on first line moves cursor to column 0
+	m := New(Config{VimEnabled: false})
+	m.SetValue("hello")
+	m.cursorRow = 0
+	m.cursorCol = 3
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+
+	assert.Equal(t, 0, m.cursorCol)
+}
+
+func TestReadlineMode_DownOnLastLineMovesToEnd(t *testing.T) {
+	// In readline mode, Down on last line moves cursor to end
+	m := New(Config{VimEnabled: false})
+	m.SetValue("hello")
+	m.cursorRow = 0
+	m.cursorCol = 0
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+
+	assert.Equal(t, GraphemeCount("hello"), m.cursorCol)
+}
+
+func TestReadlineMode_CtrlAMovesToLineStart(t *testing.T) {
+	// Ctrl+A moves to line start
+	m := New(Config{VimEnabled: false})
+	m.SetValue("hello")
+	m.cursorCol = 3
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlA})
+
+	assert.Equal(t, 0, m.cursorCol)
+}
+
+func TestReadlineMode_CtrlEMovesToLineEnd(t *testing.T) {
+	// Ctrl+E moves to line end
+	m := New(Config{VimEnabled: false})
+	m.SetValue("hello")
+	m.cursorCol = 0
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
+
+	assert.Equal(t, GraphemeCount("hello"), m.cursorCol)
+}
+
+func TestReadlineMode_CtrlWDeletesPreviousWord(t *testing.T) {
+	// Ctrl+W deletes previous word
+	m := New(Config{VimEnabled: false})
+	m.SetValue("hello world")
+	m.cursorCol = GraphemeCount("hello world")
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlW})
+
+	assert.Equal(t, "hello ", m.Value())
+	assert.Equal(t, GraphemeCount("hello "), m.cursorCol)
+}
+
+// ============================================================================
 // Space Key Tests (xorchestrator-nz7d.14)
 // ============================================================================
 
