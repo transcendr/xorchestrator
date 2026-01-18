@@ -4228,7 +4228,7 @@ func TestClampWorkflowListCursor_ValidCursorUnchanged(t *testing.T) {
 }
 
 // =============================================================================
-// Workflows Tab Key Handling Tests (Task 2)
+// Workflows Tab Key Handling Tests
 // =============================================================================
 
 func TestWorkflowsTab_JIncrementsCursor(t *testing.T) {
@@ -4528,7 +4528,7 @@ func TestWorkflowsTab_BlocksInputForwarding(t *testing.T) {
 }
 
 // =============================================================================
-// selectWorkflowFromTab Tests (Task 2)
+// selectWorkflowFromTab Tests
 // =============================================================================
 
 func TestSelectWorkflowFromTab_AlwaysSendsMessage(t *testing.T) {
@@ -4618,7 +4618,7 @@ func TestSelectWorkflowFromTab_SetsActiveWorkflow(t *testing.T) {
 }
 
 // =============================================================================
-// Ctrl+T Switches to Workflows Tab Tests (Task 2)
+// Ctrl+T Switches to Workflows Tab Tests
 // =============================================================================
 
 func TestCtrlT_SwitchesToWorkflowsTab(t *testing.T) {
@@ -4708,7 +4708,7 @@ func TestCtrlT_WorksWithNilRegistry(t *testing.T) {
 }
 
 // =============================================================================
-// Tab Switching Keys Still Work on Workflows Tab (Task 2)
+// Tab Switching Keys Still Work on Workflows Tab
 // =============================================================================
 
 func TestWorkflowsTab_TabSwitchingKeysStillWork(t *testing.T) {
@@ -4748,7 +4748,7 @@ func TestWorkflowsTab_TabSwitchingKeysStillWork(t *testing.T) {
 }
 
 // =============================================================================
-// Workflows Tab Rendering Tests (Task 3)
+// Workflows Tab Rendering Tests
 // =============================================================================
 
 func TestWorkflowsTabLayout_Golden(t *testing.T) {
@@ -4888,7 +4888,7 @@ func TestWorkflowsTab_TabBarShowsAllThreeTabs_Golden(t *testing.T) {
 }
 
 // =============================================================================
-// Workflows Tab Rendering Unit Tests (Task 3)
+// Workflows Tab Rendering Unit Tests
 // =============================================================================
 
 func TestRenderWorkflowsTab_LongNameTruncation(t *testing.T) {

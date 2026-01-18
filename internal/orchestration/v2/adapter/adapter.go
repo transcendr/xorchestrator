@@ -503,7 +503,7 @@ func (a *V2Adapter) HandleQueryWorkerState(_ context.Context, args json.RawMessa
 }
 
 // ===========================================================================
-// Messaging Handlers (Batch 2)
+// Messaging Handlers
 // ===========================================================================
 
 // HandleSendToWorker handles the send_to_worker MCP tool call.
@@ -672,7 +672,7 @@ func (a *V2Adapter) HandleReadMessageLog(_ context.Context, args json.RawMessage
 }
 
 // ===========================================================================
-// Task Assignment Handlers (Batch 3-4)
+// Task Assignment Handlers
 // ===========================================================================
 
 // HandleAssignTask handles the assign_task MCP tool call.
@@ -780,7 +780,7 @@ func (a *V2Adapter) HandleApproveCommit(ctx context.Context, args json.RawMessag
 }
 
 // ===========================================================================
-// State Transition Handlers (Batch 5)
+// State Transition Handlers
 // ===========================================================================
 
 // HandleSignalReady handles the signal_ready MCP tool call.
@@ -901,7 +901,7 @@ func (a *V2Adapter) HandleReportReviewVerdict(ctx context.Context, args json.Raw
 }
 
 // ===========================================================================
-// BD Integration Handlers (Batch 6)
+// BD Integration Handlers
 // ===========================================================================
 
 // markTaskCompleteArgs holds arguments for mark_task_complete tool.

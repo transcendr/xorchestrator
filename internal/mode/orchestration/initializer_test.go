@@ -696,7 +696,7 @@ func TestInitializer_Retry_ResetsProcessRepo(t *testing.T) {
 // ===========================================================================
 
 // ===========================================================================
-// createSession() Method Tests (Task xorchestrator-oph9.1)
+// createSession() Method Tests
 // ===========================================================================
 
 func TestInitializer_CreateSession_Success(t *testing.T) {
@@ -947,7 +947,7 @@ func TestInitializer_AgentProvider_AmpPartialExtensions(t *testing.T) {
 }
 
 // ===========================================================================
-// createMCPListener() Method Tests (Task xorchestrator-oph9.3)
+// createMCPListener() Method Tests
 // ===========================================================================
 
 func TestInitializer_CreateMCPListener_Success(t *testing.T) {
@@ -1045,7 +1045,7 @@ func TestInitializer_CreateMCPListener_ListenerAcceptsConnections(t *testing.T) 
 }
 
 // ===========================================================================
-// createMCPServer() Method Tests (Task xorchestrator-oph9.3)
+// createMCPServer() Method Tests
 // ===========================================================================
 
 func TestInitializer_CreateMCPServer_Success(t *testing.T) {
@@ -1399,7 +1399,7 @@ func TestRun_CancelsOnContextCancellation(t *testing.T) {
 }
 
 // ===========================================================================
-// cleanupResources() Tests (Task xorchestrator-oph9.13)
+// cleanupResources() Tests
 // ===========================================================================
 
 func TestCleanupResources_Idempotent(t *testing.T) {
@@ -1726,7 +1726,7 @@ func TestCleanupResources_ExistingTestStillPasses(t *testing.T) {
 }
 
 // ===========================================================================
-// Worktree Phase Tests (Task xorchestrator-v5cq.5)
+// Worktree Phase Tests
 // ===========================================================================
 
 func TestInitializer_WorktreePhase_Success(t *testing.T) {
@@ -2106,7 +2106,7 @@ func TestInitializer_WorktreeConfig_Fields(t *testing.T) {
 }
 
 // ===========================================================================
-// WorktreeBranchName Field Tests (Task xorchestrator-s8xg.2)
+// WorktreeBranchName Field Tests
 // ===========================================================================
 
 func TestInitializerConfig_WorktreeBranchName_FieldExists(t *testing.T) {
@@ -2555,7 +2555,7 @@ func TestInitializer_ReopenSession_SetsSessionIDAndDir(t *testing.T) {
 }
 
 // ===========================================================================
-// Per-Phase Timeout Tests (Task xorchestrator-mo45.5)
+// Per-Phase Timeout Tests
 // ===========================================================================
 
 func TestInitializer_WorktreeTimeout(t *testing.T) {

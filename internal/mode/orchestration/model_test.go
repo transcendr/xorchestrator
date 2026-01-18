@@ -1878,7 +1878,7 @@ func TestModel_DebugModePreserved(t *testing.T) {
 }
 
 // ============================================================================
-// worktreeCustomBranch Field Tests (Task xorchestrator-s8xg.2)
+// worktreeCustomBranch Field Tests
 // ============================================================================
 
 func TestModel_WorktreeCustomBranch_FieldExists(t *testing.T) {

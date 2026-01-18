@@ -875,7 +875,7 @@ func TestWorktreeIntegration_ConcurrentAccess_WorktreeBranch(t *testing.T) {
 }
 
 // ===========================================================================
-// Custom Branch Name Tests (Task xorchestrator-s8xg.4)
+// Custom Branch Name Tests
 // ===========================================================================
 // These tests verify that createWorktree() uses a custom branch name when
 // provided via WorktreeBranchName config, and falls back to auto-generated

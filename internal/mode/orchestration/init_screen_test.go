@@ -806,7 +806,7 @@ func TestGetPhaseIndicatorAndStyle_Worktree_Completed(t *testing.T) {
 }
 
 // ===========================================================================
-// worktreeErrorMessage Tests for ErrInvalidBranchName (Task xorchestrator-s8xg.4)
+// worktreeErrorMessage Tests for ErrInvalidBranchName
 // ===========================================================================
 
 func TestWorktreeErrorMessage_InvalidBranchName_SentinelError(t *testing.T) {
@@ -831,7 +831,7 @@ func TestWorktreeErrorMessage_InvalidBranchName_StringContains(t *testing.T) {
 }
 
 // ===========================================================================
-// timeoutErrorMessage Tests (Task xorchestrator-mo45.6)
+// timeoutErrorMessage Tests
 // ===========================================================================
 
 func TestTimeoutErrorMessage_AllPhases(t *testing.T) {

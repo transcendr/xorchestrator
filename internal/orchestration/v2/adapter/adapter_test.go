@@ -280,7 +280,7 @@ func TestNewV2Adapter_WithTimeout(t *testing.T) {
 }
 
 // ===========================================================================
-// Worker Lifecycle Tests (Batch 1)
+// Worker Lifecycle Tests
 // ===========================================================================
 
 func TestHandleSpawnProcess(t *testing.T) {
@@ -434,7 +434,7 @@ func TestHandleReplaceProcess(t *testing.T) {
 }
 
 // ===========================================================================
-// Messaging Tests (Batch 2)
+// Messaging Tests
 // ===========================================================================
 
 func TestHandleSendToWorker(t *testing.T) {
@@ -775,7 +775,7 @@ func TestWithMessageRepository(t *testing.T) {
 }
 
 // ===========================================================================
-// Task Assignment Tests (Batch 3-4)
+// Task Assignment Tests
 // ===========================================================================
 
 func TestHandleAssignTask(t *testing.T) {
@@ -1129,7 +1129,7 @@ func TestHandleApproveCommit(t *testing.T) {
 }
 
 // ===========================================================================
-// State Transition Tests (Batch 5)
+// State Transition Tests
 // ===========================================================================
 
 func TestHandleSignalReady(t *testing.T) {
@@ -1427,7 +1427,7 @@ func TestHandleReportReviewVerdict(t *testing.T) {
 }
 
 // ===========================================================================
-// BD Integration Tests (Batch 6)
+// BD Integration Tests
 // ===========================================================================
 
 func TestHandleMarkTaskComplete(t *testing.T) {

@@ -5,7 +5,7 @@ package sound
 import "embed"
 
 // soundFiles contains embedded WAV files for audio feedback.
-// The sounds directory will be populated with audio files in Task 6.
+// The sounds directory should contain WAV assets at build time.
 //
 //go:embed sounds/*.wav
 var soundFiles embed.FS
