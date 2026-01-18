@@ -276,11 +276,11 @@ Uses atomic writes (temp file + rename) for safety.
 
 ### Claude Backend
 
-Reads from and appends to Claude's JSONL history file:
+Reads from and appends to Claude Code's JSONL history file:
 - Default: `~/.claude/history.jsonl`
 - Override via `orchestration.claude_history_path`
 
-Normalizes JSONL entries with `{text, timestamp, source}` format. Extracts text from multiple JSONL field patterns.
+Writes JSONL entries in Claude Code format: `{display, pastedContents, timestamp, project, sessionId?}`. The loader extracts text from `display` and legacy keys (`text`, `input`, `prompt`, `message`, `content`) for backward compatibility.
 
 **Note**: Backends are mutually exclusive (v1 does not support dual sync).
 

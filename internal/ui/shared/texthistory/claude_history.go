@@ -11,9 +11,11 @@ import (
 )
 
 type claudeHistoryEntry struct {
-	Text      string `json:"text"`
-	Timestamp string `json:"timestamp,omitempty"`
-	Source    string `json:"source,omitempty"`
+	Display        string         `json:"display"`
+	PastedContents map[string]any `json:"pastedContents"`
+	Timestamp      int64          `json:"timestamp"`
+	Project        string         `json:"project"`
+	SessionID      string         `json:"sessionId,omitempty"`
 }
 
 // LoadClaudeHistory reads Claude's history.jsonl and returns a HistoryManager.
@@ -62,7 +64,7 @@ func LoadClaudeHistory(path string, fallbackMax int) (*HistoryManager, error) {
 	return h, nil
 }
 
-// AppendClaudeHistory appends a normalized JSONL entry to Claude's history.jsonl.
+// AppendClaudeHistory appends a Claude-compatible JSONL entry to history.jsonl.
 func AppendClaudeHistory(path, entry string) error {
 	if strings.TrimSpace(entry) == "" {
 		return nil
@@ -82,10 +84,16 @@ func AppendClaudeHistory(path, entry string) error {
 	}
 	defer f.Close()
 
+	project, _ := os.Getwd()
+	if project == "" {
+		project = ""
+	}
+
 	payload := claudeHistoryEntry{
-		Text:      entry,
-		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
-		Source:    "xorchestrator",
+		Display:        entry,
+		PastedContents: map[string]any{},
+		Timestamp:      time.Now().UnixMilli(),
+		Project:        project,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -97,6 +105,14 @@ func AppendClaudeHistory(path, entry string) error {
 }
 
 func extractClaudeText(raw map[string]any) string {
+	// Check "display" first (Claude Code format)
+	if v, ok := raw["display"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+
+	// Check legacy keys for backward compatibility
 	for _, key := range []string{"text", "input", "prompt", "message", "content"} {
 		if v, ok := raw[key]; ok {
 			if s, ok := v.(string); ok {

@@ -1,6 +1,7 @@
 package texthistory
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,7 @@ func TestClaudeHistory_LoadsTextFields(t *testing.T) {
 	path := filepath.Join(dir, "history.jsonl")
 
 	lines := []string{
-		`{"text":"hello"}`,
+		`{"display":"hello","pastedContents":{},"timestamp":123,"project":"/tmp"}`,
 		`{"prompt":"world"}`,
 		`{"messages":[{"role":"user","content":"from-messages"}]}`,
 	}
@@ -47,7 +48,24 @@ func TestClaudeHistory_Append(t *testing.T) {
 		t.Fatalf("read file: %v", err)
 	}
 
-	if !strings.Contains(string(data), `"text":"hello"`) {
-		t.Fatalf("expected appended text in file: %s", string(data))
+	// Parse the JSONL line
+	line := strings.TrimSpace(string(data))
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		t.Fatalf("failed to parse JSONL: %v", err)
+	}
+
+	// Assert Claude Code format fields
+	if display, ok := entry["display"].(string); !ok || display != "hello" {
+		t.Fatalf("expected display='hello', got %v", entry["display"])
+	}
+	if _, ok := entry["pastedContents"].(map[string]any); !ok {
+		t.Fatalf("expected pastedContents to be a map, got %v", entry["pastedContents"])
+	}
+	if _, ok := entry["timestamp"].(float64); !ok {
+		t.Fatalf("expected timestamp to be numeric, got %v", entry["timestamp"])
+	}
+	if project, ok := entry["project"].(string); !ok || project == "" {
+		t.Fatalf("expected project to be non-empty string, got %v", entry["project"])
 	}
 }

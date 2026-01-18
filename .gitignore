@@ -60,3 +60,4 @@ debug.log
 
 # Build files
 dist/
+bin/
