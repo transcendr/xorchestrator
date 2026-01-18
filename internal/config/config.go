@@ -159,7 +159,9 @@ type OrchestrationConfig struct {
 	SessionStorage   SessionStorageConfig `mapstructure:"session_storage"` // Session storage location configuration
 	Timeouts         TimeoutsConfig       `mapstructure:"timeouts"`        // Initialization phase timeout configuration
 	// Max visible lines for coordinator input (content lines, not counting borders).
-	CoordinatorInputMaxHeight int `mapstructure:"coordinator_input_max_height"`
+	CoordinatorInputMaxHeight int    `mapstructure:"coordinator_input_max_height"`
+	HistoryBackend            string `mapstructure:"history_backend"`     // "xorchestrator" (default) or "claude"
+	ClaudeHistoryPath         string `mapstructure:"claude_history_path"` // optional override for ~/.claude/history.jsonl
 }
 
 // ClaudeClientConfig holds Claude-specific settings.
@@ -394,6 +396,11 @@ func ValidateOrchestration(orch OrchestrationConfig) error {
 	// Validate session storage
 	if err := ValidateSessionStorage(orch.SessionStorage); err != nil {
 		return err
+	}
+
+	// Validate history backend
+	if orch.HistoryBackend != "" && orch.HistoryBackend != "xorchestrator" && orch.HistoryBackend != "claude" {
+		return fmt.Errorf("orchestration.history_backend must be \"xorchestrator\" or \"claude\", got %q", orch.HistoryBackend)
 	}
 
 	return nil
@@ -634,7 +641,8 @@ func Defaults() Config {
 				BaseDir:         DefaultSessionStorageBaseDir(),
 				ApplicationName: "", // Derived from git remote or directory name
 			},
-			Timeouts: DefaultTimeoutsConfig(),
+			Timeouts:       DefaultTimeoutsConfig(),
+			HistoryBackend: "xorchestrator",
 		},
 		Sound: SoundConfig{
 			Events: map[string]SoundEventConfig{
@@ -756,6 +764,10 @@ orchestration:
   amp:
     model: opus    # opus (default) or sonnet
     mode: smart    # free, rush, or smart (default)
+
+  # Coordinator input history settings
+  # history_backend: xorchestrator  # "xorchestrator" (default) or "claude"
+  # claude_history_path: ~/.claude/history.jsonl  # Optional override for Claude history file
 
   # Workflow templates (Ctrl+P to open picker in orchestration mode)
   # User workflows are loaded from ~/.xorchestrator/workflows/*.md

@@ -11,6 +11,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -41,6 +43,7 @@ import (
 	"github.com/zjrosen/xorchestrator/internal/ui/shared/formmodal"
 	"github.com/zjrosen/xorchestrator/internal/ui/shared/modal"
 	"github.com/zjrosen/xorchestrator/internal/ui/shared/quitmodal"
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/texthistory"
 	"github.com/zjrosen/xorchestrator/internal/ui/shared/vimtextarea"
 	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
@@ -266,12 +269,65 @@ func New(cfg Config) Model {
 	if cfg.InputMaxHeight <= 0 {
 		cfg.InputMaxHeight = 4
 	}
+
+	// Initialize history backend and persistence
+	backend := config.HistoryBackend(cfg.Services.Config.Orchestration)
+	drafts := texthistory.NewDraftStore()
+	historyContextID := "orchestration:coordinator"
+	var historyMgr *texthistory.HistoryManager
+	var persistFn func(string)
+
+	switch backend {
+	case "xorchestrator":
+		// Use xorchestrator's own history file
+		historyPath := config.HistoryPath(cfg.Services.ConfigPath)
+		h, err := texthistory.LoadHistory(historyPath, texthistory.DefaultMaxHistory)
+		if err != nil {
+			log.Warn(log.CatOrch, "Failed to load history, starting fresh", "path", historyPath, "error", err)
+			h = texthistory.NewHistoryManager(texthistory.DefaultMaxHistory)
+		}
+		historyMgr = h
+		persistFn = func(entry string) {
+			if err := texthistory.SaveHistory(historyPath, historyMgr); err != nil {
+				log.Warn(log.CatOrch, "Failed to persist history", "path", historyPath, "error", err)
+			}
+		}
+
+	case "claude":
+		// Use Claude's history.jsonl file
+		claudePath := cfg.Services.Config.Orchestration.ClaudeHistoryPath
+		if claudePath == "" {
+			home, _ := os.UserHomeDir()
+			claudePath = filepath.Join(home, ".claude", "history.jsonl")
+		}
+		h, err := texthistory.LoadClaudeHistory(claudePath, texthistory.DefaultMaxHistory)
+		if err != nil {
+			log.Warn(log.CatOrch, "Failed to load Claude history, starting fresh", "path", claudePath, "error", err)
+			h = texthistory.NewHistoryManager(texthistory.DefaultMaxHistory)
+		}
+		historyMgr = h
+		persistFn = func(entry string) {
+			if err := texthistory.AppendClaudeHistory(claudePath, entry); err != nil {
+				log.Warn(log.CatOrch, "Failed to persist to Claude history", "path", claudePath, "error", err)
+			}
+		}
+
+	default:
+		// Unknown backend - use in-memory only
+		log.Warn(log.CatOrch, "Unknown history backend, using in-memory only", "backend", backend)
+		historyMgr = texthistory.NewHistoryManager(texthistory.DefaultMaxHistory)
+	}
+
 	ta := vimtextarea.New(vimtextarea.Config{
-		VimEnabled:  cfg.VimMode,
-		DefaultMode: defaultMode,
-		Placeholder: "Type message to coordinator...",
-		CharLimit:   0,
-		MaxHeight:   cfg.InputMaxHeight,
+		VimEnabled:       cfg.VimMode,
+		DefaultMode:      defaultMode,
+		Placeholder:      "Type message to coordinator...",
+		CharLimit:        0,
+		MaxHeight:        cfg.InputMaxHeight,
+		InputHistory:     historyMgr,
+		Drafts:           drafts,
+		HistoryContextID: historyContextID,
+		HistoryOnPersist: persistFn,
 	})
 	ta.Focus() // Focus input by default
 

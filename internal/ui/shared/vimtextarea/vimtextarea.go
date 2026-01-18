@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/zjrosen/xorchestrator/internal/ui/shared/texthistory"
 	"github.com/zjrosen/xorchestrator/internal/ui/styles"
 )
 
@@ -75,6 +76,18 @@ type Config struct {
 	// OnChange produces a custom message when content changes.
 	// If nil, no message is emitted on content change.
 	OnChange func(content string) tea.Msg
+
+	// InputHistory enables command history navigation (optional).
+	InputHistory *texthistory.HistoryManager
+
+	// Drafts enables draft preservation per context (optional).
+	Drafts *texthistory.DraftStore
+
+	// HistoryContextID identifies this input's draft context (e.g., "orchestration:coordinator:session-id").
+	HistoryContextID string
+
+	// HistoryOnPersist is called when content is submitted, for backend persistence (optional).
+	HistoryOnPersist func(entry string)
 }
 
 // Position represents a cursor position in the textarea.
@@ -120,6 +133,15 @@ type Model struct {
 
 	// Scrolling
 	scrollOffset int // First visible line
+
+	// Input history (command history navigation)
+	inputHistory     *texthistory.HistoryManager
+	drafts           *texthistory.DraftStore
+	historyContextID string
+	historyNavActive bool
+	stashedDraft     string
+	hasStashedDraft  bool
+	historyOnPersist func(entry string)
 }
 
 // SubmitMsg is sent when the user submits content (Enter).
@@ -150,15 +172,19 @@ func New(cfg Config) Model {
 	}
 
 	return Model{
-		config:         cfg,
-		content:        []string{""},
-		cursorRow:      0,
-		cursorCol:      0,
-		mode:           mode,
-		pendingBuilder: NewPendingCommandBuilder(),
-		history:        NewCommandHistory(),
-		keymap:         km,
-		focused:        false,
+		config:           cfg,
+		content:          []string{""},
+		cursorRow:        0,
+		cursorCol:        0,
+		mode:             mode,
+		pendingBuilder:   NewPendingCommandBuilder(),
+		history:          NewCommandHistory(),
+		keymap:           km,
+		focused:          false,
+		inputHistory:     cfg.InputHistory,
+		drafts:           cfg.Drafts,
+		historyContextID: cfg.HistoryContextID,
+		historyOnPersist: cfg.HistoryOnPersist,
 	}
 }
 
@@ -258,6 +284,71 @@ type YankHighlighter interface {
 	YankHighlightRegion() (start, end Position, linewise bool, show bool)
 }
 
+// cursorAtHistoryGate returns true if cursor is at position 0,0 (start of first line).
+// This is the gate condition for history navigation (matches InputBox.tsx behavior).
+func (m Model) cursorAtHistoryGate() bool {
+	return m.cursorRow == 0 && m.cursorCol == 0
+}
+
+// enterHistoryIfNeeded prepares for history navigation: stashes current draft, sets flags.
+func (m Model) enterHistoryIfNeeded() Model {
+	if m.inputHistory == nil {
+		return m
+	}
+
+	// Stash current content as draft (only if not already stashed)
+	if !m.hasStashedDraft {
+		m.stashedDraft = m.Value()
+		m.hasStashedDraft = true
+
+		// Save to draft store if available
+		if m.drafts != nil && m.historyContextID != "" {
+			m.drafts.Save(m.historyContextID, m.stashedDraft)
+		}
+	}
+
+	m.historyNavActive = true
+	return m
+}
+
+// exitHistoryRestoreDraft exits history navigation and restores the stashed draft.
+func (m Model) exitHistoryRestoreDraft() Model {
+	m.historyNavActive = false
+
+	// Reset history navigation
+	if m.inputHistory != nil {
+		m.inputHistory.Reset()
+	}
+
+	// Restore stashed draft if available
+	if m.hasStashedDraft {
+		m.SetValue(m.stashedDraft)
+		m.stashedDraft = ""
+		m.hasStashedDraft = false
+	}
+
+	return m
+}
+
+// exitHistoryDiscardDraft exits history navigation without restoring the draft.
+func (m Model) exitHistoryDiscardDraft() Model {
+	m.historyNavActive = false
+	m.stashedDraft = ""
+	m.hasStashedDraft = false
+
+	// Reset history navigation
+	if m.inputHistory != nil {
+		m.inputHistory.Reset()
+	}
+
+	// Clear draft from store
+	if m.drafts != nil && m.historyContextID != "" {
+		m.drafts.Clear(m.historyContextID)
+	}
+
+	return m
+}
+
 // handleKeyMsg processes keyboard input via pure registry dispatch.
 // All key handling logic is encapsulated in Command implementations.
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
@@ -270,6 +361,59 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 	mode := m.mode
 	if !m.config.VimEnabled {
 		mode = ModeInsert
+	}
+
+	// Handle history navigation in Insert mode (matches InputBox.tsx cursor-gating behavior)
+	if mode == ModeInsert && m.inputHistory != nil {
+		// Detect history navigation keys
+		isUp := msg.Type == tea.KeyUp
+		isDown := msg.Type == tea.KeyDown
+		isCtrlP := msg.String() == "ctrl+p"
+		isCtrlN := msg.String() == "ctrl+n"
+
+		// History navigation ONLY allowed when cursor at position 0,0 (InputBox gating)
+		if (isUp || isDown || isCtrlP || isCtrlN) && m.cursorAtHistoryGate() {
+			// Up or Ctrl+P: navigate to previous entry
+			if isUp || isCtrlP {
+				m = m.enterHistoryIfNeeded()
+				value := m.inputHistory.Previous()
+				if value != "" {
+					m.SetValue(value)
+				} else {
+					m.SetValue("")
+				}
+				m.historyNavActive = true
+				return m, nil
+			}
+
+			// Down or Ctrl+N: navigate to next entry (or restore draft)
+			if isDown || isCtrlN {
+				// Only handle if we're in history nav mode or have stashed draft
+				if m.inputHistory.IsNavigating() || m.hasStashedDraft {
+					next := m.inputHistory.Next()
+					if next == "" {
+						// At newest boundary - restore stashed draft
+						m = m.exitHistoryRestoreDraft()
+						return m, nil
+					}
+					m.SetValue(next)
+					m.historyNavActive = true
+					return m, nil
+				}
+			}
+		}
+
+		// Exit history on right arrow from position 0,0 (but continue with arrow movement)
+		if m.historyNavActive && msg.Type == tea.KeyRight && m.cursorAtHistoryGate() {
+			m = m.exitHistoryRestoreDraft()
+			// Fall through to allow right arrow movement
+		}
+
+		// Exit history on typing (discard stashed draft, apply the edit)
+		if m.historyNavActive && msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
+			m = m.exitHistoryDiscardDraft()
+			// Fall through to allow character insertion
+		}
 	}
 
 	// Delegate to keymap for key resolution
@@ -1094,6 +1238,25 @@ func (m *Model) deleteSelection(start, end Position, wasLinewise bool) []string 
 // This is the Enter key behavior.
 func (m Model) submitContent() (Model, tea.Cmd) {
 	content := m.Value()
+
+	// Add to history and persist
+	if m.inputHistory != nil {
+		m.inputHistory.Add(content)
+		if m.historyOnPersist != nil && strings.TrimSpace(content) != "" {
+			m.historyOnPersist(content)
+		}
+	}
+
+	// Clear draft and reset history navigation state
+	if m.drafts != nil && m.historyContextID != "" {
+		m.drafts.Clear(m.historyContextID)
+	}
+	m.historyNavActive = false
+	m.hasStashedDraft = false
+	m.stashedDraft = ""
+	if m.inputHistory != nil {
+		m.inputHistory.Reset()
+	}
 
 	if m.config.OnSubmit != nil {
 		return m, func() tea.Msg {

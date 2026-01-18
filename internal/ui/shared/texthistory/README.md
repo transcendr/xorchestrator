@@ -256,18 +256,52 @@ Context isolation prevents draft pollution across different forms, fields, and u
 
 BubbleTea applications may spawn concurrent commands (tea.Cmd) that access shared state. Thread safety prevents race conditions without requiring callers to implement locking.
 
-### Why Not Persist to Disk?
+### Persistence
 
-The MVP implementation uses in-memory storage for simplicity and performance. Disk persistence can be added in Phase 2 using JSON serialization of HistoryManager.Entries() and DraftStore contents.
+**Command History**: Supported with configurable backends (see Configuration).
+
+**Drafts**: In-memory only. Drafts are session-scoped and cleared on application exit.
+
+## Backend Configuration
+
+History persistence is configured via orchestration config (`orchestration.history_backend`):
+
+### Xorchestrator Backend (Default)
+
+Stores history in JSON format at a location derived from config file:
+- Project-local config (`.xorchestrator/config.yaml`) → `.xorchestrator/history.json`
+- Global config → `~/.config/xorchestrator/history.json`
+
+Uses atomic writes (temp file + rename) for safety.
+
+### Claude Backend
+
+Reads from and appends to Claude's JSONL history file:
+- Default: `~/.claude/history.jsonl`
+- Override via `orchestration.claude_history_path`
+
+Normalizes JSONL entries with `{text, timestamp, source}` format. Extracts text from multiple JSONL field patterns.
+
+**Note**: Backends are mutually exclusive (v1 does not support dual sync).
+
+## Configuration
+
+In `config.yaml`:
+
+```yaml
+orchestration:
+  history_backend: xorchestrator  # "xorchestrator" (default) or "claude"
+  # claude_history_path: ~/.claude/history.jsonl  # Optional override
+```
 
 ## Future Enhancements
 
-- [ ] Disk persistence to `~/.config/xorchestrator/history.json`
 - [ ] History search/filtering
 - [ ] Configurable duplicate detection (fuzzy matching)
 - [ ] LRU eviction for draft store
 - [ ] History compression for long-running sessions
 - [ ] Cross-session history synchronization
+- [ ] Dual backend sync (read from Claude, write to both)
 
 ## References
 
